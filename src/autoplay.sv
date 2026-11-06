@@ -3,9 +3,9 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Autoplay: steers the paddle so the ball lands on a chosen quarter ("zone") of it.
+ * Autoplay: steers the paddle so the ball lands on a chosen quarter of it.
  *
- * The zone is re-picked pseudo-randomly after every paddle hit. Always aiming at the same
+ * The quarter is re-picked pseudo-randomly after every paddle hit. Always aiming at the same
  * spot makes the ball settle into a closed loop that never reaches the remaining bricks;
  * since the paddle quarter sets the bounce angle, varying it keeps the ball exploring.
  */
@@ -23,23 +23,23 @@ module autoplay (
     output logic       steer_right
 );
 
-  logic [4:0] lfsr;  // x^5 + x^3 + 1: cycles through all 31 non-zero values
-  logic [1:0] zone;  // paddle quarter to aim for, 16 px each
+  logic [4:0] lfsr;         // x^5 + x^3 + 1: cycles through all 31 non-zero values
+  logic [1:0] aim_quarter;  // paddle quarter to aim for, 16 px each (0 = leftmost)
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      lfsr <= 1;  // any non-zero seed
-      zone <= 1;
+      lfsr        <= 1;  // any non-zero seed
+      aim_quarter <= 1;
     end else if (frame_tick) begin
-      lfsr <= {lfsr[3:0], lfsr[4] ^ lfsr[2]};
-      if (paddle_hit) zone <= lfsr[1:0];
+      lfsr        <= {lfsr[3:0], lfsr[4] ^ lfsr[2]};
+      if (paddle_hit) aim_quarter <= lfsr[1:0];
     end
   end
 
-  // Ball centre (ball_x + 4) over zone centre (paddle_x + 16 * zone + 8), compared in
-  // 4-px units: ball_x / 4 = paddle_x / 4 + 4 * zone + 1
+  // Ball centre (ball_x + 4) over the quarter's centre (paddle_x + 16 * aim_quarter + 8),
+  // compared in 4-px units: ball_x / 4 = paddle_x / 4 + 4 * aim_quarter + 1
   wire [7:0] ball_q = ball_x[9:2];
-  wire [7:0] aim_q  = paddle_x[9:2] + zone * 4 + 1;
+  wire [7:0] aim_q  = paddle_x[9:2] + aim_quarter * 4 + 1;
 
   assign steer_right = ball_q > aim_q;
   assign steer_left  = ball_q < aim_q;

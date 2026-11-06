@@ -70,11 +70,11 @@ module brick_wall (
   // the one-hot select; only valid inside the wall, hence in_wall.
   wire       in_wall = (|col_sel) & (|row_sel);
   wire [2:0] col_idx = 3'(col - FIRST_COL);
-  wire [2:0] row_idx = {~row[2], row[1:0]};
+  wire [2:0] row_idx = {~row[2], row[1:0]};  // rows 4..9 have low bits 4,5,6,7,0,1: flip bit 2
   wire [5:0] idx     = {row_idx, col_idx};
+
   assign brick_px     = in_wall & bricks[idx] & ~gap;
-  // Rows 4..9 have low bits 4,5,6,7,0,1; flipping the top bit gives 0..5.
-  assign brick_row    = {~row[2], row[1:0]};
+  assign brick_row    = row_idx;
   assign over_columns = |col_sel;
   assign empty        = ~|bricks;
 

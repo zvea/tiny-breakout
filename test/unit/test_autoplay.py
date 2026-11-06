@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for autoplay: paddle steering towards a pseudo-randomly chosen paddle zone."""
+"""Unit tests for autoplay: paddle steering towards a pseudo-randomly chosen paddle quarter."""
 
 import cocotb
 from cocotb.clock import Clock
@@ -39,11 +39,11 @@ async def read(dut, name: str) -> int:
 
 
 @cocotb.test()
-async def steers_ball_onto_the_zone_centre(dut):
-    """Steer right/left exactly when the ball centre is right/left of the zone centre."""
+async def steers_ball_onto_the_quarter_centre(dut):
+    """Steer right/left exactly when the ball centre is right/left of the quarter centre."""
     await start(dut)
-    for _ in range(4):  # try several zones
-        zone = await read(dut, "zone")
+    for _ in range(4):  # try several quarters
+        quarter = await read(dut, "aim_quarter")
         for paddle_x in (64, 200, 512):
             for ball_x in range(paddle_x - 16, paddle_x + 80):
                 dut.paddle_x.value = paddle_x
@@ -51,24 +51,24 @@ async def steers_ball_onto_the_zone_centre(dut):
                 await ReadOnly()
                 right, left = int(dut.steer_right.value), int(dut.steer_left.value)
                 await RisingEdge(dut.clk)
-                # compared in 4-px units: ball centre over zone centre
-                ball_q, aim_q = ball_x // 4, paddle_x // 4 + 4 * zone + 1
+                # compared in 4-px units: ball centre over quarter centre
+                ball_q, aim_q = ball_x // 4, paddle_x // 4 + 4 * quarter + 1
                 assert (right, left) == (int(ball_q > aim_q), int(ball_q < aim_q)), (
-                    f"zone {zone}, paddle {paddle_x}, ball {ball_x}"
+                    f"quarter {quarter}, paddle {paddle_x}, ball {ball_x}"
                 )
         await frame(dut, paddle_hit=True)
 
 
 @cocotb.test()
-async def zone_changes_only_on_paddle_hits(dut):
+async def quarter_changes_only_on_paddle_hits(dut):
     await start(dut)
-    zone = await read(dut, "zone")
+    quarter = await read(dut, "aim_quarter")
     for _ in range(40):
         await frame(dut)
-        assert await read(dut, "zone") == zone, "zone changed without a paddle hit"
+        assert await read(dut, "aim_quarter") == quarter, "quarter changed without a paddle hit"
     lfsr = await read(dut, "lfsr")
     await frame(dut, paddle_hit=True)
-    assert await read(dut, "zone") == lfsr & 3, "new zone comes from the random sequence"
+    assert await read(dut, "aim_quarter") == lfsr & 3, "new quarter comes from the random sequence"
 
 
 @cocotb.test()
@@ -83,13 +83,13 @@ async def random_sequence_covers_all_31_nonzero_values(dut):
 
 
 @cocotb.test()
-async def every_zone_gets_picked(dut):
+async def every_quarter_gets_picked(dut):
     await start(dut)
-    zones = set()
+    quarters = set()
     for _ in range(40):
         await frame(dut, paddle_hit=True)
-        zones.add(await read(dut, "zone"))
-    assert zones == {0, 1, 2, 3}
+        quarters.add(await read(dut, "aim_quarter"))
+    assert quarters == {0, 1, 2, 3}
 
 
 def test_autoplay():
