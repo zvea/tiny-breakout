@@ -364,67 +364,98 @@ module tt_um_tiny_breakout (
     end
   end
 
+  // What each frame update (at frame_tick) does, in priority order
+  wire restart   = gameover & btn_fire;                  // new game after game over
+  wire on_paddle = ~gameover & (serve | cleared);        // ball waits on the paddle
+  wire lose_ball = ~gameover & ~on_paddle & ball_lost;   // ball fell off the bottom
+  wire fly       = ~gameover & ~on_paddle & ~ball_lost;  // ball in flight
+
+  // Ball contact during scan-out (the ball resting on the paddle never collides)
+  wire touch = ball_px & ~serve;
+
+  // Paddle
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      bx       <= PAD_START_Q * 4 + SERVE_DX;  // resting on the paddle
-      by       <= SERVE_Y;
-      vx_neg   <= 0;
-      vx_fast  <= 0;
-      vy_neg   <= 1;
-      pad_q    <= PAD_START_Q;
+      pad_q <= PAD_START_Q;
+    end else if (frame_tick) begin
+      if (go_left && pad_q != PAD_MIN_Q) pad_q <= pad_q - 1;
+      else if (go_right && pad_q != PAD_MAX_Q) pad_q <= pad_q + 1;
+    end
+  end
+
+  // Ball position and direction
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      bx      <= PAD_START_Q * 4 + SERVE_DX;  // resting on the paddle
+      by      <= SERVE_Y;
+      vx_neg  <= 0;
+      vx_fast <= 0;
+      vy_neg  <= 1;
+    end else if (frame_tick && on_paddle) begin
+      bx      <= padx + SERVE_DX;
+      by      <= SERVE_Y;
+      vx_neg  <= 0;
+      vx_fast <= 0;
+      vy_neg  <= 1;
+    end else if (frame_tick && fly) begin
+      vx_neg  <= n_vx_neg;
+      vx_fast <= n_vx_fast;
+      vy_neg  <= n_vy_neg;
+      bx      <= bx + vx;
+      by      <= by + vy;
+    end
+  end
+
+  // Game progress: spare lives, serving, game over
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
       lives    <= SPARE_LIVES;
       serve    <= 1;
       gameover <= 0;
-      bricks   <= ALL_BRICKS;
+    end else if (frame_tick) begin
+      if (restart) begin
+        lives    <= SPARE_LIVES;
+        serve    <= 1;
+        gameover <= 0;
+      end else if (on_paddle) begin
+        serve <= ~btn_fire;
+      end else if (lose_ball) begin
+        if (lives == 0) begin
+          gameover <= 1;
+        end else begin
+          lives <= lives - 1;
+          serve <= 1;
+        end
+      end
+    end
+  end
+
+  // Bricks: refilled for a new game or level, cleared when the ball touches them
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      bricks <= ALL_BRICKS;
+    end else if (frame_tick) begin
+      if (restart || (on_paddle && cleared)) bricks <= ALL_BRICKS;
+    end else if (touch && brick_px) begin
+      bricks <= bricks & ~brick_sel;
+    end
+  end
+
+  // Collision flags: set by pixel overlap during scan-out, consumed and cleared at frame_tick
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
       hit      <= '0;
       hit_zone <= 0;
     end else if (frame_tick) begin
       hit <= '0;
-
-      // Paddle
-      if (go_left && pad_q != PAD_MIN_Q) pad_q <= pad_q - 1;
-      else if (go_right && pad_q != PAD_MAX_Q) pad_q <= pad_q + 1;
-
-      if (gameover) begin
-        if (btn_fire) begin
-          gameover <= 0;
-          lives    <= SPARE_LIVES;
-          serve    <= 1;
-          bricks   <= ALL_BRICKS;
-        end
-      end else if (serve | cleared) begin
-        if (cleared) bricks <= ALL_BRICKS;
-        serve   <= ~btn_fire;
-        bx      <= padx + SERVE_DX;
-        by      <= SERVE_Y;
-        vx_neg  <= 0;
-        vx_fast <= 0;
-        vy_neg  <= 1;
-      end else if (ball_lost) begin
-        if (lives == 0) gameover <= 1;
-        else begin
-          lives <= lives - 1;
-          serve <= 1;
-        end
-      end else begin
-        vx_neg  <= n_vx_neg;
-        vx_fast <= n_vx_fast;
-        vy_neg  <= n_vy_neg;
-        bx      <= bx + vx;
-        by      <= by + vy;
-      end
-    end else if (ball_px & ~serve) begin
-      // Collision detection by pixel overlap during scan-out
-      if (wall_l) hit.l <= 1;
-      if (wall_r) hit.r <= 1;
-      if (wall_t) hit.t <= 1;
+    end else if (touch) begin
+      if (wall_l)   hit.l <= 1;
+      if (wall_r)   hit.r <= 1;
+      if (wall_t)   hit.t <= 1;
+      if (brick_px) hit.b <= 1;
       if (paddle_px) begin
         hit.p    <= 1;
         hit_zone <= dpx[5:4];
-      end
-      if (brick_px) begin
-        hit.b  <= 1;
-        bricks <= bricks & ~brick_sel;
       end
     end
   end
