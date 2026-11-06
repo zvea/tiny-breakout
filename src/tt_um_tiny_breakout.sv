@@ -246,9 +246,11 @@ module tt_um_tiny_breakout (
   wire ball_px = (dbx[9:3] == 0) && (dby[9:3] == 0) && in_circle8(dbx[2:0], dby[2:0]) &&
                  ~gameover;
 
-  // Spare lives: 8-px circles at x 64, 80
+  // Spare lives: 8-px circles in 16-px slots from x 64; marker i is shown while lives > i
+  localparam logic [5:0] FIRST_LIFE_SLOT = 4;  // x 64
+  wire [5:0] life_slot = h_pos[9:4] - FIRST_LIFE_SLOT;
   wire life_px = (cell_y == LIVES_CELL_Y) && ~h_pos[3] && in_circle8(h_pos[2:0], v_pos[2:0]) &&
-                 (((h_pos[9:4] == 4) && (lives != 0)) || ((h_pos[9:4] == 5) && lives[1]));
+                 (life_slot < 6'(lives));
 
   // Colours: 2 bits each of red, green and blue
   typedef struct packed {
