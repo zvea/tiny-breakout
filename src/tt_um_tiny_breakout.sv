@@ -24,7 +24,7 @@
  * once per frame at the start of vertical blanking, where the ball and
  * paddle are moved.
  *
- * Sections: pins, video timing and random bits, game state, controls, what is under the
+ * Sections: pins, video timing, game state, controls, what is under the
  * beam, collisions, frame update, video output.
  */
 
@@ -63,7 +63,7 @@ module tt_um_tiny_breakout (
   assign ui = ui_in;
 
   // ---------------------------------------------------------------------------
-  // Video timing and random bits
+  // Video timing
   // ---------------------------------------------------------------------------
   logic [9:0] h_pos, v_pos;  // beam position
   logic       visible, h_sync_n, v_sync_n;
@@ -78,16 +78,6 @@ module tt_um_tiny_breakout (
       .h_sync_n    (h_sync_n),
       .v_sync_n    (v_sync_n),
       .vblank_start(frame_tick)
-  );
-
-  // Pseudo-random bits, new every frame (autoplay's aim, the ball's speed rhythm)
-  logic [4:0] rng;
-
-  frame_rng u_frame_rng (
-      .clk       (clk),
-      .rst_n     (rst_n),
-      .frame_tick(frame_tick),
-      .lfsr      (rng)
   );
 
   // ---------------------------------------------------------------------------
@@ -117,17 +107,22 @@ module tt_um_tiny_breakout (
   logic ball_steep;  // 2 px per frame horizontally (else 1)
   logic ball_up;     // moving up (else down); 2 px per frame vertically
 
-  // Ball speed: on average speed_level frames in 4, the ball moves twice its usual step
-  // (1x, 1.25x, 1.5x, 1.75x). The level rises as the ball reaches higher brick rows and
-  // starts again at 0 whenever the ball is back on the paddle (new ball, level or game).
-  logic [1:0] speed_level;
+  // Speed: the ball and the paddle move 1, 2 or 3 times per frame, on the first lines of
+  // vertical blanking (480, 481, 482), each time by their usual step. Twice per frame after
+  // the current ball has cleared 4 bricks, three times after 8. Back on the paddle (new
+  // ball, level or game), the speed starts again at once per frame.
+  localparam logic [3:0] MAX_SPEED_LEVEL = 8;
+  logic [3:0] speed_level;  // bricks cleared by the current ball, up to MAX_SPEED_LEVEL
 
   logic [1:0] lives;      // spare balls
   logic       serving;    // ball resting on the paddle, waiting to be launched
   logic       game_over;
 
   // Collision flags, gathered during each frame and consumed at frame_tick
-  typedef struct packed { logic wall_l, wall_r, wall_t, brick, paddle; } hits_t;
+  // (brick_top_bottom / brick_side: a brick was hit on its top or bottom / on a side edge)
+  typedef struct packed {
+    logic wall_l, wall_r, wall_t, brick_top_bottom, brick_side, paddle;
+  } hits_t;
   hits_t      hit;
   logic [1:0] hit_quarter;  // paddle quarter the ball touched (0 = leftmost)
 
@@ -180,7 +175,6 @@ module tt_um_tiny_breakout (
       .rst_n      (rst_n),
       .frame_tick (frame_tick),
       .paddle_hit (hit.paddle),
-      .random     (rng[1:0]),
       .ball_x     (ball_x),
       .paddle_x   (paddle_x),
       .steer_left (auto_left),
@@ -269,6 +263,17 @@ module tt_um_tiny_breakout (
 
   assign clear_brick = touch && brick_px;
 
+  // Which edge of a brick the ball came through. Its direction leaves two candidates, a side
+  // edge and the top or bottom edge; it came through the one its 8x8 box is less far past.
+  // Measured within the brick's 64x16 cell (brick at x 2..63, y 2..15), where the ball's box
+  // starts at the contact pixel minus its offset in the box. A brick vanishes at its first
+  // touched pixel, so this is decided there; ties (exact corners) count as top or bottom.
+  wire signed [7:0] box_x = 8'(h_pos[5:0]) - 8'(ball_dx[2:0]);  // may be negative
+  wire signed [7:0] box_y = 8'(v_pos[3:0]) - 8'(ball_dy[2:0]);
+  wire signed [7:0] past_side = ball_left ? 64 - box_x : box_x + 6;  // right / left edge
+  wire signed [7:0] past_flat = ball_up   ? 16 - box_y : box_y + 6;  // bottom / top edge
+  wire              side_hit  = past_side < past_flat;
+
   // Collision flags: set during scan-out, consumed and cleared at frame_tick
   always_ff @(posedge clk) begin
     if (!rst_n) begin
@@ -280,7 +285,8 @@ module tt_um_tiny_breakout (
       if (wall_l_px) hit.wall_l <= 1;
       if (wall_r_px) hit.wall_r <= 1;
       if (wall_t_px) hit.wall_t <= 1;
-      if (brick_px)  hit.brick  <= 1;
+      if (brick_px && !side_hit) hit.brick_top_bottom <= 1;
+      if (brick_px && side_hit)  hit.brick_side       <= 1;
       if (paddle_px) begin
         hit.paddle  <= 1;
         hit_quarter <= paddle_dx[5:4];
@@ -289,23 +295,25 @@ module tt_um_tiny_breakout (
   end
 
   // ---------------------------------------------------------------------------
-  // Frame update (at frame_tick)
+  // Frame update (at frame_tick; ball and paddle moves at move_tick)
   // ---------------------------------------------------------------------------
   wire ball_lost = (ball_y >= SCREEN_H);
 
   // Next ball direction from this frame's collisions. A paddle hit sends the ball up, left
   // from the left half and right from the right half, steeply from the outer quarters.
-  wire next_up           = hit.paddle ? 1 : hit.wall_t ? 0 : (ball_up ^ hit.brick);
-  wire left_after_paddle = hit.paddle ? ~hit_quarter[1] : ball_left;
-  wire next_left         = hit.wall_l ? 0 : hit.wall_r ? 1 : left_after_paddle;
+  // A brick turns it back vertically or horizontally, by the edge it hit.
+  wire next_up           = hit.paddle ? 1 : hit.wall_t ? 0 : (ball_up ^ hit.brick_top_bottom);
+  wire left_after_bounce = hit.paddle ? ~hit_quarter[1] : (ball_left ^ hit.brick_side);
+  wire next_left         = hit.wall_l ? 0 : hit.wall_r ? 1 : left_after_bounce;
   wire next_steep        = hit.paddle ? (hit_quarter[1] ~^ hit_quarter[0]) : ball_steep;
   wire [9:0] step_x = next_left ? (next_steep ? -2 : -1) : (next_steep ? 2 : 1);
   wire [9:0] step_y = next_up ? -2 : 2;
 
-  // Faster frames move the ball by twice its step: a shift, i.e. just wiring
-  wire       double_step = rng[3:2] < speed_level;
-  wire [9:0] move_x      = double_step ? {step_x[8:0], 1'b0} : step_x;
-  wire [9:0] move_y      = double_step ? {step_y[8:0], 1'b0} : step_y;
+  // Moves per frame: 1 + speed_level / 4, i.e. 1, 2 or 3. They happen at the start of lines
+  // 480, 481 and 482 (the first is frame_tick): line 480 + k moves if k < moves. Collision
+  // flags are cleared at frame_tick, so the extra moves keep the new direction.
+  wire [1:0] moves     = 2'd1 + speed_level[3:2];
+  wire       move_tick = (h_pos == 0) && (v_pos[9:2] == SCREEN_H[9:2]) && (v_pos[1:0] < moves);
 
   // What each frame update does, in priority order
   wire restart   = game_over & btn_fire;                  // new game after game over
@@ -317,7 +325,7 @@ module tt_um_tiny_breakout (
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       paddle_q <= PADDLE_START_Q;
-    end else if (frame_tick) begin
+    end else if (move_tick) begin
       if (go_left && paddle_q != PADDLE_MIN_Q) paddle_q <= paddle_q - 1;
       else if (go_right && paddle_q != PADDLE_MAX_Q) paddle_q <= paddle_q + 1;
     end
@@ -337,12 +345,12 @@ module tt_um_tiny_breakout (
       ball_left  <= 0;
       ball_steep <= 0;
       ball_up    <= 1;
-    end else if (frame_tick && fly) begin
+    end else if (move_tick && fly) begin
       ball_left  <= next_left;
       ball_steep <= next_steep;
       ball_up    <= next_up;
-      ball_x     <= ball_x + move_x;
-      ball_y     <= ball_y + move_y;
+      ball_x     <= ball_x + step_x;
+      ball_y     <= ball_y + step_y;
     end
   end
 
@@ -373,18 +381,14 @@ module tt_um_tiny_breakout (
   // Bricks come back for a new game or level
   assign refill_bricks = frame_tick && (restart || (on_paddle && bricks_empty));
 
-  // Ball speed: each pair of brick rows has its own level, rising towards the top. With
-  // brick_row 0 (top) .. 5, inverting its top two bits gives exactly that:
-  // rows 4-5 -> 1, rows 2-3 -> 2, rows 0-1 -> 3.
-  wire [1:0] row_speed = ~brick_row[2:1];
-
+  // Speed: count the current ball's bricks, from 0 again whenever the ball is on the paddle
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       speed_level <= 0;
     end else if (frame_tick && on_paddle) begin
       speed_level <= 0;
-    end else if (clear_brick && row_speed > speed_level) begin
-      speed_level <= row_speed;
+    end else if (clear_brick && speed_level != MAX_SPEED_LEVEL) begin
+      speed_level <= speed_level + 1;
     end
   end
 
@@ -436,7 +440,7 @@ module tt_um_tiny_breakout (
   assign uio_oe  = 0;
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0], rng[4],
+  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0],
                    gp.y, gp.up, gp.down, gp.x, gp.l, gp.r, 1'b0};
 
 endmodule

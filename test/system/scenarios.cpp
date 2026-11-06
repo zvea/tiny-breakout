@@ -48,7 +48,7 @@ struct View {
   int ball_y = -1;
   int paddle_x = -1;    // left edge of the paddle
   int bricks = 0;       // standing bricks
-  int row_bricks[6] = {};  // standing bricks per row, 0 = top
+  uint64_t standing = 0;   // bit r * 8 + c: brick in row r (0 = top), column c
 };
 
 // find_ball: the ball search scans the whole playfield, the slowest part; skip it when
@@ -84,7 +84,7 @@ View look(const Game &g, bool find_ball = true) {
       };
       if (is_brick(x0 + 4, y0 + 4) || is_brick(x0 + 60, y0 + 13)) {
         v.bricks++;
-        v.row_bricks[r]++;
+        v.standing |= uint64_t{1} << (r * 8 + c);
       }
     }
   return v;
@@ -237,33 +237,69 @@ void autoplay_clears_a_level() {
   CHECK(cleared, "level not cleared in %d frames (fewest bricks %d)", frame, fewest);
 }
 
-// The ball moves 2 px per frame vertically until it clears its first brick, and averages
-// 1.75 times that (3.5 px) once it has reached the top two rows.
+// The ball speeds up with the bricks it clears: it moves vertically 2 px per frame at
+// first, 4 px once it has cleared 4 bricks and 6 px once it has cleared 8.
 void ball_speeds_up() {
   Game g;
   g.reset();
   g.autoplay = true;
   View v = run(g, 1);
-  int prev_y = v.ball_y, lives = v.lives, frame = 0, samples = 0, sum = 0;
-  for (; frame < 20000 && samples < 400; frame++) {
+  int prev_y = v.ball_y, prev_bricks = v.bricks, frame = 0, checked[3] = {};
+  for (; frame < 6000 && v.lives == 2 && v.bricks > 36; frame++) {
     v = run(g, 1);
-    int dy = std::abs(v.ball_y - prev_y);
+    int dy = std::abs(v.ball_y - prev_y), cleared = 48 - v.bricks;
+    bool steady = v.bricks == prev_bricks;  // the picture's count lags a brick cleared mid-frame
     prev_y = v.ball_y;
-    if (v.lives != lives) {  // a lost ball starts again at the base speed: restart the count
-      lives = v.lives;
-      samples = sum = 0;
-    }
-    if (!v.ball || dy == 0 || dy > 4) continue;  // resting on the paddle, or a new ball
-    if (v.bricks == 48) CHECK(dy == 2, "frame %d: %d px per frame before any brick", frame, dy);
-    if (v.row_bricks[0] + v.row_bricks[1] < 16) {  // the top rows have been reached
-      samples++;
-      sum += dy;
-    }
+    prev_bricks = v.bricks;
+    if (!v.ball || dy == 0 || !steady || resting(v)) continue;
+    int expected = cleared < 4 ? 2 : cleared < 8 ? 4 : 6;
+    CHECK(dy == expected, "frame %d: %d bricks cleared, moved %d px (expected %d)", frame, cleared,
+          dy, expected);
+    checked[expected / 2 - 1]++;
   }
-  CHECK(samples == 400, "top rows not reached and held for 400 frames by frame %d", frame);
-  double average = samples ? double(sum) / samples : 0;
-  printf("frame %5d: average %.2f px per frame at the top rows\n", frame, average);
-  CHECK(average > 3.3 && average < 3.7, "average step %.2f px, expected about 3.5", average);
+  printf("frame %5d: frames checked at 1x/2x/3x: %d/%d/%d\n", frame, checked[0], checked[1],
+         checked[2]);
+  CHECK(checked[0] > 0 && checked[1] > 0 && checked[2] > 0, "not every speed was reached");
+}
+
+// A brick turns the ball back through the edge it came in by: hit on a side, the ball
+// reverses horizontally; on the top or bottom, vertically. Of the two edges its direction
+// allows, it came in by the one its 8x8 box is less far past (ties: top or bottom).
+void brick_bounces() {
+  Game g;
+  g.reset();
+  g.autoplay = true;
+  constexpr int N = 2500;
+  static View v[N];
+  for (int t = 0; t < N; t++) v[t] = run(g, 1);
+  int checked[2] = {};  // side, top/bottom
+  for (int s = 2; s + 2 < N; s++) {
+    uint64_t gone = v[s - 1].standing & ~v[s].standing;
+    if (gone == 0 || (gone & (gone - 1)) != 0 || v[s].bricks == 48) continue;  // one brick
+    int b = __builtin_ctzll(gone), bx = 64 * (b % 8 + 1) + 2, by = 16 * (b / 8 + 4) + 2;
+    // The brick (at bx..bx+61, by..by+13) vanished while frame s or s - 1 was drawn: the
+    // first of them in which the ball's box overlaps it.
+    auto overlaps = [&](const View &w) {
+      return w.ball && w.ball_x < bx + 62 && w.ball_x + 8 > bx && w.ball_y < by + 14 &&
+             w.ball_y + 8 > by;
+    };
+    int c = overlaps(v[s - 1]) ? s - 1 : s;
+    const View &p = v[c - 1], &h = v[c], &n = v[c + 1];
+    if (!p.ball || !h.ball || !n.ball || !overlaps(h)) continue;
+    if (h.ball_x < 80 || h.ball_x > 560 || h.ball_y < 48) continue;  // walls could interfere
+    bool left = h.ball_x < p.ball_x, up = h.ball_y < p.ball_y;
+    int past_side = left ? bx + 62 - h.ball_x : h.ball_x + 8 - bx;
+    int past_flat = up ? by + 14 - h.ball_y : h.ball_y + 8 - by;
+    bool side = past_side < past_flat;
+    bool turned_x = (n.ball_x < h.ball_x) != left, turned_y = (n.ball_y < h.ball_y) != up;
+    CHECK(turned_x == side && turned_y == !side,
+          "frame %d: brick %d hit from (%d, %d) moving %s-%s: expected a %s bounce, got x %s, y %s",
+          c, b, h.ball_x, h.ball_y, left ? "left" : "right", up ? "up" : "down",
+          side ? "side" : "top/bottom", turned_x ? "turned" : "kept", turned_y ? "turned" : "kept");
+    checked[side ? 0 : 1]++;
+  }
+  printf("bounces checked: %d side, %d top/bottom\n", checked[0], checked[1]);
+  CHECK(checked[0] > 0 && checked[1] > 0, "did not see both kinds of bounce");
 }
 
 // Each press of SELECT on the gamepad switches autoplay: on, it launches the ball and
@@ -298,6 +334,7 @@ const Scenario scenarios[] = {
     {"game_over_and_restart", game_over_and_restart},
     {"select_toggles_autoplay", select_toggles_autoplay},
     {"ball_speeds_up", ball_speeds_up},
+    {"brick_bounces", brick_bounces},
     {"autoplay_clears_a_level", autoplay_clears_a_level},
 };
 

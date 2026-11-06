@@ -21,7 +21,6 @@ project:
     - "gamepad_pkg.sv"
     - "gamepad_rx.sv"
     - "vga_timing.sv"
-    - "frame_rng.sv"
     - "autoplay.sv"
     - "brick_wall.sv"
     - "tiny_vga_out.sv"

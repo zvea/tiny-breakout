@@ -1,8 +1,7 @@
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for autoplay: paddle steering towards a randomly chosen paddle quarter.
-
-The random bits are an input, so the tests choose them."""
+"""Unit tests for autoplay: paddle steering towards a paddle quarter that changes after
+every paddle hit."""
 
 import cocotb
 from cocotb.clock import Clock
@@ -15,7 +14,6 @@ async def start(dut):
     cocotb.start_soon(Clock(dut.clk, 40, unit="ns").start())
     dut.frame_tick.value = 0
     dut.paddle_hit.value = 0
-    dut.random.value = 0
     dut.ball_x.value = 0
     dut.paddle_x.value = 0
     dut.rst_n.value = 0
@@ -24,11 +22,10 @@ async def start(dut):
     await RisingEdge(dut.clk)
 
 
-async def frame(dut, paddle_hit: bool = False, random: int = 0):
-    """One frame_tick pulse, optionally reporting a paddle hit, with the given random bits."""
+async def frame(dut, paddle_hit: bool = False):
+    """One frame_tick pulse, optionally reporting a paddle hit."""
     dut.frame_tick.value = 1
     dut.paddle_hit.value = int(paddle_hit)
-    dut.random.value = random
     await RisingEdge(dut.clk)
     dut.frame_tick.value = 0
     dut.paddle_hit.value = 0
@@ -60,24 +57,39 @@ async def steers_ball_onto_the_quarter_centre(dut):
                 assert (right, left) == (int(ball_q > aim_q), int(ball_q < aim_q)), (
                     f"quarter {quarter}, paddle {paddle_x}, ball {ball_x}"
                 )
-        await frame(dut, paddle_hit=True, random=(quarter + 1) % 4)
+        await frame(dut, paddle_hit=True)
 
 
 @cocotb.test()
 async def quarter_changes_only_on_paddle_hits(dut):
     await start(dut)
     quarter = await read(dut, "aim_quarter")
-    for r in range(40):
-        await frame(dut, random=r % 4)
+    for _ in range(40):
+        await frame(dut)
         assert await read(dut, "aim_quarter") == quarter, "quarter changed without a paddle hit"
 
 
 @cocotb.test()
-async def paddle_hit_picks_the_random_quarter(dut):
+async def each_hit_moves_the_aim_on_by_1_or_2_quarters(dut):
+    """The step depends on bit 2 of the ball's x position at the hit."""
     await start(dut)
-    for r in (2, 0, 3, 1, 3):
-        await frame(dut, paddle_hit=True, random=r)
-        assert await read(dut, "aim_quarter") == r
+    quarter = await read(dut, "aim_quarter")
+    for ball_x in (100, 104, 108, 300, 305, 202, 64, 70):
+        dut.ball_x.value = ball_x
+        await frame(dut, paddle_hit=True)
+        quarter = (quarter + 1 + ((ball_x >> 2) & 1)) % 4
+        assert await read(dut, "aim_quarter") == quarter, f"ball_x {ball_x}"
+
+
+@cocotb.test()
+async def every_quarter_gets_picked(dut):
+    await start(dut)
+    quarters = set()
+    for ball_x in range(64, 104):
+        dut.ball_x.value = ball_x
+        await frame(dut, paddle_hit=True)
+        quarters.add(await read(dut, "aim_quarter"))
+    assert quarters == {0, 1, 2, 3}
 
 
 def test_autoplay():
