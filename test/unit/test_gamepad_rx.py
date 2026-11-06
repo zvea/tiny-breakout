@@ -11,10 +11,12 @@ import random
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge
+from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
+from cocotb.utils import get_sim_time
 
 from cocotb_run import run
 
+PERIOD_NS = 40
 BUTTONS = ["b", "y", "select", "start", "up", "down", "left", "right", "a", "x", "l", "r"]
 NO_CONTROLLER = [1] * 12
 
@@ -33,7 +35,7 @@ def expected(bits: list[int]) -> int:
 
 
 async def start(dut):
-    cocotb.start_soon(Clock(dut.clk, 40, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, PERIOD_NS, unit="ns").start())
     dut.pmod_latch.value = 0
     dut.pmod_clk.value = 0
     dut.pmod_data.value = 0
@@ -42,9 +44,20 @@ async def start(dut):
     dut.rst_n.value = 1
 
 
+async def next_report(dut) -> tuple[int, int]:
+    """Waits for report_valid; returns the report and the strobe width in clocks."""
+    await RisingEdge(dut.report_valid)
+    await ReadOnly()
+    value = int(dut.report.value)
+    t0 = get_sim_time("ns")
+    await FallingEdge(dut.report_valid)
+    return value, round((get_sim_time("ns") - t0) / PERIOD_NS)
+
+
 async def send(dut, first: list[int], second: list[int], latch: bool = True, half: int = 4):
     """Sends one report: controller 2 (`second`) first, then controller 1 (`first`).
 
+    With `latch`, returns the report gamepad_rx presents with its report_valid strobe.
     `half` is half a PMOD clock period in system clocks; the real PMOD is much slower
     than the 25 MHz system clock, which only matters for the synchronisers.
     """
@@ -54,26 +67,33 @@ async def send(dut, first: list[int], second: list[int], latch: bool = True, hal
         dut.pmod_clk.value = 1
         await ClockCycles(dut.clk, half)
         dut.pmod_clk.value = 0
-    if latch:
-        await ClockCycles(dut.clk, half)
-        dut.pmod_latch.value = 1
-        await ClockCycles(dut.clk, half)
-        dut.pmod_latch.value = 0
-    await ClockCycles(dut.clk, 8)  # through the synchroniser and edge detector
-
-
-async def buttons(dut) -> int:
-    await ReadOnly()
-    value = int(dut.buttons.value)
-    await RisingEdge(dut.clk)
+    if not latch:
+        return None
+    capture = cocotb.start_soon(next_report(dut))
+    await ClockCycles(dut.clk, half)
+    dut.pmod_latch.value = 1
+    await ClockCycles(dut.clk, half)
+    dut.pmod_latch.value = 0
+    value, width = await capture
+    assert width == 1, f"report_valid lasted {width} clocks"
+    await ClockCycles(dut.clk, 2)
     return value
 
 
+async def count_strobes(dut, counter: list[int]):
+    while True:
+        await RisingEdge(dut.report_valid)
+        counter[0] += 1
+
+
 @cocotb.test()
-async def nothing_pressed_after_reset(dut):
+async def no_report_before_the_first_latch(dut):
     await start(dut)
-    await ClockCycles(dut.clk, 5)
-    assert await buttons(dut) == 0
+    strobes = [0]
+    cocotb.start_soon(count_strobes(dut, strobes))
+    await ClockCycles(dut.clk, 20)
+    await send(dut, controller("a"), controller(), latch=False)
+    assert strobes[0] == 0, "report_valid without a latch pulse"
 
 
 @cocotb.test()
@@ -81,8 +101,7 @@ async def each_button_maps_to_its_field(dut):
     """Each button alone shows up as exactly its own bit of gamepad_t."""
     await start(dut)
     for name in BUTTONS:
-        await send(dut, controller(name), controller())
-        got = await buttons(dut)
+        got = await send(dut, controller(name), controller())
         assert got == expected(controller(name)), f"{name}: got {got:012b}"
 
 
@@ -95,29 +114,25 @@ async def second_controller_is_ignored(dut):
         if first == NO_CONTROLLER:
             continue
         second = [rng.randint(0, 1) for _ in BUTTONS]
-        await send(dut, first, second)
-        assert await buttons(dut) == expected(first)
+        assert await send(dut, first, second) == expected(first)
 
 
 @cocotb.test()
 async def missing_controller_reads_as_nothing_pressed(dut):
-    """An all-ones report means no controller: buttons must read all zero."""
+    """An all-ones report means no controller: the report must read all zero."""
     await start(dut)
-    await send(dut, controller("left", "b"), controller())
-    assert await buttons(dut) == expected(controller("left", "b"))
-    await send(dut, NO_CONTROLLER, controller())
-    assert await buttons(dut) == 0
+    assert await send(dut, controller("left", "b"), controller()) == expected(controller("left", "b"))
+    assert await send(dut, NO_CONTROLLER, controller()) == 0
 
 
 @cocotb.test()
-async def buttons_change_only_on_latch(dut):
-    """A report in progress must not disturb the outputs until the latch pulse."""
+async def one_strobe_per_report(dut):
     await start(dut)
-    await send(dut, controller("right"), controller())
-    await send(dut, controller("a", "start"), controller(), latch=False)
-    assert await buttons(dut) == expected(controller("right")), "changed before the latch"
-    await send(dut, controller("a", "start"), controller())
-    assert await buttons(dut) == expected(controller("a", "start"))
+    strobes = [0]
+    cocotb.start_soon(count_strobes(dut, strobes))
+    for n in range(1, 4):
+        await send(dut, controller("start"), controller())
+        assert strobes[0] == n
 
 
 def test_gamepad_rx():

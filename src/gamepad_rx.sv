@@ -9,7 +9,11 @@
  * The PMOD repeatedly sends a report on pmod_data, one bit per rising edge of pmod_clk,
  * then pulses pmod_latch. A report is 24 bits (two controllers, the second one first);
  * this receiver keeps the last 12, i.e. the first controller. A controller that is not
- * connected reports all ones; buttons then reads all zero.
+ * connected reports all ones; report then reads all zero.
+ *
+ * report is only meaningful while report_valid is high: in between it changes as the
+ * next report shifts in. Users latch the parts they need on report_valid; latching only
+ * those (rather than all 12 buttons here) keeps the flip-flop count down.
  */
 
 `default_nettype none
@@ -20,7 +24,8 @@ module gamepad_rx (
     input  logic                  pmod_latch,  // PMOD pins, asynchronous to clk
     input  logic                  pmod_clk,
     input  logic                  pmod_data,
-    output gamepad_pkg::gamepad_t buttons      // latest report, 1 = pressed
+    output gamepad_pkg::gamepad_t report,       // 1 = pressed; valid with report_valid
+    output logic                  report_valid  // one clock: a complete report is ready
 );
 
   // Inputs pass through 2-flop synchronisers ([1:0]); clock and latch keep one more
@@ -39,14 +44,15 @@ module gamepad_rx (
       clk_s   <= 0;
       latch_s <= 0;
       shift   <= '1;  // all ones = no controller
-      buttons <= '0;
     end else begin
       data_s  <= {data_s[0], pmod_data};
       clk_s   <= {clk_s[1:0], pmod_clk};
       latch_s <= {latch_s[1:0], pmod_latch};
       if (clk_rise) shift <= {shift[10:0], data_s[1]};
-      if (latch_rise) buttons <= present ? shift : '0;
     end
   end
+
+  assign report       = present ? shift : '0;
+  assign report_valid = latch_rise;
 
 endmodule

@@ -83,16 +83,32 @@ module tt_um_tiny_breakout (
       .vblank_start(frame_tick)
   );
 
-  gamepad_pkg::gamepad_t gp;  // latest gamepad report, all zero without a controller
+  gamepad_pkg::gamepad_t gp;        // gamepad report, all zero without a controller
+  logic                  gp_valid;  // gp is complete (one clock per report)
+  logic                  gp_left, gp_right, gp_fire;  // game controls from the last report
 
   gamepad_rx u_gamepad_rx (
-      .clk       (clk),
-      .rst_n     (rst_n),
-      .pmod_latch(ui.gp_latch),
-      .pmod_clk  (ui.gp_clk),
-      .pmod_data (ui.gp_data),
-      .buttons   (gp)
+      .clk         (clk),
+      .rst_n       (rst_n),
+      .pmod_latch  (ui.gp_latch),
+      .pmod_clk    (ui.gp_clk),
+      .pmod_data   (ui.gp_data),
+      .report      (gp),
+      .report_valid(gp_valid)
   );
+
+  // Keep only the game's controls from each report: fire is B, start or A
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      gp_left  <= 0;
+      gp_right <= 0;
+      gp_fire  <= 0;
+    end else if (gp_valid) begin
+      gp_left  <= gp.left;
+      gp_right <= gp.right;
+      gp_fire  <= gp.b | gp.start | gp.a;
+    end
+  end
 
   // ---------------------------------------------------------------------------
   // Game state
@@ -158,9 +174,12 @@ module tt_um_tiny_breakout (
   localparam logic [6:0] PADDLE_CELL_Y = 56;  // y 448..455
   localparam logic [6:0] LIVES_CELL_Y  = 1;   // y 8..15
 
-  wire wall_l = (cell_x == WALL_L_CELL) && (cell_y >= WALL_T_CELL);
-  wire wall_r = (cell_x == WALL_R_CELL) && (cell_y >= WALL_T_CELL);
-  wire wall_t = (cell_y == WALL_T_CELL) && (cell_x >= WALL_L_CELL) && (cell_x <= WALL_R_CELL);
+  wire wall_l_col = (cell_x == WALL_L_CELL);
+  wire wall_r_col = (cell_x == WALL_R_CELL);
+  wire wall_l = wall_l_col && (cell_y >= WALL_T_CELL);
+  wire wall_r = wall_r_col && (cell_y >= WALL_T_CELL);
+  // The top wall spans the left wall, the brick columns and the right wall
+  wire wall_t = (cell_y == WALL_T_CELL) && (wall_l_col || over_columns || wall_r_col);
 
   // Playfield interior (dark background)
   wire field = over_columns && (v_pos[9:5] != 0);
@@ -263,9 +282,9 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   // Game logic
   // ---------------------------------------------------------------------------
-  wire btn_left  = ui.left  | gp.left;
-  wire btn_right = ui.right | gp.right;
-  wire btn_fire  = ui.fire  | gp.b | gp.start | gp.a | ui.autoplay;
+  wire btn_left  = ui.left  | gp_left;
+  wire btn_right = ui.right | gp_right;
+  wire btn_fire  = ui.fire  | gp_fire | ui.autoplay;
 
   // Paddle steering: from the buttons, or from autoplay
   logic ap_left, ap_right;
