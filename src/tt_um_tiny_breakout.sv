@@ -10,7 +10,7 @@
  * continuous definitions (a `logic x = ...` declaration would be a one-time
  * initialiser, not a continuous assignment).
  *
- * Pins (see inputs_t and tiny_vga_t below for the exact bit layout):
+ * Pins (see inputs_t below and tiny_vga_out.sv for the exact bit layout):
  *   uo_out     : TinyVGA PMOD (640x480 @ 60 Hz, 25.175 MHz clock)
  *   ui_in[0..2]: direct buttons LEFT, RIGHT, FIRE (active high, for simulators /
  *                plain buttons; FIRE launches the ball / restarts after game over)
@@ -57,11 +57,6 @@ module tt_um_tiny_breakout (
     logic right;     // [1]
     logic left;      // [0]
   } inputs_t;
-
-  // TinyVGA PMOD: 2 bits per colour, with each colour's bits on different pins
-  typedef struct packed {
-    logic h_sync, b0, g0, r0, v_sync, b1, g1, r1;
-  } tiny_vga_t;
 
   // Colours: 2 bits each of red, green and blue
   typedef struct packed {
@@ -386,11 +381,11 @@ module tt_um_tiny_breakout (
     endcase
   end
 
-  // What is drawn where several things overlap: first match wins
+  // What is drawn where several things overlap: first match wins. (Outside the visible
+  // area, tiny_vga_out blanks the output.)
   rgb_t rgb;
   always_comb begin
-    if (!visible)               rgb = BLACK;
-    else if (ball_px | life_px) rgb = BALL_COLOUR;
+    if (ball_px | life_px)      rgb = BALL_COLOUR;
     else if (paddle_px)         rgb = PADDLE_COLOUR;
     else if (brick_px)          rgb = brick_rgb;
     else if (wall_px)           rgb = WALL_COLOUR;
@@ -398,28 +393,17 @@ module tt_um_tiny_breakout (
     else                        rgb = BLACK;
   end
 
-  // Registered outputs (glitch-free)
-  rgb_t rgb_q;
-  logic h_sync_q, v_sync_q;
-  always_ff @(posedge clk) begin
-    if (!rst_n) begin
-      rgb_q    <= 0;
-      h_sync_q <= 1;
-      v_sync_q <= 1;
-    end else begin
-      rgb_q    <= rgb;
-      h_sync_q <= h_sync_n;
-      v_sync_q <= v_sync_n;
-    end
-  end
-
-  tiny_vga_t vga;
-  assign vga.h_sync       = h_sync_q;
-  assign vga.v_sync       = v_sync_q;
-  assign {vga.r1, vga.r0} = rgb_q.r;
-  assign {vga.g1, vga.g0} = rgb_q.g;
-  assign {vga.b1, vga.b0} = rgb_q.b;
-  assign uo_out           = vga;
+  tiny_vga_out u_tiny_vga_out (
+      .clk     (clk),
+      .rst_n   (rst_n),
+      .r       (rgb.r),
+      .g       (rgb.g),
+      .b       (rgb.b),
+      .visible (visible),
+      .h_sync_n(h_sync_n),
+      .v_sync_n(v_sync_n),
+      .uo_out  (uo_out)
+  );
 
   assign uio_out = 0;
   assign uio_oe  = 0;
