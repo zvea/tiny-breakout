@@ -31,7 +31,11 @@
 
 `default_nettype none
 
-module tt_um_tiny_breakout (
+module tt_um_tiny_breakout #(
+    // Optional features, chosen at build time. The Tiny Tapeout wrapper uses the defaults;
+    // simulators can override them (Verilator -G, Icarus -P).
+    parameter bit ENABLE_SCORE = 0  // 4-digit score, top right: about 8 TT utilisation points
+) (
     input  logic [7:0] ui_in,    // Dedicated inputs
     output logic [7:0] uo_out,   // Dedicated outputs
     input  logic [7:0] uio_in,   // IOs: Input path
@@ -215,6 +219,24 @@ module tt_um_tiny_breakout (
       .over_columns(over_columns),
       .empty       (bricks_empty)
   );
+
+  // Score (ENABLE_SCORE): 10 per brick (shown with a fixed last 0), back to 0000 for a new
+  // game; top right
+  logic score_px;
+
+  if (ENABLE_SCORE) begin : g_score
+    score u_score (
+        .clk     (clk),
+        .rst_n   (rst_n),
+        .clear   (frame_tick && restart),
+        .add     (clear_brick),
+        .h_pos   (h_pos),
+        .v_pos   (v_pos),
+        .score_px(score_px)
+    );
+  end else begin : g_no_score
+    assign score_px = 0;
+  end
 
   // Walls, paddle and life markers are aligned to a grid of 8x8-px cells
   wire [6:0] cell_x = h_pos[9:3];
@@ -410,7 +432,7 @@ module tt_um_tiny_breakout (
   // Video output
   // ---------------------------------------------------------------------------
   // What each thing looks like (the named colours are in colour_pkg)
-  localparam colour_pkg::rgb_t BALL_COLOUR   = colour_pkg::WHITE;  // also the spare-life markers
+  localparam colour_pkg::rgb_t BALL_COLOUR   = colour_pkg::WHITE;  // also the spare-life markers and score
   localparam colour_pkg::rgb_t PADDLE_COLOUR = colour_pkg::PALE_CYAN;
   localparam colour_pkg::rgb_t WALL_COLOUR   = colour_pkg::GREY;
   localparam colour_pkg::rgb_t FIELD_COLOUR  = colour_pkg::NAVY;
@@ -432,7 +454,7 @@ module tt_um_tiny_breakout (
   // area, tiny_vga_out blanks the output.)
   colour_pkg::rgb_t rgb;
   always_comb begin
-    if (ball_px | life_px)      rgb = BALL_COLOUR;
+    if (ball_px | life_px | score_px) rgb = BALL_COLOUR;
     else if (paddle_px)         rgb = PADDLE_COLOUR;
     else if (brick_px)          rgb = brick_rgb;
     else if (wall_px)           rgb = WALL_COLOUR;

@@ -49,6 +49,7 @@ struct View {
   int paddle_x = -1;    // left edge of the paddle
   int bricks = 0;       // standing bricks
   uint64_t standing = 0;   // bit r * 8 + c: brick in row r (0 = top), column c
+  int score = -1;       // as displayed (-1: not readable as digits, e.g. built without it)
 };
 
 // find_ball: the ball search scans the whole playfield, the slowest part; skip it when
@@ -73,6 +74,19 @@ View look(const Game &g, bool find_ball = true) {
   // Paddle: first paddle-coloured pixel on its row
   for (int x = 0; x < 640 && v.paddle_x < 0; x++)
     if (at(x, 450) == PADDLE) v.paddle_x = x;
+  // Score: 4 seven-segment digits in 16-px slots from x 512, read from the middle of each
+  // segment (a..g)
+  static const int seg_x[7] = {7, 10, 10, 7, 4, 4, 7}, seg_y[7] = {2, 5, 12, 14, 12, 5, 8};
+  static const int digit_segments[10] = {0x7e, 0x30, 0x6d, 0x79, 0x33, 0x5b, 0x5f, 0x70, 0x7f, 0x7b};
+  v.score = 0;
+  for (int slot = 0; slot < 4 && v.score >= 0; slot++) {
+    int segments = 0, digit = -1;
+    for (int i = 0; i < 7; i++)
+      if (at(512 + 16 * slot + seg_x[i], seg_y[i]) == WHITE) segments |= 0x40 >> i;
+    for (int d = 0; d < 10; d++)
+      if (digit_segments[d] == segments) digit = d;
+    v.score = digit < 0 ? -1 : v.score * 10 + digit;
+  }
   // Bricks: 8 x 6 bricks of 64 x 16 px from (64, 64). A brick counts as standing if either
   // of two pixels inside it has a brick colour (two, in case the ball covers one).
   for (int r = 0; r < 6; r++)
@@ -180,6 +194,7 @@ void game_over_and_restart() {
   g.reset();
   int expected_lives = 2, frame = 0, missing = 0, since_launch = 1000, prev_y = -1;
   View v = run(g, 1);
+  const bool scored = v.score >= 0;  // built with ENABLE_SCORE
   for (; frame < 20000; frame++) {
     // Keep the paddle against the left wall, and launch whenever the ball is resting.
     bool launch = resting(v);
@@ -202,7 +217,10 @@ void game_over_and_restart() {
   }
   CHECK(missing == 3, "no game over within %d frames", frame);
   CHECK(v.lives == 0, "game over with %d markers left", v.lives);
-  printf("frame %5d: game over with %d bricks standing\n", frame, v.bricks);
+  if (scored)
+    CHECK(v.score == 10 * (48 - v.bricks), "game over: score %d with %d bricks cleared", v.score,
+          48 - v.bricks);
+  printf("frame %5d: game over with %d bricks standing, score %d\n", frame, v.bricks, v.score);
 
   g.buttons = 0;
   v = run(g, 30);
@@ -212,6 +230,7 @@ void game_over_and_restart() {
   g.buttons = 0;
   v = run(g, 2);
   CHECK(v.lives == 2, "after restart: life markers %d", v.lives);
+  if (scored) CHECK(v.score == 0, "after restart: score %d", v.score);
   CHECK(v.bricks == 48, "after restart: bricks %d", v.bricks);
   CHECK(resting(v), "after restart: ball at (%d, %d)", v.ball_x, v.ball_y);
 }
@@ -222,19 +241,27 @@ void autoplay_clears_a_level() {
   Game g;
   g.reset();
   g.autoplay = true;
-  int fewest = 48, frame = 0, lives_lost = 0, lives = 2;
+  int fewest = 48, frame = 0, lives_lost = 0, lives = 2, prev_bricks = 48;
   bool cleared = false;
+  View v = run(g, 1, false);
+  const bool scored = v.score >= 0;  // built with ENABLE_SCORE
   for (; frame < 40000 && !cleared; frame++) {
-    View v = run(g, 1, false);
+    v = run(g, 1, false);
     if (v.lives < lives) lives_lost += lives - v.lives;
     lives = v.lives;
     if (v.bricks < fewest) fewest = v.bricks;
     cleared = fewest <= 1 && v.bricks == 48;  // the last brick vanishes mid-frame
+    // The score (10 per brick) is drawn above the wall: compare once the count is steady
+    if (scored && v.bricks == prev_bricks && v.bricks > 0 && !cleared)
+      CHECK(v.score == 10 * (48 - v.bricks), "frame %d: score %d with %d bricks cleared", frame,
+            v.score, 48 - v.bricks);
+    prev_bricks = v.bricks;
     if (frame % 2000 == 0) printf("frame %5d: %2d bricks, %d lost\n", frame, v.bricks, lives_lost);
   }
   printf("frame %5d: %s, %d spare balls lost\n", frame, cleared ? "level cleared" : "stuck",
          lives_lost);
   CHECK(cleared, "level not cleared in %d frames (fewest bricks %d)", frame, fewest);
+  if (scored) CHECK(v.score == 480, "score %d after clearing the level", v.score);
 }
 
 // The ball speeds up a half step every 4 bricks it clears: vertically it moves 2 px per
