@@ -1,0 +1,64 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Tiny Breakout (RTL sim)</title>
+<style>
+ body{background:#111;color:#ccc;font:14px system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;margin:16px}
+ canvas{image-rendering:pixelated;width:960px;max-width:100%;border:1px solid #333}
+ #s{margin:8px;font-variant-numeric:tabular-nums}
+ kbd{background:#333;border-radius:3px;padding:1px 5px}
+</style></head><body>
+<canvas id="c" width="640" height="480"></canvas>
+<div id="s">connecting…</div>
+<div><kbd>←</kbd>/<kbd>→</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> toggle autoplay &nbsp; <kbd>R</kbd> reset</div>
+<script>
+// The server runs the RTL model at 60 fps and streams frames: [u32 LE length][RLE (count, RRGGBB) pairs].
+// Key changes are sent separately, so the frame rate does not depend on the network round trip.
+const c=document.getElementById('c'),ctx=c.getContext('2d'),img=ctx.createImageData(640,480),st=document.getElementById('s');
+const lv=[0,85,170,255];
+let keys=0,auto=0,n=0,t0=performance.now(),latest=null;
+
+function sendKeys(extra=0){fetch(`/keys?k=${keys|(auto<<3)|extra}`).catch(()=>{})}
+const map={ArrowLeft:1,ArrowRight:2,' ':4};
+addEventListener('keydown',e=>{
+ if(map[e.key]){e.preventDefault();if(!(keys&map[e.key])){keys|=map[e.key];sendKeys()}}
+ else if(e.key==='a'||e.key==='A'){auto^=1;sendKeys()}
+ else if(e.key==='r'||e.key==='R'){sendKeys(16)}});
+addEventListener('keyup',e=>{if(map[e.key]){keys&=~map[e.key];sendKeys()}});
+addEventListener('blur',()=>{keys=0;sendKeys()});
+
+function draw(b){
+ const d=img.data;let p=0;
+ for(let i=0;i<b.length;i+=2){const k=b[i],v=b[i+1],R=lv[v>>4&3],G=lv[v>>2&3],B=lv[v&3];
+  for(let j=0;j<k;j++){d[p]=R;d[p+1]=G;d[p+2]=B;d[p+3]=255;p+=4}}
+ ctx.putImageData(img,0,0);
+}
+function paint(){ // draw only the newest frame, once per display refresh
+ if(latest){draw(latest);latest=null}
+ requestAnimationFrame(paint);
+}
+requestAnimationFrame(paint);
+
+async function stream(){
+ for(;;){
+  try{
+   sendKeys();
+   const r=await fetch('/stream',{cache:'no-store'});
+   const rd=r.body.getReader();
+   let buf=new Uint8Array(0);
+   for(;;){
+    const {value,done}=await rd.read();if(done)break;
+    const nb=new Uint8Array(buf.length+value.length);nb.set(buf);nb.set(value,buf.length);buf=nb;
+    while(buf.length>=4){
+     const len=buf[0]|buf[1]<<8|buf[2]<<16|buf[3]<<24;
+     if(buf.length<4+len)break;
+     latest=buf.subarray(4,4+len);buf=buf.slice(4+len);n++;
+    }
+    const t=performance.now();
+    if(t-t0>1000){st.textContent=`${(n*1000/(t-t0)).toFixed(1)} fps received (real hardware: 60)${auto?' · AUTOPLAY':''}`;n=0;t0=t}
+   }
+  }catch(e){}
+  st.textContent='disconnected – retrying…';
+  await new Promise(r=>setTimeout(r,1000));
+ }
+}
+stream();
+</script></body></html>

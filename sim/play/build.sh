@@ -1,0 +1,12 @@
+#!/bin/sh
+# Builds the interactive player. Needs Verilator 4.x (5.x's scheduler is ~2x slower for this
+# tiny design). Run from this directory; then ./obj_serve/Vtt_um_tiny_breakout [port] [index.html]
+set -e
+ROOT=$(cd ../.. && pwd)
+export PATH="$ROOT/.tools/v4/bin:$PATH"
+rm -rf obj_serve
+verilator --cc --build -O3 --inline-mult -1 --output-split 0 -Wno-fatal \
+  --x-assign fast --x-initial fast \
+  -CFLAGS "-O3 -march=native -fno-plt -fomit-frame-pointer -pthread" -LDFLAGS "-pthread" \
+  --exe serve.cpp "$ROOT/src/project.v" --top-module tt_um_tiny_breakout -Mdir obj_serve -j 8 >/dev/null
+echo "built obj_serve/Vtt_um_tiny_breakout"

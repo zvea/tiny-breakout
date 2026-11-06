@@ -117,24 +117,17 @@ module tt_um_tiny_breakout (
   // Pixel classification for the current beam position
   // ---------------------------------------------------------------------------
   // Brick field: 8 columns x 64 px (x 64..575), 6 rows x 16 px (y 64..159)
-  wire [7:0] col_sel;
-  wire [5:0] row_sel;
-  genvar gi;
-  generate
-    for (gi = 0; gi < 8; gi = gi + 1) begin : g_col
-      assign col_sel[gi] = (hc[9:6] == gi + 1);
-    end
-    for (gi = 0; gi < 6; gi = gi + 1) begin : g_row
-      assign row_sel[gi] = (vc[9:4] == gi + 4);
-    end
-  endgenerate
+  wire [3:0] hb = hc[9:6];
+  wire [5:0] vb = vc[9:4];
+  wire [7:0] col_sel = {hb == 4'd8, hb == 4'd7, hb == 4'd6, hb == 4'd5,
+                        hb == 4'd4, hb == 4'd3, hb == 4'd2, hb == 4'd1};
+  wire [5:0] row_sel = {vb == 6'd9, vb == 6'd8, vb == 6'd7, vb == 6'd6, vb == 6'd5, vb == 6'd4};
 
-  wire [47:0] brick_sel;
-  generate
-    for (gi = 0; gi < 48; gi = gi + 1) begin : g_sel
-      assign brick_sel[gi] = row_sel[gi/8] & col_sel[gi%8];
-    end
-  endgenerate
+  // One-hot select of the brick under the beam (bit = row * 8 + col).
+  // Written as whole-vector operations: same gates, much faster to simulate.
+  wire [47:0] brick_sel = {{8{row_sel[5]}} & col_sel, {8{row_sel[4]}} & col_sel,
+                           {8{row_sel[3]}} & col_sel, {8{row_sel[2]}} & col_sel,
+                           {8{row_sel[1]}} & col_sel, {8{row_sel[0]}} & col_sel};
 
   wire brick_gap = (hc[5:1] == 0) || (vc[3:1] == 0);
   wire brick_px  = (|(brick_sel & bricks)) & ~brick_gap;
@@ -228,7 +221,6 @@ module tt_um_tiny_breakout (
   wire [9:0] vx  = n_vx_neg ? (n_vx_fast ? -10'd2 : -10'd1) : (n_vx_fast ? 10'd2 : 10'd1);
   wire [9:0] vy  = n_vy_neg ? -10'd2 : 10'd2;
 
-  integer i;
   always @(posedge clk) begin
     if (!rst_n) begin
       bx       <= 10'd316;  // resting on the paddle
@@ -296,9 +288,8 @@ module tt_um_tiny_breakout (
         hit_zone <= dpx[5:4];
       end
       if (brick_px) begin
-        hit_b <= 1;
-        for (i = 0; i < 48; i = i + 1)
-          if (brick_sel[i]) bricks[i] <= 1'b0;
+        hit_b  <= 1;
+        bricks <= bricks & ~brick_sel;
       end
     end
   end
