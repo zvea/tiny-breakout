@@ -10,14 +10,12 @@
  * continuous definitions (a `logic x = ...` declaration would be a one-time
  * initialiser, not a continuous assignment).
  *
- *   uo_out  : TinyVGA PMOD (640x480 @ 60 Hz, 25.175 MHz clock)
- *   ui_in[4]: Gamepad PMOD latch   (Psychogenic SNES Gamepad PMOD)
- *   ui_in[5]: Gamepad PMOD clock
- *   ui_in[6]: Gamepad PMOD data
- *   ui_in[0]: direct button LEFT   (active high, for simulators / plain buttons)
- *   ui_in[1]: direct button RIGHT
- *   ui_in[2]: direct button FIRE   (launch ball / restart after game over)
- *   ui_in[3]: AUTOPLAY             (paddle tracks the ball, auto-launch)
+ * Pins (see inputs_t and tiny_vga_t below for the exact bit layout):
+ *   uo_out     : TinyVGA PMOD (640x480 @ 60 Hz, 25.175 MHz clock)
+ *   ui_in[0..2]: direct buttons LEFT, RIGHT, FIRE (active high, for simulators /
+ *                plain buttons; FIRE launches the ball / restarts after game over)
+ *   ui_in[3]   : AUTOPLAY (paddle tracks the ball, auto-launch)
+ *   ui_in[4..6]: Gamepad PMOD latch, clock, data (Psychogenic SNES Gamepad PMOD)
  *
  * Collisions are detected by pixel overlap while the frame is being drawn:
  * whenever a ball pixel coincides with a wall/brick/paddle pixel a flag is
@@ -38,6 +36,32 @@ module tt_um_tiny_breakout (
     input  logic       clk,      // clock
     input  logic       rst_n     // reset_n - low to reset
 );
+
+  // ---------------------------------------------------------------------------
+  // Pin layout. Packed structs list fields most significant bit first.
+  // ---------------------------------------------------------------------------
+  // Bits 4..6 are fixed by the Gamepad PMOD's default pinout (PMOD IO5..IO7), see
+  // https://github.com/psychogenic/gamepad-pmod. Bits 0..3 are this design's own choice:
+  // direct controls for simulators such as tiny_explorer, which can toggle input pins
+  // but can't generate the gamepad's serial stream.
+  typedef struct packed {
+    logic unused;    // [7]
+    logic gp_data;   // [6] Gamepad PMOD
+    logic gp_clk;    // [5]
+    logic gp_latch;  // [4]
+    logic autoplay;  // [3]
+    logic fire;      // [2] direct buttons, active high
+    logic right;     // [1]
+    logic left;      // [0]
+  } inputs_t;
+
+  // TinyVGA PMOD: 2 bits per colour, with each colour's bits on different pins
+  typedef struct packed {
+    logic h_sync, b0, g0, r0, v_sync, b1, g1, r1;
+  } tiny_vga_t;
+
+  inputs_t ui;
+  assign ui = ui_in;
 
   // ---------------------------------------------------------------------------
   // VGA timing: 640x480 @ 60 Hz
@@ -106,9 +130,9 @@ module tt_um_tiny_breakout (
       gp_right      <= 0;
       gp_fire       <= 0;
     end else begin
-      gp_data_s     <= {gp_data_s[0], ui_in[6]};
-      gp_clk_s      <= {gp_clk_s[0], ui_in[5]};
-      gp_latch_s    <= {gp_latch_s[0], ui_in[4]};
+      gp_data_s     <= {gp_data_s[0], ui.gp_data};
+      gp_clk_s      <= {gp_clk_s[0], ui.gp_clk};
+      gp_latch_s    <= {gp_latch_s[0], ui.gp_latch};
       gp_clk_prev   <= gp_clk_s[1];
       gp_latch_prev <= gp_latch_s[1];
       if (gp_clk_s[1] & ~gp_clk_prev) gp_shift <= {gp_shift[10:0], gp_data_s[1]};
@@ -145,7 +169,7 @@ module tt_um_tiny_breakout (
   logic hit_l, hit_r, hit_t, hit_b, hit_p;
   logic [1:0] hit_zone;
 
-  wire autoplay = ui_in[3];
+  wire autoplay = ui.autoplay;
   wire [9:0] padx = pad_q * 4;
 
   // ---------------------------------------------------------------------------
@@ -187,28 +211,32 @@ module tt_um_tiny_breakout (
   wire life_px = (v_pos[9:3] == 1) && ~h_pos[3] &&
                  (((h_pos[9:4] == 4) && (lives != 0)) || ((h_pos[9:4] == 5) && lives[1]));
 
-  // Colours: {R,G,B}, 2 bits each
-  localparam logic [5:0] BLACK     = 6'b00_00_00;
-  localparam logic [5:0] WHITE     = 6'b11_11_11;
-  localparam logic [5:0] PALE_CYAN = 6'b10_11_11;
-  localparam logic [5:0] GREY      = 6'b01_01_01;
-  localparam logic [5:0] NAVY      = 6'b00_00_01;
-  localparam logic [5:0] RED       = 6'b11_00_00;
-  localparam logic [5:0] ORANGE    = 6'b11_10_00;
-  localparam logic [5:0] YELLOW    = 6'b11_11_00;
-  localparam logic [5:0] GREEN     = 6'b00_11_00;
-  localparam logic [5:0] AZURE     = 6'b00_10_11;
-  localparam logic [5:0] VIOLET    = 6'b10_00_11;
+  // Colours: 2 bits each of red, green and blue
+  typedef struct packed {
+    logic [1:0] r, g, b;
+  } rgb_t;
 
-  localparam logic [5:0] BALL_COLOUR   = WHITE;
-  localparam logic [5:0] PADDLE_COLOUR = PALE_CYAN;  // also the spare-life markers
-  localparam logic [5:0] WALL_COLOUR   = GREY;
-  localparam logic [5:0] FIELD_COLOUR  = NAVY;
+  localparam rgb_t BLACK     = 6'b00_00_00;
+  localparam rgb_t WHITE     = 6'b11_11_11;
+  localparam rgb_t PALE_CYAN = 6'b10_11_11;
+  localparam rgb_t GREY      = 6'b01_01_01;
+  localparam rgb_t NAVY      = 6'b00_00_01;
+  localparam rgb_t RED       = 6'b11_00_00;
+  localparam rgb_t ORANGE    = 6'b11_10_00;
+  localparam rgb_t YELLOW    = 6'b11_11_00;
+  localparam rgb_t GREEN     = 6'b00_11_00;
+  localparam rgb_t AZURE     = 6'b00_10_11;
+  localparam rgb_t VIOLET    = 6'b10_00_11;
+
+  localparam rgb_t BALL_COLOUR   = WHITE;
+  localparam rgb_t PADDLE_COLOUR = PALE_CYAN;  // also the spare-life markers
+  localparam rgb_t WALL_COLOUR   = GREY;
+  localparam rgb_t FIELD_COLOUR  = NAVY;
 
   // Brick colour by row. Brick rows are vb = 4..9, whose low 3 bits are 4,5,6,7,0,1.
   // (Sliced outside the always_comb: Icarus can't make a process sensitive to a part-select.)
   wire [2:0] vb_low = vb[2:0];
-  logic [5:0] brick_rgb;
+  rgb_t brick_rgb;
   always_comb begin
     case (vb_low)
       4:       brick_rgb = RED;
@@ -220,7 +248,7 @@ module tt_um_tiny_breakout (
     endcase
   end
 
-  logic [5:0] rgb;
+  rgb_t rgb;
   always_comb begin
     if (!visible)                      rgb = BLACK;
     else if (ball_px)                  rgb = BALL_COLOUR;
@@ -232,7 +260,7 @@ module tt_um_tiny_breakout (
   end
 
   // Registered outputs (glitch-free)
-  logic [5:0] rgb_q;
+  rgb_t rgb_q;
   logic h_sync_q, v_sync_q;
   always_ff @(posedge clk) begin
     if (!rst_n) begin
@@ -246,15 +274,20 @@ module tt_um_tiny_breakout (
     end
   end
 
-  // TinyVGA PMOD: {hsync, B0, G0, R0, vsync, B1, G1, R1}
-  assign uo_out = {h_sync_q, rgb_q[0], rgb_q[2], rgb_q[4], v_sync_q, rgb_q[1], rgb_q[3], rgb_q[5]};
+  tiny_vga_t vga;
+  assign vga.h_sync       = h_sync_q;
+  assign vga.v_sync       = v_sync_q;
+  assign {vga.r1, vga.r0} = rgb_q.r;
+  assign {vga.g1, vga.g0} = rgb_q.g;
+  assign {vga.b1, vga.b0} = rgb_q.b;
+  assign uo_out           = vga;
 
   // ---------------------------------------------------------------------------
   // Game logic
   // ---------------------------------------------------------------------------
-  wire btn_left  = ui_in[0] | gp_left;
-  wire btn_right = ui_in[1] | gp_right;
-  wire btn_fire  = ui_in[2] | gp_fire | autoplay;
+  wire btn_left  = ui.left  | gp_left;
+  wire btn_right = ui.right | gp_right;
+  wire btn_fire  = ui.fire  | gp_fire | autoplay;
 
   // Autoplay: steer the paddle so the ball lands in paddle zone ap_zone (0..3, 16 px each).
   // The zone is re-picked pseudo-randomly after every paddle hit; always aiming at the same
@@ -367,7 +400,7 @@ module tt_um_tiny_breakout (
   assign uio_oe  = 0;
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, uio_in, ui_in[7], dpx[3:0], dbx[2:0], dby[2:0],
+  wire _unused = &{ena, uio_in, ui.unused, dpx[3:0], dbx[2:0], dby[2:0],
                    gp_buttons.y, gp_buttons.select, gp_buttons.up, gp_buttons.down,
                    gp_buttons.x, gp_buttons.l, gp_buttons.r, 1'b0};
 
