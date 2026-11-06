@@ -130,7 +130,7 @@ module tt_um_tiny_breakout (
   // Controls: gamepad, direct buttons and autoplay
   // ---------------------------------------------------------------------------
   gamepad_pkg::gamepad_t gp;        // gamepad report, all zero without a controller
-  logic                  gp_valid;  // gp is complete (one clock per report)
+  logic                  gp_valid;  // gp is complete (a few clocks per report)
   logic                  gp_left, gp_right, gp_fire;  // game controls from the last report
   logic                  gp_select;    // SELECT in the last report
   logic                  gp_autoplay;  // autoplay switched on with SELECT

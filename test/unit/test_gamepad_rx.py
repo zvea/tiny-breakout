@@ -5,6 +5,9 @@
 A report is 24 bits, second controller first; each bit is valid on a rising edge of
 pmod_clk, and a pmod_latch pulse ends the report. Button order within a controller,
 first to last: b, y, select, start, up, down, left, right, a, x, l, r.
+
+The first report after reset is never presented, so most tests send one to prime the
+receiver first.
 """
 
 import random
@@ -34,7 +37,7 @@ def expected(bits: list[int]) -> int:
     return value
 
 
-async def start(dut):
+async def start(dut, prime: bool = True):
     cocotb.start_soon(Clock(dut.clk, PERIOD_NS, unit="ns").start())
     dut.pmod_latch.value = 0
     dut.pmod_clk.value = 0
@@ -42,6 +45,8 @@ async def start(dut):
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, 3)
     dut.rst_n.value = 1
+    if prime:
+        await send(dut, controller(), controller(), presented=False)
 
 
 async def next_report(dut) -> tuple[int, int]:
@@ -54,12 +59,14 @@ async def next_report(dut) -> tuple[int, int]:
     return value, round((get_sim_time("ns") - t0) / PERIOD_NS)
 
 
-async def send(dut, first: list[int], second: list[int], latch: bool = True, half: int = 4):
+async def send(dut, first: list[int], second: list[int], latch: bool = True,
+               presented: bool = True, half: int = 4):
     """Sends one report: controller 2 (`second`) first, then controller 1 (`first`).
 
-    With `latch`, returns the report gamepad_rx presents with its report_valid strobe.
-    `half` is half a PMOD clock period in system clocks; the real PMOD is much slower
-    than the 25 MHz system clock, which only matters for the synchronisers.
+    With `latch` and `presented`, returns the report gamepad_rx presents with
+    report_valid, which must last as long as the latch pulse. `half` is half a PMOD clock
+    period in system clocks; the real PMOD is much slower than the 25 MHz system clock,
+    which only matters for the synchronisers.
     """
     for bit in second + first:
         dut.pmod_data.value = bit
@@ -69,14 +76,16 @@ async def send(dut, first: list[int], second: list[int], latch: bool = True, hal
         dut.pmod_clk.value = 0
     if not latch:
         return None
-    capture = cocotb.start_soon(next_report(dut))
+    capture = cocotb.start_soon(next_report(dut)) if presented else None
     await ClockCycles(dut.clk, half)
     dut.pmod_latch.value = 1
     await ClockCycles(dut.clk, half)
     dut.pmod_latch.value = 0
+    await ClockCycles(dut.clk, 4)  # through the synchroniser
+    if capture is None:
+        return None
     value, width = await capture
-    assert width == 1, f"report_valid lasted {width} clocks"
-    await ClockCycles(dut.clk, 2)
+    assert width == half, f"report_valid lasted {width} clocks, the latch pulse {half}"
     return value
 
 
@@ -88,12 +97,22 @@ async def count_strobes(dut, counter: list[int]):
 
 @cocotb.test()
 async def no_report_before_the_first_latch(dut):
-    await start(dut)
+    await start(dut, prime=False)
     strobes = [0]
     cocotb.start_soon(count_strobes(dut, strobes))
     await ClockCycles(dut.clk, 20)
     await send(dut, controller("a"), controller(), latch=False)
     assert strobes[0] == 0, "report_valid without a latch pulse"
+
+
+@cocotb.test()
+async def first_report_after_reset_is_not_presented(dut):
+    await start(dut, prime=False)
+    strobes = [0]
+    cocotb.start_soon(count_strobes(dut, strobes))
+    await send(dut, controller("a"), controller(), presented=False)
+    assert strobes[0] == 0, "the first report after reset was presented"
+    assert await send(dut, controller("b"), controller()) == expected(controller("b"))
 
 
 @cocotb.test()
@@ -111,18 +130,19 @@ async def second_controller_is_ignored(dut):
     await start(dut)
     for _ in range(10):
         first = [rng.randint(0, 1) for _ in BUTTONS]
-        if first == NO_CONTROLLER:
-            continue
         second = [rng.randint(0, 1) for _ in BUTTONS]
-        assert await send(dut, first, second) == expected(first)
+        up_and_down = first[BUTTONS.index("up")] and first[BUTTONS.index("down")]
+        assert await send(dut, first, second) == (0 if up_and_down else expected(first))
 
 
 @cocotb.test()
 async def missing_controller_reads_as_nothing_pressed(dut):
-    """An all-ones report means no controller: the report must read all zero."""
+    """An all-ones report means no controller: the report must read all zero. Up and down
+    together (impossible on a d-pad) is what the receiver checks."""
     await start(dut)
     assert await send(dut, controller("left", "b"), controller()) == expected(controller("left", "b"))
     assert await send(dut, NO_CONTROLLER, controller()) == 0
+    assert await send(dut, controller("up", "down", "a"), controller()) == 0
 
 
 @cocotb.test()
