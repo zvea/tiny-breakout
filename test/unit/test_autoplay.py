@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-License-Identifier: Apache-2.0
+"""Unit tests for autoplay: paddle steering towards a pseudo-randomly chosen paddle zone."""
+
+import cocotb
+from cocotb.clock import Clock
+from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge
+
+from cocotb_run import run
+
+
+async def start(dut):
+    cocotb.start_soon(Clock(dut.clk, 40, unit="ns").start())
+    dut.frame_tick.value = 0
+    dut.paddle_hit.value = 0
+    dut.ball_x.value = 0
+    dut.paddle_x.value = 0
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 3)
+    dut.rst_n.value = 1
+    await RisingEdge(dut.clk)
+
+
+async def frame(dut, paddle_hit: bool = False):
+    """One frame_tick pulse, optionally reporting a paddle hit."""
+    dut.frame_tick.value = 1
+    dut.paddle_hit.value = int(paddle_hit)
+    await RisingEdge(dut.clk)
+    dut.frame_tick.value = 0
+    dut.paddle_hit.value = 0
+    await RisingEdge(dut.clk)
+
+
+async def read(dut, name: str) -> int:
+    await ReadOnly()
+    value = int(getattr(dut, name).value)
+    await RisingEdge(dut.clk)
+    return value
+
+
+@cocotb.test()
+async def steers_ball_onto_the_zone_centre(dut):
+    """Steer right/left exactly when the ball centre is right/left of the zone centre."""
+    await start(dut)
+    for _ in range(4):  # try several zones
+        zone = await read(dut, "zone")
+        for paddle_x in (64, 200, 512):
+            for ball_x in range(paddle_x - 16, paddle_x + 80):
+                dut.paddle_x.value = paddle_x
+                dut.ball_x.value = ball_x
+                await ReadOnly()
+                right, left = int(dut.steer_right.value), int(dut.steer_left.value)
+                await RisingEdge(dut.clk)
+                # compared in 4-px units: ball centre over zone centre
+                ball_q, aim_q = ball_x // 4, paddle_x // 4 + 4 * zone + 1
+                assert (right, left) == (int(ball_q > aim_q), int(ball_q < aim_q)), (
+                    f"zone {zone}, paddle {paddle_x}, ball {ball_x}"
+                )
+        await frame(dut, paddle_hit=True)
+
+
+@cocotb.test()
+async def zone_changes_only_on_paddle_hits(dut):
+    await start(dut)
+    zone = await read(dut, "zone")
+    for _ in range(40):
+        await frame(dut)
+        assert await read(dut, "zone") == zone, "zone changed without a paddle hit"
+    lfsr = await read(dut, "lfsr")
+    await frame(dut, paddle_hit=True)
+    assert await read(dut, "zone") == lfsr & 3, "new zone comes from the random sequence"
+
+
+@cocotb.test()
+async def random_sequence_covers_all_31_nonzero_values(dut):
+    await start(dut)
+    seen = []
+    for _ in range(31):
+        seen.append(await read(dut, "lfsr"))
+        await frame(dut)
+    assert sorted(seen) == list(range(1, 32)), "maximal-length sequence, never zero"
+    assert await read(dut, "lfsr") == seen[0], "period 31"
+
+
+@cocotb.test()
+async def every_zone_gets_picked(dut):
+    await start(dut)
+    zones = set()
+    for _ in range(40):
+        await frame(dut, paddle_hit=True)
+        zones.add(await read(dut, "zone"))
+    assert zones == {0, 1, 2, 3}
+
+
+def test_autoplay():
+    run("autoplay", ["autoplay.sv"], "test_autoplay")
