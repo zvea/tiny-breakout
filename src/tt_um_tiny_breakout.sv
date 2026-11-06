@@ -202,13 +202,24 @@ module tt_um_tiny_breakout (
   wire [9:0] dpx = h_pos - padx;
   wire paddle_px = (v_pos[9:3] == 56) && (dpx[9:6] == 0);
 
-  // Ball: 8 x 8
+  // True for pixels inside an 8-px circle, given the offset (0..7, 0..7) within its 8x8 box.
+  // Folds each offset to its distance from the nearest edge (0..3), then cuts the corners,
+  // giving rows 4, 6, 8, 8, 8, 8, 6, 4 pixels wide.
+  function automatic logic in_circle8(input logic [2:0] x, input logic [2:0] y);
+    logic [1:0] ex, ey;
+    ex = x[2] ? ~x[1:0] : x[1:0];
+    ey = y[2] ? ~y[1:0] : y[1:0];
+    in_circle8 = (ex + ey) >= 2;  // not "return": yosys 0.55 does not support it
+  endfunction
+
+  // Ball: 8-px circle. Collisions use this shape too.
   wire [9:0] dbx = h_pos - bx;
   wire [9:0] dby = v_pos - by;
-  wire ball_px = (dbx[9:3] == 0) && (dby[9:3] == 0) && ~gameover;
+  wire ball_px = (dbx[9:3] == 0) && (dby[9:3] == 0) && in_circle8(dbx[2:0], dby[2:0]) &&
+                 ~gameover;
 
-  // Spare lives: 8x8 squares at y 8..15, x 64, 80
-  wire life_px = (v_pos[9:3] == 1) && ~h_pos[3] &&
+  // Spare lives: 8-px circles at y 8..15, x 64, 80
+  wire life_px = (v_pos[9:3] == 1) && ~h_pos[3] && in_circle8(h_pos[2:0], v_pos[2:0]) &&
                  (((h_pos[9:4] == 4) && (lives != 0)) || ((h_pos[9:4] == 5) && lives[1]));
 
   // Colours: 2 bits each of red, green and blue
@@ -400,7 +411,7 @@ module tt_um_tiny_breakout (
   assign uio_oe  = 0;
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, uio_in, ui.unused, dpx[3:0], dbx[2:0], dby[2:0],
+  wire _unused = &{ena, uio_in, ui.unused, dpx[3:0],
                    gp_buttons.y, gp_buttons.select, gp_buttons.up, gp_buttons.down,
                    gp_buttons.x, gp_buttons.l, gp_buttons.r, 1'b0};
 
