@@ -70,7 +70,7 @@ async def test_gamepad_and_paddle(dut):
         # wait for the start of line 450 (in the paddle row), find first paddle pixel
         while True:
             await RisingEdge(dut.clk)
-            if int(dut.user_project.vc.value) == 450 and int(dut.user_project.hc.value) == 0:
+            if int(dut.user_project.v_pos.value) == 450 and int(dut.user_project.h_pos.value) == 0:
                 break
         for x in range(640):
             await RisingEdge(dut.clk)

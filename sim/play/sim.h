@@ -25,7 +25,7 @@ struct Game {
     for (int i = 0; i < 10; i++) tick(0);
     top.rst_n = 1;
   }
-  // Simulates exactly one frame (800 x 525 clocks), starting at hc = vc = 0.
+  // Simulates exactly one frame (800 x 525 clocks), starting at h_pos = v_pos = 0.
   void frame() {
     const uint8_t base = autoplay << 3;
     // Gamepad PMOD report once per frame, in the first ~1040 cycles (top border):

@@ -54,41 +54,43 @@ module tt_um_tiny_breakout (
   localparam logic [9:0] V_SYNC_END   = 492;  // 2-line sync pulse, then a 33-line back porch
   localparam logic [9:0] V_TOTAL      = 525;
 
-  logic [9:0] hc, vc;
-  wire h_end = (hc == H_TOTAL - 1);
-  wire v_end = (vc == V_TOTAL - 1);
+  logic [9:0] h_pos, v_pos;  // beam position
+  wire h_end = (h_pos == H_TOTAL - 1);
+  wire v_end = (v_pos == V_TOTAL - 1);
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      hc <= 0;
-      vc <= 0;
+      h_pos <= 0;
+      v_pos <= 0;
     end else if (h_end) begin
-      hc <= 0;
-      vc <= v_end ? 0 : vc + 1;
+      h_pos <= 0;
+      v_pos <= v_end ? 0 : v_pos + 1;
     end else begin
-      hc <= hc + 1;
+      h_pos <= h_pos + 1;
     end
   end
 
-  wire visible = (hc < H_VISIBLE) && (vc < V_VISIBLE);
-  wire hsync_n = ~((hc >= H_SYNC_START) && (hc < H_SYNC_END));
-  wire vsync_n = ~((vc >= V_SYNC_START) && (vc < V_SYNC_END));
+  wire visible = (h_pos < H_VISIBLE) && (v_pos < V_VISIBLE);
+  wire h_sync_n = ~((h_pos >= H_SYNC_START) && (h_pos < H_SYNC_END));
+  wire v_sync_n = ~((v_pos >= V_SYNC_START) && (v_pos < V_SYNC_END));
 
   // ---------------------------------------------------------------------------
   // Gamepad PMOD receiver (trimmed version of Psychogenic's gamepad_pmod_driver,
-  // single controller, 12 bits: {b,y,select,start,up,down,left,right,a,x,l,r})
+  // single controller)
   // ---------------------------------------------------------------------------
-  // Button positions in gp_shift
-  localparam int GP_B     = 11;
-  localparam int GP_START = 8;
-  localparam int GP_LEFT  = 5;
-  localparam int GP_RIGHT = 4;
-  localparam int GP_A     = 3;
+  // One controller's buttons, in the order the PMOD sends them. B arrives first,
+  // so after 12 shifts it ends up in the most significant bit.
+  typedef struct packed {
+    logic b, y, select, start, up, down, left, right, a, x, l, r;
+  } gamepad_t;
 
   logic [1:0]  gp_data_s, gp_clk_s, gp_latch_s;  // 2-flop synchronisers
   logic        gp_clk_prev, gp_latch_prev;
   logic [11:0] gp_shift;
+  gamepad_t    gp_buttons;  // gp_shift viewed as named buttons
   logic        gp_left, gp_right, gp_fire;
+
+  assign gp_buttons = gp_shift;
 
   wire gp_present = ~&gp_shift;  // all ones => no controller
 
@@ -111,9 +113,9 @@ module tt_um_tiny_breakout (
       gp_latch_prev <= gp_latch_s[1];
       if (gp_clk_s[1] & ~gp_clk_prev) gp_shift <= {gp_shift[10:0], gp_data_s[1]};
       if (gp_latch_s[1] & ~gp_latch_prev) begin
-        gp_left  <= gp_present & gp_shift[GP_LEFT];
-        gp_right <= gp_present & gp_shift[GP_RIGHT];
-        gp_fire  <= gp_present & (gp_shift[GP_B] | gp_shift[GP_START] | gp_shift[GP_A]);
+        gp_left  <= gp_present & gp_buttons.left;
+        gp_right <= gp_present & gp_buttons.right;
+        gp_fire  <= gp_present & (gp_buttons.b | gp_buttons.start | gp_buttons.a);
       end
     end
   end
@@ -150,8 +152,8 @@ module tt_um_tiny_breakout (
   // Pixel classification for the current beam position
   // ---------------------------------------------------------------------------
   // Brick field: 8 columns x 64 px (x 64..575), 6 rows x 16 px (y 64..159)
-  wire [3:0] hb = hc[9:6];
-  wire [5:0] vb = vc[9:4];
+  wire [3:0] hb = h_pos[9:6];
+  wire [5:0] vb = v_pos[9:4];
   wire [7:0] col_sel = {hb == 8, hb == 7, hb == 6, hb == 5, hb == 4, hb == 3, hb == 2, hb == 1};
   wire [5:0] row_sel = {vb == 9, vb == 8, vb == 7, vb == 6, vb == 5, vb == 4};
 
@@ -161,29 +163,29 @@ module tt_um_tiny_breakout (
                            {8{row_sel[3]}} & col_sel, {8{row_sel[2]}} & col_sel,
                            {8{row_sel[1]}} & col_sel, {8{row_sel[0]}} & col_sel};
 
-  wire brick_gap = (hc[5:1] == 0) || (vc[3:1] == 0);
+  wire brick_gap = (h_pos[5:1] == 0) || (v_pos[3:1] == 0);
   wire brick_px  = (|(brick_sel & bricks)) & ~brick_gap;
 
   // Walls: left x 56..63, right x 576..583, top y 24..31
-  wire wall_l = (hc[9:3] == 7) && (vc[9:3] >= 3);
-  wire wall_r = (hc[9:3] == 72) && (vc[9:3] >= 3);
-  wire wall_t = (vc[9:3] == 3) && (hc[9:3] >= 7) && (hc[9:3] <= 72);
+  wire wall_l = (h_pos[9:3] == 7) && (v_pos[9:3] >= 3);
+  wire wall_r = (h_pos[9:3] == 72) && (v_pos[9:3] >= 3);
+  wire wall_t = (v_pos[9:3] == 3) && (h_pos[9:3] >= 7) && (h_pos[9:3] <= 72);
 
   // Playfield interior (dark background)
-  wire field = (|col_sel) && (vc[9:5] != 0);
+  wire field = (|col_sel) && (v_pos[9:5] != 0);
 
   // Paddle: 64 x 8 at y 448..455
-  wire [9:0] dpx = hc - padx;
-  wire paddle_px = (vc[9:3] == 56) && (dpx[9:6] == 0);
+  wire [9:0] dpx = h_pos - padx;
+  wire paddle_px = (v_pos[9:3] == 56) && (dpx[9:6] == 0);
 
   // Ball: 8 x 8
-  wire [9:0] dbx = hc - bx;
-  wire [9:0] dby = vc - by;
+  wire [9:0] dbx = h_pos - bx;
+  wire [9:0] dby = v_pos - by;
   wire ball_px = (dbx[9:3] == 0) && (dby[9:3] == 0) && ~gameover;
 
   // Spare lives: 8x8 squares at y 8..15, x 64, 80
-  wire life_px = (vc[9:3] == 1) && ~hc[3] &&
-                 (((hc[9:4] == 4) && (lives != 0)) || ((hc[9:4] == 5) && lives[1]));
+  wire life_px = (v_pos[9:3] == 1) && ~h_pos[3] &&
+                 (((h_pos[9:4] == 4) && (lives != 0)) || ((h_pos[9:4] == 5) && lives[1]));
 
   // Colours: {R,G,B}, 2 bits each
   localparam logic [5:0] BLACK     = 6'b00_00_00;
@@ -203,10 +205,12 @@ module tt_um_tiny_breakout (
   localparam logic [5:0] WALL_COLOUR   = GREY;
   localparam logic [5:0] FIELD_COLOUR  = NAVY;
 
-  // Brick colour by row
+  // Brick colour by row. Brick rows are vb = 4..9, whose low 3 bits are 4,5,6,7,0,1.
+  // (Sliced outside the always_comb: Icarus can't make a process sensitive to a part-select.)
+  wire [2:0] vb_low = vb[2:0];
   logic [5:0] brick_rgb;
   always_comb begin
-    case (vc[6:4])  // rows 4..9 -> vc[6:4] = 4,5,6,7,0,1
+    case (vb_low)
       4:       brick_rgb = RED;
       5:       brick_rgb = ORANGE;
       6:       brick_rgb = YELLOW;
@@ -229,21 +233,21 @@ module tt_um_tiny_breakout (
 
   // Registered outputs (glitch-free)
   logic [5:0] rgb_q;
-  logic hs_q, vs_q;
+  logic h_sync_q, v_sync_q;
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      rgb_q <= 0;
-      hs_q  <= 1;
-      vs_q  <= 1;
+      rgb_q    <= 0;
+      h_sync_q <= 1;
+      v_sync_q <= 1;
     end else begin
-      rgb_q <= rgb;
-      hs_q  <= hsync_n;
-      vs_q  <= vsync_n;
+      rgb_q    <= rgb;
+      h_sync_q <= h_sync_n;
+      v_sync_q <= v_sync_n;
     end
   end
 
   // TinyVGA PMOD: {hsync, B0, G0, R0, vsync, B1, G1, R1}
-  assign uo_out = {hs_q, rgb_q[0], rgb_q[2], rgb_q[4], vs_q, rgb_q[1], rgb_q[3], rgb_q[5]};
+  assign uo_out = {h_sync_q, rgb_q[0], rgb_q[2], rgb_q[4], v_sync_q, rgb_q[1], rgb_q[3], rgb_q[5]};
 
   // ---------------------------------------------------------------------------
   // Game logic
@@ -264,7 +268,7 @@ module tt_um_tiny_breakout (
   wire go_left  = autoplay ? ap_left  : (btn_left & ~btn_right);
   wire go_right = autoplay ? ap_right : (btn_right & ~btn_left);
 
-  wire frame_tick = (vc == V_VISIBLE) && (hc == 0);  // first clock of vertical blanking
+  wire frame_tick = (v_pos == V_VISIBLE) && (h_pos == 0);  // first clock of vertical blanking
   wire ball_lost  = (by >= V_VISIBLE);
   wire cleared    = ~|bricks;
 
@@ -363,6 +367,8 @@ module tt_um_tiny_breakout (
   assign uio_oe  = 0;
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, uio_in, ui_in[7], dpx[3:0], dbx[2:0], dby[2:0], 1'b0};
+  wire _unused = &{ena, uio_in, ui_in[7], dpx[3:0], dbx[2:0], dby[2:0],
+                   gp_buttons.y, gp_buttons.select, gp_buttons.up, gp_buttons.down,
+                   gp_buttons.x, gp_buttons.l, gp_buttons.r, 1'b0};
 
 endmodule

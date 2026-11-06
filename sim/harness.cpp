@@ -38,7 +38,7 @@ static void step() {
 }
 
 static void frame(const char *ppm) {
-  // Frame starts at hc=vc=0; outputs are registered (1 cycle latency).
+  // Frame starts at h_pos=v_pos=0; outputs are registered (1 cycle latency).
   vector<uint8_t> img(640 * 480 * 3);
   for (int y = 0; y < 525; y++)
     for (int x = 0; x < 800; x++) {
@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
   top.p_rst__n.set<bool>(false);
   for (int i = 0; i < 10; i++) step();
   top.p_rst__n.set<bool>(true);
-  // Align to frame start: reset puts hc=vc=0 on the cycle after release.
+  // Align to frame start: reset puts h_pos=v_pos=0 on the cycle after release.
   cyc = 0;
 
   if (mode == "auto") {
