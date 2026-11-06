@@ -64,85 +64,35 @@ module tt_um_tiny_breakout (
   assign ui = ui_in;
 
   // ---------------------------------------------------------------------------
-  // VGA timing: 640x480 @ 60 Hz
-  // Each line is 800 clocks and each frame 525 lines; beyond the visible area
-  // come the front porch, the sync pulse and the back porch (all black).
+  // Video timing and gamepad input
   // ---------------------------------------------------------------------------
-  localparam logic [9:0] H_VISIBLE    = 640;
-  localparam logic [9:0] H_SYNC_START = 656;  // after a 16-clock front porch
-  localparam logic [9:0] H_SYNC_END   = 752;  // 96-clock sync pulse, then a 48-clock back porch
-  localparam logic [9:0] H_TOTAL      = 800;
-
-  localparam logic [9:0] V_VISIBLE    = 480;
-  localparam logic [9:0] V_SYNC_START = 490;  // after a 10-line front porch
-  localparam logic [9:0] V_SYNC_END   = 492;  // 2-line sync pulse, then a 33-line back porch
-  localparam logic [9:0] V_TOTAL      = 525;
+  localparam logic [9:0] SCREEN_H = 480;  // visible lines in vga_timing's 640x480 mode
 
   logic [9:0] h_pos, v_pos;  // beam position
-  wire h_end = (h_pos == H_TOTAL - 1);
-  wire v_end = (v_pos == V_TOTAL - 1);
+  logic       visible, h_sync_n, v_sync_n;
+  logic       frame_tick;    // game update: first clock of vertical blanking
 
-  always_ff @(posedge clk) begin
-    if (!rst_n) begin
-      h_pos <= 0;
-      v_pos <= 0;
-    end else if (h_end) begin
-      h_pos <= 0;
-      v_pos <= v_end ? 0 : v_pos + 1;
-    end else begin
-      h_pos <= h_pos + 1;
-    end
-  end
+  vga_timing u_vga_timing (
+      .clk         (clk),
+      .rst_n       (rst_n),
+      .h_pos       (h_pos),
+      .v_pos       (v_pos),
+      .visible     (visible),
+      .h_sync_n    (h_sync_n),
+      .v_sync_n    (v_sync_n),
+      .vblank_start(frame_tick)
+  );
 
-  wire visible = (h_pos < H_VISIBLE) && (v_pos < V_VISIBLE);
-  wire h_sync_n = ~((h_pos >= H_SYNC_START) && (h_pos < H_SYNC_END));
-  wire v_sync_n = ~((v_pos >= V_SYNC_START) && (v_pos < V_SYNC_END));
+  gamepad_pkg::gamepad_t gp;  // latest gamepad report, all zero without a controller
 
-  // ---------------------------------------------------------------------------
-  // Gamepad PMOD receiver (trimmed version of Psychogenic's gamepad_pmod_driver,
-  // single controller)
-  // ---------------------------------------------------------------------------
-  // One controller's buttons, in the order the PMOD sends them. B arrives first,
-  // so after 12 shifts it ends up in the most significant bit.
-  typedef struct packed {
-    logic b, y, select, start, up, down, left, right, a, x, l, r;
-  } gamepad_t;
-
-  // Inputs pass through 2-flop synchronisers ([1:0]); clock and latch keep one more
-  // bit of history ([2]) so their rising edges can be detected.
-  logic [1:0]  gp_data_s;
-  logic [2:0]  gp_clk_s, gp_latch_s;
-  logic [11:0] gp_shift;
-  gamepad_t    gp_buttons;  // gp_shift viewed as named buttons
-  logic        gp_left, gp_right, gp_fire;
-
-  assign gp_buttons = gp_shift;
-
-  wire gp_present    = ~&gp_shift;  // all ones => no controller
-  wire gp_clk_rise   = gp_clk_s[1]   & ~gp_clk_s[2];
-  wire gp_latch_rise = gp_latch_s[1] & ~gp_latch_s[2];
-
-  always_ff @(posedge clk) begin
-    if (!rst_n) begin
-      gp_data_s     <= 0;
-      gp_clk_s      <= 0;
-      gp_latch_s    <= 0;
-      gp_shift      <= '1;  // all ones = no controller
-      gp_left       <= 0;
-      gp_right      <= 0;
-      gp_fire       <= 0;
-    end else begin
-      gp_data_s     <= {gp_data_s[0], ui.gp_data};
-      gp_clk_s      <= {gp_clk_s[1:0], ui.gp_clk};
-      gp_latch_s    <= {gp_latch_s[1:0], ui.gp_latch};
-      if (gp_clk_rise) gp_shift <= {gp_shift[10:0], gp_data_s[1]};
-      if (gp_latch_rise) begin
-        gp_left  <= gp_present & gp_buttons.left;
-        gp_right <= gp_present & gp_buttons.right;
-        gp_fire  <= gp_present & (gp_buttons.b | gp_buttons.start | gp_buttons.a);
-      end
-    end
-  end
+  gamepad_rx u_gamepad_rx (
+      .clk       (clk),
+      .rst_n     (rst_n),
+      .pmod_latch(ui.gp_latch),
+      .pmod_clk  (ui.gp_clk),
+      .pmod_data (ui.gp_data),
+      .buttons   (gp)
+  );
 
   // ---------------------------------------------------------------------------
   // Game state
@@ -178,8 +128,7 @@ module tt_um_tiny_breakout (
   localparam logic [5:0] FIRST_BRICK_ROW = 4;
 
   logic [NUM_BRICKS-1:0] bricks;  // bit = row * BRICK_COLS + col; 1 = brick present
-  // Not '1: yosys's built-in frontend sizes '1 in a parameter as a single bit (= 48'h1).
-  localparam logic [NUM_BRICKS-1:0] ALL_BRICKS = {NUM_BRICKS{1'b1}};
+  localparam logic [NUM_BRICKS-1:0] ALL_BRICKS = '1;
 
   // Per-frame collision flags: walls left/right/top, brick, paddle
   typedef struct packed { logic l, r, t, b, p; } hits_t;
@@ -243,7 +192,7 @@ module tt_um_tiny_breakout (
     logic [1:0] ex, ey;
     ex = x[2] ? ~x[1:0] : x[1:0];
     ey = y[2] ? ~y[1:0] : y[1:0];
-    in_circle8 = (ex + ey) >= 2;  // not "return": yosys 0.55 does not support it
+    in_circle8 = (ex + ey) >= 2;  // not "return": the flow's yosys (0.62) lacks it
   endfunction
 
   // Ball: 8-px circle. Collisions use this shape too.
@@ -332,9 +281,9 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   // Game logic
   // ---------------------------------------------------------------------------
-  wire btn_left  = ui.left  | gp_left;
-  wire btn_right = ui.right | gp_right;
-  wire btn_fire  = ui.fire  | gp_fire | ui.autoplay;
+  wire btn_left  = ui.left  | gp.left;
+  wire btn_right = ui.right | gp.right;
+  wire btn_fire  = ui.fire  | gp.b | gp.start | gp.a | ui.autoplay;
 
   // Autoplay: steer the paddle so the ball lands in paddle zone ap_zone (0..3, 16 px each).
   // The zone is re-picked pseudo-randomly after every paddle hit; always aiming at the same
@@ -348,8 +297,7 @@ module tt_um_tiny_breakout (
   wire go_left  = ui.autoplay ? ap_left  : (btn_left & ~btn_right);
   wire go_right = ui.autoplay ? ap_right : (btn_right & ~btn_left);
 
-  wire frame_tick = (v_pos == V_VISIBLE) && (h_pos == 0);  // first clock of vertical blanking
-  wire ball_lost  = (by >= V_VISIBLE);
+  wire ball_lost  = (by >= SCREEN_H);
   wire cleared    = ~|bricks;
 
   // Next ball direction from this frame's collisions. A paddle hit sends the ball up, left
@@ -472,7 +420,6 @@ module tt_um_tiny_breakout (
 
   // List all unused inputs to prevent warnings
   wire _unused = &{ena, uio_in, ui.unused, dpx[3:0],
-                   gp_buttons.y, gp_buttons.select, gp_buttons.up, gp_buttons.down,
-                   gp_buttons.x, gp_buttons.l, gp_buttons.r, 1'b0};
+                   gp.y, gp.select, gp.up, gp.down, gp.x, gp.l, gp.r, 1'b0};
 
 endmodule
