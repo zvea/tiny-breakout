@@ -23,7 +23,7 @@
  * once per frame at the start of vertical blanking, where the ball and
  * paddle are moved.
  *
- * Sections: types and pins, video timing, game state, controls, what is under the
+ * Sections: pins, video timing, game state, controls, what is under the
  * beam, collisions, frame update, video output.
  */
 
@@ -41,7 +41,7 @@ module tt_um_tiny_breakout (
 );
 
   // ---------------------------------------------------------------------------
-  // Types and pins. Packed structs list fields most significant bit first.
+  // Pins. Packed structs list fields most significant bit first.
   // ---------------------------------------------------------------------------
   // Bits 4..6 are fixed by the Gamepad PMOD's default pinout (PMOD IO5..IO7), see
   // https://github.com/psychogenic/gamepad-pmod. Bits 0..3 are this design's own choice:
@@ -57,11 +57,6 @@ module tt_um_tiny_breakout (
     logic right;     // [1]
     logic left;      // [0]
   } inputs_t;
-
-  // Colours: 2 bits each of red, green and blue
-  typedef struct packed {
-    logic [1:0] r, g, b;
-  } rgb_t;
 
   inputs_t ui;
   assign ui = ui_in;
@@ -351,54 +346,41 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   // Video output
   // ---------------------------------------------------------------------------
-  localparam rgb_t BLACK     = 6'b00_00_00;
-  localparam rgb_t WHITE     = 6'b11_11_11;
-  localparam rgb_t PALE_CYAN = 6'b10_11_11;
-  localparam rgb_t GREY      = 6'b01_01_01;
-  localparam rgb_t NAVY      = 6'b00_00_01;
-  localparam rgb_t RED       = 6'b11_00_00;
-  localparam rgb_t ORANGE    = 6'b11_10_00;
-  localparam rgb_t YELLOW    = 6'b11_11_00;
-  localparam rgb_t GREEN     = 6'b00_11_00;
-  localparam rgb_t AZURE     = 6'b00_10_11;
-  localparam rgb_t VIOLET    = 6'b10_00_11;
-
-  localparam rgb_t BALL_COLOUR   = WHITE;      // also the spare-life markers (spare balls)
-  localparam rgb_t PADDLE_COLOUR = PALE_CYAN;
-  localparam rgb_t WALL_COLOUR   = GREY;
-  localparam rgb_t FIELD_COLOUR  = NAVY;
+  // What each thing looks like (the named colours are in colour_pkg)
+  localparam colour_pkg::rgb_t BALL_COLOUR   = colour_pkg::WHITE;  // also the spare-life markers
+  localparam colour_pkg::rgb_t PADDLE_COLOUR = colour_pkg::PALE_CYAN;
+  localparam colour_pkg::rgb_t WALL_COLOUR   = colour_pkg::GREY;
+  localparam colour_pkg::rgb_t FIELD_COLOUR  = colour_pkg::NAVY;
 
   // Brick colour by row, top to bottom
-  rgb_t brick_rgb;
+  colour_pkg::rgb_t brick_rgb;
   always_comb begin
     case (brick_row)
-      0:       brick_rgb = RED;
-      1:       brick_rgb = ORANGE;
-      2:       brick_rgb = YELLOW;
-      3:       brick_rgb = GREEN;
-      4:       brick_rgb = AZURE;
-      default: brick_rgb = VIOLET;
+      0:       brick_rgb = colour_pkg::RED;
+      1:       brick_rgb = colour_pkg::ORANGE;
+      2:       brick_rgb = colour_pkg::YELLOW;
+      3:       brick_rgb = colour_pkg::GREEN;
+      4:       brick_rgb = colour_pkg::AZURE;
+      default: brick_rgb = colour_pkg::VIOLET;
     endcase
   end
 
   // What is drawn where several things overlap: first match wins. (Outside the visible
   // area, tiny_vga_out blanks the output.)
-  rgb_t rgb;
+  colour_pkg::rgb_t rgb;
   always_comb begin
     if (ball_px | life_px)      rgb = BALL_COLOUR;
     else if (paddle_px)         rgb = PADDLE_COLOUR;
     else if (brick_px)          rgb = brick_rgb;
     else if (wall_px)           rgb = WALL_COLOUR;
     else if (field_px)          rgb = FIELD_COLOUR;
-    else                        rgb = BLACK;
+    else                        rgb = colour_pkg::BLACK;
   end
 
   tiny_vga_out u_tiny_vga_out (
       .clk     (clk),
       .rst_n   (rst_n),
-      .r       (rgb.r),
-      .g       (rgb.g),
-      .b       (rgb.b),
+      .colour  (rgb),
       .visible (visible),
       .h_sync_n(h_sync_n),
       .v_sync_n(v_sync_n),

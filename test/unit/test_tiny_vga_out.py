@@ -24,8 +24,8 @@ def pins(r: int, g: int, b: int, h_sync_n: int, v_sync_n: int) -> int:
 
 async def start(dut):
     cocotb.start_soon(Clock(dut.clk, 40, unit="ns").start())
-    for name in ("r", "g", "b", "visible"):
-        getattr(dut, name).value = 0
+    dut.colour.value = 0
+    dut.visible.value = 0
     dut.h_sync_n.value = 1
     dut.v_sync_n.value = 1
     dut.rst_n.value = 0
@@ -38,7 +38,7 @@ async def start(dut):
 
 async def drive(dut, r, g, b, visible, h_sync_n=1, v_sync_n=1) -> int:
     """Applies inputs for one clock and returns uo_out after that clock edge."""
-    dut.r.value, dut.g.value, dut.b.value = r, g, b
+    dut.colour.value = r << 4 | g << 2 | b  # colour_pkg::rgb_t is {r, g, b}
     dut.visible.value = visible
     dut.h_sync_n.value, dut.v_sync_n.value = h_sync_n, v_sync_n
     await RisingEdge(dut.clk)
@@ -75,7 +75,7 @@ async def sync_levels_pass_through(dut):
 async def outputs_change_one_clock_after_the_inputs(dut):
     await start(dut)
     await drive(dut, 0, 0, 0, visible=1)
-    dut.r.value = 3
+    dut.colour.value = 3 << 4  # red
     await ReadOnly()
     assert int(dut.uo_out.value) == pins(0, 0, 0, 1, 1), "output must not follow the input combinationally"
     await RisingEdge(dut.clk)
@@ -84,4 +84,4 @@ async def outputs_change_one_clock_after_the_inputs(dut):
 
 
 def test_tiny_vga_out():
-    run("tiny_vga_out", ["tiny_vga_out.sv"], "test_tiny_vga_out")
+    run("tiny_vga_out", ["colour_pkg.sv", "tiny_vga_out.sv"], "test_tiny_vga_out")

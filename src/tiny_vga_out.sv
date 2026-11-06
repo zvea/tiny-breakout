@@ -14,15 +14,13 @@
 `default_nettype none
 
 module tiny_vga_out (
-    input  logic       clk,
-    input  logic       rst_n,
-    input  logic [1:0] r,         // pixel colour, 2 bits per channel
-    input  logic [1:0] g,
-    input  logic [1:0] b,
-    input  logic       visible,   // beam inside the picture; the colour is ignored otherwise
-    input  logic       h_sync_n,  // sync pulses, active low
-    input  logic       v_sync_n,
-    output logic [7:0] uo_out     // TinyVGA PMOD pins
+    input  logic             clk,
+    input  logic             rst_n,
+    input  colour_pkg::rgb_t colour,    // pixel colour
+    input  logic             visible,   // beam inside the picture; the colour is ignored otherwise
+    input  logic             h_sync_n,  // sync pulses, active low
+    input  logic             v_sync_n,
+    output logic [7:0]       uo_out     // TinyVGA PMOD pins
 );
 
   // TinyVGA PMOD pin layout, most significant bit first: 2 bits per colour, with each
@@ -31,8 +29,8 @@ module tiny_vga_out (
     logic h_sync, b0, g0, r0, v_sync, b1, g1, r1;
   } pins_t;
 
-  logic [5:0] rgb_q;  // {r, g, b}
-  logic       h_sync_q, v_sync_q;
+  colour_pkg::rgb_t rgb_q;
+  logic             h_sync_q, v_sync_q;
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
@@ -40,7 +38,7 @@ module tiny_vga_out (
       h_sync_q <= 1;
       v_sync_q <= 1;
     end else begin
-      rgb_q    <= visible ? {r, g, b} : '0;
+      rgb_q    <= visible ? colour : colour_pkg::BLACK;
       h_sync_q <= h_sync_n;
       v_sync_q <= v_sync_n;
     end
@@ -49,9 +47,9 @@ module tiny_vga_out (
   pins_t pins;
   assign pins.h_sync        = h_sync_q;
   assign pins.v_sync        = v_sync_q;
-  assign {pins.r1, pins.r0} = rgb_q[5:4];
-  assign {pins.g1, pins.g0} = rgb_q[3:2];
-  assign {pins.b1, pins.b0} = rgb_q[1:0];
+  assign {pins.r1, pins.r0} = rgb_q.r;
+  assign {pins.g1, pins.g0} = rgb_q.g;
+  assign {pins.b1, pins.b0} = rgb_q.b;
   assign uo_out             = pins;
 
 endmodule
