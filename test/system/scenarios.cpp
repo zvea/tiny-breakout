@@ -243,7 +243,7 @@ void ball_speeds_up() {
   Game g;
   g.reset();
   g.autoplay = true;
-  View v = run(g, 1);
+  View v = run(g, 2);  // the wall is blank for the first frame, while it fills
   int prev_y = v.ball_y, prev_bricks = v.bricks, frame = 0, checked[3] = {};
   for (; frame < 6000 && v.lives == 2 && v.bricks > 36; frame++) {
     v = run(g, 1);

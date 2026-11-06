@@ -2,19 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for brick_wall: 8 x 6 bricks of 64 x 16 px at x 64..575, y 64..159.
 
-The beam position is driven directly, so any pixel can be probed without video timing.
+The wall only works with a beam that scans the screen in order, so vga_timing drives it
+(brick_wall_tb.sv). The tests jump the beam forward with timers rather than clock by
+clock, and act a quarter period before each rising edge, never on an edge: inputs set
+there are taken at the next edge, with the beam where it was read.
 """
 
 import random
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge
+from cocotb.triggers import ClockCycles, RisingEdge, Timer
 
-from cocotb_run import run
+from cocotb_run import UNIT_DIR, run
 
 COLS, ROWS = 8, 6
-ALL = [(r, c) for r in range(ROWS) for c in range(COLS)]
+ALL = [(r, c) for r in range(ROWS) for c in range(COLS)]  # in the order the beam meets them
+H_TOTAL, V_TOTAL = 800, 525
+PERIOD_NS = 40
 
 
 def centre(r: int, c: int) -> tuple[int, int]:
@@ -22,62 +27,86 @@ def centre(r: int, c: int) -> tuple[int, int]:
 
 
 async def start(dut):
-    cocotb.start_soon(Clock(dut.clk, 40, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, PERIOD_NS, unit="ns").start())
     dut.refill.value = 0
     dut.clear.value = 0
-    dut.h_pos.value = 0
-    dut.v_pos.value = 0
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, 3)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
+    await Timer(PERIOD_NS * 3 // 4, unit="ns")  # the test's phase: a quarter period before the edge
+
+
+async def goto(dut, x: int, y: int):
+    """Waits (mid-cycle) until the beam is next at (x, y)."""
+    now = int(dut.v_pos.value) * H_TOTAL + int(dut.h_pos.value)
+    clocks = (y * H_TOTAL + x - now) % (H_TOTAL * V_TOTAL)
+    if clocks:
+        await Timer(clocks * PERIOD_NS, unit="ns")
+    assert (int(dut.h_pos.value), int(dut.v_pos.value)) == (x, y)
+
+
+async def next_frame(dut):
+    """Waits until the next frame starts (a whole frame if one is just starting)."""
+    now = int(dut.v_pos.value) * H_TOTAL + int(dut.h_pos.value)
+    await Timer((H_TOTAL * V_TOTAL - now) * PERIOD_NS, unit="ns")
 
 
 async def probe(dut, x: int, y: int) -> dict[str, int]:
-    """Puts the beam at (x, y) and reads the combinational outputs."""
-    dut.h_pos.value = x
-    dut.v_pos.value = y
-    await ReadOnly()
-    out = {n: int(getattr(dut, n).value) for n in ("brick_px", "brick_row", "over_columns", "empty")}
-    await RisingEdge(dut.clk)
-    return out
+    """Waits for the beam to reach (x, y) and reads the outputs there."""
+    await goto(dut, x, y)
+    return {n: int(getattr(dut, n).value) for n in ("brick_px", "brick_row", "over_columns", "empty")}
 
 
-async def pulse(dut, name: str, x: int = 0, y: int = 0):
+async def pulse(dut, name: str, x: int, y: int):
     """One-clock pulse on `clear` or `refill` with the beam at (x, y)."""
-    dut.h_pos.value = x
-    dut.v_pos.value = y
+    await goto(dut, x, y)
     getattr(dut, name).value = 1
-    await RisingEdge(dut.clk)
+    await Timer(PERIOD_NS, unit="ns")  # across exactly one rising edge
     getattr(dut, name).value = 0
-    await RisingEdge(dut.clk)
 
 
 async def standing(dut) -> set[tuple[int, int]]:
+    """The bricks drawn in the next frame."""
+    await next_frame(dut)
     return {(r, c) for r, c in ALL if (await probe(dut, *centre(r, c)))["brick_px"]}
 
 
+# While the wall fills (the frame after reset or refill), only its bottom row shows: it is
+# full by the time the beam gets there.
+FILLING = {(ROWS - 1, c) for c in range(COLS)}
+
+
 @cocotb.test()
-async def full_wall_after_reset(dut):
-    await start(dut)
+async def filling_frame_then_full_wall(dut):
+    await start(dut)  # the beam starts the frame after reset
+    for r, c in ALL:
+        expected = int((r, c) in FILLING)
+        assert (await probe(dut, *centre(r, c)))["brick_px"] == expected, f"brick {r},{c} while filling"
+    await next_frame(dut)
     for r, c in ALL:
         out = await probe(dut, *centre(r, c))
         assert out["brick_px"] == 1, f"brick {r},{c} missing"
         assert out["brick_row"] == r, f"brick {r},{c} reports row {out['brick_row']}"
-    assert (await probe(dut, 100, 100))["empty"] == 0
+    assert (await probe(dut, 0, 200))["empty"] == 0
 
 
 @cocotb.test()
 async def gaps_and_surroundings_are_not_bricks(dut):
     await start(dut)
-    for r, c in ALL:
-        x, y = centre(r, c)
-        for gx in (x - 32, x - 31):  # 2-px gap on the left edge
-            assert (await probe(dut, gx, y))["brick_px"] == 0, f"left gap of {r},{c}"
+    await next_frame(dut)  # past the filling frame
+    for r in range(ROWS):  # in scan order: top gap row, corner row, then the centre row
+        y = centre(r, 0)[1]
         for gy in (y - 8, y - 7):  # 2-px gap on the top edge
-            assert (await probe(dut, x, gy))["brick_px"] == 0, f"top gap of {r},{c}"
-        assert (await probe(dut, x - 30, y - 6))["brick_px"] == 1, f"corner of {r},{c}"
-    for x, y in [(32, 100), (600, 100), (300, 40), (300, 63), (300, 160), (300, 400)]:
+            for c in range(COLS):
+                assert (await probe(dut, centre(r, c)[0], gy))["brick_px"] == 0, f"top gap of {r},{c}"
+        for c in range(COLS):
+            assert (await probe(dut, centre(r, c)[0] - 30, y - 6))["brick_px"] == 1, f"corner of {r},{c}"
+        for c in range(COLS):
+            x = centre(r, c)[0]
+            for gx in (x - 32, x - 31):  # 2-px gap on the left edge
+                assert (await probe(dut, gx, y))["brick_px"] == 0, f"left gap of {r},{c}"
+    for x, y in [(300, 40), (300, 63), (32, 100), (600, 100), (300, 160), (300, 400)]:
         assert (await probe(dut, x, y))["brick_px"] == 0, f"({x}, {y}) is outside the wall"
 
 
@@ -85,25 +114,34 @@ async def gaps_and_surroundings_are_not_bricks(dut):
 async def clear_removes_only_the_brick_under_the_beam(dut):
     rng = random.Random(2)
     await start(dut)
+    await next_frame(dut)
     model = set(ALL)
-    for r, c in rng.sample(ALL, 12):
-        await pulse(dut, "clear", *centre(r, c))
-        model.discard((r, c))
-        assert await standing(dut) == model, f"after clearing {r},{c}"
-    await pulse(dut, "clear", 300, 300)  # beam outside the wall: nothing to clear
-    assert await standing(dut) == model
+    for frame in range(3):
+        hits = sorted(rng.sample(sorted(model), 6))  # several per frame, in scan order
+        await next_frame(dut)
+        for r, c in hits:
+            await pulse(dut, "clear", *centre(r, c))
+        await pulse(dut, "clear", 300, 300)  # beam outside the wall: nothing to clear
+        model -= set(hits)
+        got = await standing(dut)
+        assert got == model, f"after clearing {hits}: still standing {sorted(got - model)}, also gone {sorted(model - got)}"
 
 
 @cocotb.test()
-async def empty_after_last_brick_then_refill(dut):
+async def empty_below_the_wall_after_the_last_brick_then_refill(dut):
     await start(dut)
-    for i, (r, c) in enumerate(ALL):
-        assert (await probe(dut, 0, 0))["empty"] == 0, f"empty with {len(ALL) - i} bricks left"
+    await next_frame(dut)
+    await next_frame(dut)
+    for r, c in ALL:  # every brick, in one frame
         await pulse(dut, "clear", *centre(r, c))
-    assert (await probe(dut, 0, 0))["empty"] == 1
+    assert (await probe(dut, 0, 200))["empty"] == 0, "the bricks were drawn this frame"
+    await next_frame(dut)
+    for x, y in [(0, 200), (0, 480), (799, 524)]:  # holds until the next frame starts
+        assert (await probe(dut, x, y))["empty"] == 1, f"not empty at y {y}"
     assert await standing(dut) == set()
-    await pulse(dut, "refill")
-    assert (await probe(dut, 0, 0))["empty"] == 0
+    await pulse(dut, "refill", 0, 480)
+    assert await standing(dut) == FILLING, "the wall shows only its bottom row while it fills"
+    assert (await probe(dut, 0, 200))["empty"] == 0, "a filling wall is not empty"
     assert await standing(dut) == set(ALL)
 
 
@@ -117,4 +155,5 @@ async def over_columns_spans_the_wall_width(dut):
 
 
 def test_brick_wall():
-    run("brick_wall", ["brick_wall.sv"], "test_brick_wall")
+    run("brick_wall_tb", ["vga_timing.sv", "brick_wall.sv", str(UNIT_DIR / "brick_wall_tb.sv")],
+        "test_brick_wall")
