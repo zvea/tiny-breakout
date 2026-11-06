@@ -21,6 +21,7 @@ project:
     - "gamepad_rx.sv"
     - "vga_timing.sv"
     - "autoplay.sv"
+    - "brick_wall.sv"
     - "tt_um_tiny_breakout.sv"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.

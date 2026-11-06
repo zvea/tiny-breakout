@@ -8,6 +8,6 @@ rm -rf obj_serve
 verilator --cc --build -O3 --inline-mult -1 --output-split 0 -Wno-fatal \
   --x-assign fast --x-initial fast \
   -CFLAGS "-O3 -march=native -fno-plt -fomit-frame-pointer -pthread" -LDFLAGS "-pthread" \
-  --exe serve.cpp "$ROOT/src/gamepad_pkg.sv" "$ROOT/src/gamepad_rx.sv" "$ROOT/src/vga_timing.sv" "$ROOT/src/autoplay.sv" \
+  --exe serve.cpp "$ROOT/src/gamepad_pkg.sv" "$ROOT/src/gamepad_rx.sv" "$ROOT/src/vga_timing.sv" "$ROOT/src/autoplay.sv" "$ROOT/src/brick_wall.sv" \
   "$ROOT/src/tt_um_tiny_breakout.sv" --top-module tt_um_tiny_breakout -Mdir obj_serve -j 8 >/dev/null
 echo "built obj_serve/Vtt_um_tiny_breakout"

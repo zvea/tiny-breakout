@@ -118,18 +118,6 @@ module tt_um_tiny_breakout (
   logic        serve;         // ball resting on the paddle
   logic        gameover;
 
-  // Brick field: BRICK_COLS x BRICK_ROWS bricks of 64 x 16 px. Counted in brick-sized
-  // steps across the screen, the bricks start at column FIRST_BRICK_COL (x 64) and
-  // row FIRST_BRICK_ROW (y 64).
-  localparam int         BRICK_COLS      = 8;
-  localparam int         BRICK_ROWS      = 6;
-  localparam int         NUM_BRICKS      = BRICK_COLS * BRICK_ROWS;
-  localparam logic [3:0] FIRST_BRICK_COL = 1;
-  localparam logic [5:0] FIRST_BRICK_ROW = 4;
-
-  logic [NUM_BRICKS-1:0] bricks;  // bit = row * BRICK_COLS + col; 1 = brick present
-  localparam logic [NUM_BRICKS-1:0] ALL_BRICKS = '1;
-
   // Per-frame collision flags: walls left/right/top, brick, paddle
   typedef struct packed { logic l, r, t, b, p; } hits_t;
   hits_t      hit;
@@ -140,30 +128,26 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   // Pixel classification for the current beam position
   // ---------------------------------------------------------------------------
-  // The 64-px column and 16-px row under the beam (x 64..575 = columns 1..8,
-  // y 64..159 = rows 4..9 hold bricks)
-  wire [3:0] brick_col = h_pos[9:6];
-  wire [5:0] brick_row = v_pos[9:4];
+  // Bricks: the wall reports whether a standing brick is under the beam
+  logic       brick_px;
+  logic [2:0] brick_row;      // 0 (top) .. 5, while brick_px
+  logic       over_columns;   // beam within the wall's x range
+  logic       bricks_empty;
+  logic       refill_bricks;  // decided by the game logic below
+  logic       clear_brick;
 
-  // One-hot decode: col_sel[c] / row_sel[r] are set when the beam is over brick column c / row r
-  wire [BRICK_COLS-1:0] col_sel;
-  wire [BRICK_ROWS-1:0] row_sel;
-  for (genvar c = 0; c < BRICK_COLS; c++) begin : g_col_sel
-    assign col_sel[c] = (brick_col == FIRST_BRICK_COL + 4'(c));
-  end
-  for (genvar r = 0; r < BRICK_ROWS; r++) begin : g_row_sel
-    assign row_sel[r] = (brick_row == FIRST_BRICK_ROW + 6'(r));
-  end
-
-  // One-hot select of the brick under the beam: row r's bits are the column selects
-  // gated by row r. Whole-vector operations simulate much faster.
-  wire [NUM_BRICKS-1:0] brick_sel;
-  for (genvar r = 0; r < BRICK_ROWS; r++) begin : g_brick_row
-    assign brick_sel[r*BRICK_COLS +: BRICK_COLS] = {BRICK_COLS{row_sel[r]}} & col_sel;
-  end
-
-  wire brick_gap = (h_pos[5:1] == 0) || (v_pos[3:1] == 0);
-  wire brick_px  = (|(brick_sel & bricks)) & ~brick_gap;
+  brick_wall u_brick_wall (
+      .clk         (clk),
+      .rst_n       (rst_n),
+      .h_pos       (h_pos),
+      .v_pos       (v_pos),
+      .refill      (refill_bricks),
+      .clear       (clear_brick),
+      .brick_px    (brick_px),
+      .brick_row   (brick_row),
+      .over_columns(over_columns),
+      .empty       (bricks_empty)
+  );
 
   // Walls, paddle and life markers are aligned to a grid of 8x8-px cells
   wire [6:0] cell_x = h_pos[9:3];
@@ -179,7 +163,7 @@ module tt_um_tiny_breakout (
   wire wall_t = (cell_y == WALL_T_CELL) && (cell_x >= WALL_L_CELL) && (cell_x <= WALL_R_CELL);
 
   // Playfield interior (dark background)
-  wire field = (|col_sel) && (v_pos[9:5] != 0);
+  wire field = over_columns && (v_pos[9:5] != 0);
 
   // Paddle: 64 x 8, one cell row high
   wire [9:0] dpx = h_pos - padx;
@@ -229,17 +213,15 @@ module tt_um_tiny_breakout (
   localparam rgb_t WALL_COLOUR   = GREY;
   localparam rgb_t FIELD_COLOUR  = NAVY;
 
-  // Brick colour by row. Brick rows 4..9 have low 3 bits 4,5,6,7,0,1.
-  // (Sliced outside the always_comb: Icarus can't make a process sensitive to a part-select.)
-  wire [2:0] brick_row_low = brick_row[2:0];
+  // Brick colour by row, top to bottom
   rgb_t brick_rgb;
   always_comb begin
-    case (brick_row_low)
-      4:       brick_rgb = RED;
-      5:       brick_rgb = ORANGE;
-      6:       brick_rgb = YELLOW;
-      7:       brick_rgb = GREEN;
-      0:       brick_rgb = AZURE;
+    case (brick_row)
+      0:       brick_rgb = RED;
+      1:       brick_rgb = ORANGE;
+      2:       brick_rgb = YELLOW;
+      3:       brick_rgb = GREEN;
+      4:       brick_rgb = AZURE;
       default: brick_rgb = VIOLET;
     endcase
   end
@@ -303,7 +285,6 @@ module tt_um_tiny_breakout (
   wire go_right = ui.autoplay ? ap_right : (btn_right & ~btn_left);
 
   wire ball_lost  = (by >= SCREEN_H);
-  wire cleared    = ~|bricks;
 
   // Next ball direction from this frame's collisions. A paddle hit sends the ball up, left
   // from the left half and right from the right half, steeply from the outer quarters.
@@ -316,7 +297,7 @@ module tt_um_tiny_breakout (
 
   // What each frame update (at frame_tick) does, in priority order
   wire restart   = gameover & btn_fire;                  // new game after game over
-  wire on_paddle = ~gameover & (serve | cleared);        // ball waits on the paddle
+  wire on_paddle = ~gameover & (serve | bricks_empty);   // ball waits on the paddle
   wire lose_ball = ~gameover & ~on_paddle & ball_lost;   // ball fell off the bottom
   wire fly       = ~gameover & ~on_paddle & ~ball_lost;  // ball in flight
 
@@ -380,16 +361,9 @@ module tt_um_tiny_breakout (
     end
   end
 
-  // Bricks: refilled for a new game or level, cleared when the ball touches them
-  always_ff @(posedge clk) begin
-    if (!rst_n) begin
-      bricks <= ALL_BRICKS;
-    end else if (frame_tick) begin
-      if (restart || (on_paddle && cleared)) bricks <= ALL_BRICKS;
-    end else if (touch && brick_px) begin
-      bricks <= bricks & ~brick_sel;
-    end
-  end
+  // Bricks: refilled for a new game or level, cleared where the ball touches them
+  assign refill_bricks = frame_tick && (restart || (on_paddle && bricks_empty));
+  assign clear_brick   = touch && brick_px;
 
   // Collision flags: set by pixel overlap during scan-out, consumed and cleared at frame_tick
   always_ff @(posedge clk) begin
