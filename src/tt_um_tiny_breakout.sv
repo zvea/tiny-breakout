@@ -18,11 +18,12 @@
  *                SELECT switches autoplay on and off
  *   ui_in[4..6]: Gamepad PMOD latch, clock, data (Psychogenic SNES Gamepad PMOD)
  *
- * Collisions are detected by pixel overlap while the frame is being drawn:
- * whenever a ball pixel coincides with a wall/brick/paddle pixel a flag is
- * set (and a touched brick is cleared on the spot). All flags are consumed
+ * Collisions with bricks and the paddle are detected by pixel overlap while
+ * the frame is being drawn: whenever a ball pixel coincides with one a flag
+ * is set (and a touched brick is cleared on the spot). The flags are consumed
  * once per frame at the start of vertical blanking, where the ball and
- * paddle are moved.
+ * paddle are moved; the walls are checked there too, from the ball's
+ * position.
  *
  * Sections: pins, video timing, game state, controls, what is under the
  * beam, collisions, frame update, video output.
@@ -97,7 +98,11 @@ module tt_um_tiny_breakout (
   localparam logic [9:0] SERVE_Y     = 440;  // ball y when resting on the paddle (paddle top is 448)
   localparam logic [1:0] SPARE_LIVES = 2;
 
-  logic [9:0] ball_x, ball_y;  // top-left of the 8x8 box the round ball is drawn in
+  // Top-left of the 8x8 box the round ball is drawn in. The ball moves 2 px at a time
+  // vertically and stays above y 512, so only y / 2 is stored.
+  logic [9:0] ball_x;
+  logic [7:0] ball_y_half;
+  wire  [9:0] ball_y = {1'b0, ball_y_half, 1'b0};
 
   // Ball direction and speed, stored as sign and magnitude because that is how the game
   // changes them: walls set only the horizontal direction, the paddle sets the angle,
@@ -111,17 +116,17 @@ module tt_um_tiny_breakout (
   // vertical blanking (480, 481, 482), each time by their usual step. Twice per frame after
   // the current ball has cleared 4 bricks, three times after 8. Back on the paddle (new
   // ball, level or game), the speed starts again at once per frame.
-  localparam logic [3:0] MAX_SPEED_LEVEL = 8;
-  logic [3:0] speed_level;  // bricks cleared by the current ball, up to MAX_SPEED_LEVEL
+  logic [3:0] speed_level;  // bricks cleared by the current ball, up to 8
 
-  logic [1:0] lives;      // spare balls
+  logic [1:0] lives;      // spare balls; losing a ball with none left wraps to 3: game over
   logic       serving;    // ball resting on the paddle, waiting to be launched
-  logic       game_over;
+  wire        game_over = (lives == 3);
 
   // Collision flags, gathered during each frame and consumed at frame_tick
-  // (brick_top_bottom / brick_side: a brick was hit on its top or bottom / on a side edge)
+  // (brick_top_bottom / brick_side: a brick was hit on its top or bottom / on a side edge).
+  // The walls need no flags: whether the ball touches one follows from its position.
   typedef struct packed {
-    logic wall_l, wall_r, wall_t, brick_top_bottom, brick_side, paddle;
+    logic brick_top_bottom, brick_side, paddle;
   } hits_t;
   hits_t      hit;
   logic [1:0] hit_quarter;  // paddle quarter the ball touched (0 = leftmost)
@@ -249,11 +254,12 @@ module tt_um_tiny_breakout (
   wire ball_px = (ball_dx[9:3] == 0) && (ball_dy[9:3] == 0) &&
                  in_circle8(ball_dx[2:0], ball_dy[2:0]) && ~game_over;
 
-  // Spare lives: 8-px circles in 16-px slots from x 64; marker i is shown while lives > i
-  localparam logic [5:0] FIRST_LIFE_SLOT = 4;  // x 64
-  wire [5:0] life_slot = h_pos[9:4] - FIRST_LIFE_SLOT;
+  // Spare lives: 8-px circles in the 16-px slots at x 64 and x 80, shown for 1 and 2 spare
+  // balls (none in game over, lives 3)
+  wire life_slot_1 = (h_pos[9:4] == 4) && (lives == 1 || lives == 2);
+  wire life_slot_2 = (h_pos[9:4] == 5) && (lives == 2);
   wire life_px = (cell_y == LIVES_CELL_Y) && ~h_pos[3] && in_circle8(h_pos[2:0], v_pos[2:0]) &&
-                 (life_slot < 6'(lives));
+                 (life_slot_1 || life_slot_2);
 
   // ---------------------------------------------------------------------------
   // Collisions: pixel overlap with the ball during scan-out
@@ -282,9 +288,6 @@ module tt_um_tiny_breakout (
     end else if (frame_tick) begin
       hit <= '0;
     end else if (touch) begin
-      if (wall_l_px) hit.wall_l <= 1;
-      if (wall_r_px) hit.wall_r <= 1;
-      if (wall_t_px) hit.wall_t <= 1;
       if (brick_px && !side_hit) hit.brick_top_bottom <= 1;
       if (brick_px && side_hit)  hit.brick_side       <= 1;
       if (paddle_px) begin
@@ -299,15 +302,24 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   wire ball_lost = (ball_y >= SCREEN_H);
 
+  // The walls the ball touched in this frame, as the pixel overlap would find them: its
+  // round shape reaches its box's left and right edges, and its top edge, so it touches
+  // the left wall (x 56..63) when x <= 63, the right wall (x 576..583) when x + 7 >= 576,
+  // the top wall (y 24..31) when y <= 31. Only at frame_tick, as for the flags: the extra
+  // moves of a faster ball keep the direction.
+  wire touch_wall_l = frame_tick && (ball_x[9:6] == 0);
+  wire touch_wall_r = frame_tick && (ball_x >= 569);
+  wire touch_wall_t = frame_tick && (ball_y[9:5] == 0);
+
   // Next ball direction from this frame's collisions. A paddle hit sends the ball up, left
   // from the left half and right from the right half, steeply from the outer quarters.
   // A brick turns it back vertically or horizontally, by the edge it hit.
-  wire next_up           = hit.paddle ? 1 : hit.wall_t ? 0 : (ball_up ^ hit.brick_top_bottom);
+  wire next_up           = hit.paddle ? 1 : touch_wall_t ? 0 : (ball_up ^ hit.brick_top_bottom);
   wire left_after_bounce = hit.paddle ? ~hit_quarter[1] : (ball_left ^ hit.brick_side);
-  wire next_left         = hit.wall_l ? 0 : hit.wall_r ? 1 : left_after_bounce;
+  wire next_left         = touch_wall_l ? 0 : touch_wall_r ? 1 : left_after_bounce;
   wire next_steep        = hit.paddle ? (hit_quarter[1] ~^ hit_quarter[0]) : ball_steep;
   wire [9:0] step_x = next_left ? (next_steep ? -2 : -1) : (next_steep ? 2 : 1);
-  wire [9:0] step_y = next_up ? -2 : 2;
+  wire [7:0] step_y_half = next_up ? -1 : 1;
 
   // Moves per frame: 1 + speed_level / 4, i.e. 1, 2 or 3. They happen at the start of lines
   // 480, 481 and 482 (the first is frame_tick): line 480 + k moves if k < moves. Collision
@@ -334,14 +346,14 @@ module tt_um_tiny_breakout (
   // Ball position and direction
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      ball_x     <= PADDLE_START_Q * 4 + SERVE_DX;  // resting on the paddle
-      ball_y     <= SERVE_Y;
+      ball_x      <= PADDLE_START_Q * 4 + SERVE_DX;  // resting on the paddle
+      ball_y_half <= SERVE_Y[8:1];
       ball_left  <= 0;
       ball_steep <= 0;
       ball_up    <= 1;
     end else if (frame_tick && on_paddle) begin
-      ball_x     <= paddle_x + SERVE_DX;
-      ball_y     <= SERVE_Y;
+      ball_x      <= paddle_x + SERVE_DX;
+      ball_y_half <= SERVE_Y[8:1];
       ball_left  <= 0;
       ball_steep <= 0;
       ball_up    <= 1;
@@ -349,31 +361,25 @@ module tt_um_tiny_breakout (
       ball_left  <= next_left;
       ball_steep <= next_steep;
       ball_up    <= next_up;
-      ball_x     <= ball_x + step_x;
-      ball_y     <= ball_y + step_y;
+      ball_x      <= ball_x + step_x;
+      ball_y_half <= ball_y_half + step_y_half;
     end
   end
 
-  // Game progress: spare lives, serving, game over
+  // Game progress: spare lives (and game over), serving
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      lives     <= SPARE_LIVES;
-      serving   <= 1;
-      game_over <= 0;
+      lives   <= SPARE_LIVES;
+      serving <= 1;
     end else if (frame_tick) begin
       if (restart) begin
-        lives     <= SPARE_LIVES;
-        serving   <= 1;
-        game_over <= 0;
+        lives   <= SPARE_LIVES;
+        serving <= 1;
       end else if (on_paddle) begin
         serving <= ~btn_fire;
       end else if (lose_ball) begin
-        if (lives == 0) begin
-          game_over <= 1;
-        end else begin
-          lives   <= lives - 1;
-          serving <= 1;
-        end
+        lives   <= lives - 1;  // from 0 to 3: game over
+        serving <= 1;
       end
     end
   end
@@ -387,7 +393,7 @@ module tt_um_tiny_breakout (
       speed_level <= 0;
     end else if (frame_tick && on_paddle) begin
       speed_level <= 0;
-    end else if (clear_brick && speed_level != MAX_SPEED_LEVEL) begin
+    end else if (clear_brick && !speed_level[3]) begin  // stops at 8
       speed_level <= speed_level + 1;
     end
   end
