@@ -165,42 +165,55 @@ module tt_um_tiny_breakout (
   // Not '1: yosys's built-in frontend sizes '1 in a parameter as a single bit (= 48'h1).
   localparam logic [47:0] ALL_BRICKS = {48{1'b1}};
 
-  // Per-frame collision flags
-  logic hit_l, hit_r, hit_t, hit_b, hit_p;
-  logic [1:0] hit_zone;
+  // Per-frame collision flags: walls left/right/top, brick, paddle
+  typedef struct packed { logic l, r, t, b, p; } hits_t;
+  hits_t      hit;
+  logic [1:0] hit_zone;   // paddle quarter the ball touched
 
-  wire autoplay = ui.autoplay;
   wire [9:0] padx = pad_q * 4;
 
   // ---------------------------------------------------------------------------
   // Pixel classification for the current beam position
   // ---------------------------------------------------------------------------
-  // Brick field: 8 columns x 64 px (x 64..575), 6 rows x 16 px (y 64..159)
-  wire [3:0] hb = h_pos[9:6];
-  wire [5:0] vb = v_pos[9:4];
-  wire [7:0] col_sel = {hb == 8, hb == 7, hb == 6, hb == 5, hb == 4, hb == 3, hb == 2, hb == 1};
-  wire [5:0] row_sel = {vb == 9, vb == 8, vb == 7, vb == 6, vb == 5, vb == 4};
+  // Brick field: 8 columns x 64 px (x 64..575), 6 rows x 16 px (y 64..159).
+  // brick_col / brick_row: the 64-px column / 16-px row under the beam; bricks occupy
+  // columns 1..8 and rows 4..9.
+  wire [3:0] brick_col = h_pos[9:6];
+  wire [5:0] brick_row = v_pos[9:4];
+  wire [7:0] col_sel = {brick_col == 8, brick_col == 7, brick_col == 6, brick_col == 5,
+                        brick_col == 4, brick_col == 3, brick_col == 2, brick_col == 1};
+  wire [5:0] row_sel = {brick_row == 9, brick_row == 8, brick_row == 7,
+                        brick_row == 6, brick_row == 5, brick_row == 4};
 
-  // One-hot select of the brick under the beam (bit = row * 8 + col).
-  // Written as whole-vector operations: same gates, much faster to simulate.
-  wire [47:0] brick_sel = {{8{row_sel[5]}} & col_sel, {8{row_sel[4]}} & col_sel,
-                           {8{row_sel[3]}} & col_sel, {8{row_sel[2]}} & col_sel,
-                           {8{row_sel[1]}} & col_sel, {8{row_sel[0]}} & col_sel};
+  // One-hot select of the brick under the beam (bit = row * 8 + col): row r's 8 bits are
+  // the column selects gated by row r. Whole-vector operations simulate much faster.
+  wire [47:0] brick_sel;
+  for (genvar r = 0; r < 6; r++) begin : g_brick_row
+    assign brick_sel[r*8 +: 8] = {8{row_sel[r]}} & col_sel;
+  end
 
   wire brick_gap = (h_pos[5:1] == 0) || (v_pos[3:1] == 0);
   wire brick_px  = (|(brick_sel & bricks)) & ~brick_gap;
 
-  // Walls: left x 56..63, right x 576..583, top y 24..31
-  wire wall_l = (h_pos[9:3] == 7) && (v_pos[9:3] >= 3);
-  wire wall_r = (h_pos[9:3] == 72) && (v_pos[9:3] >= 3);
-  wire wall_t = (v_pos[9:3] == 3) && (h_pos[9:3] >= 7) && (h_pos[9:3] <= 72);
+  // Walls, paddle and life markers are aligned to a grid of 8x8-px cells
+  wire [6:0] cell_x = h_pos[9:3];
+  wire [6:0] cell_y = v_pos[9:3];
+  localparam logic [6:0] WALL_L_CELL   = 7;   // x 56..63
+  localparam logic [6:0] WALL_R_CELL   = 72;  // x 576..583
+  localparam logic [6:0] WALL_T_CELL   = 3;   // y 24..31
+  localparam logic [6:0] PADDLE_CELL_Y = 56;  // y 448..455
+  localparam logic [6:0] LIVES_CELL_Y  = 1;   // y 8..15
+
+  wire wall_l = (cell_x == WALL_L_CELL) && (cell_y >= WALL_T_CELL);
+  wire wall_r = (cell_x == WALL_R_CELL) && (cell_y >= WALL_T_CELL);
+  wire wall_t = (cell_y == WALL_T_CELL) && (cell_x >= WALL_L_CELL) && (cell_x <= WALL_R_CELL);
 
   // Playfield interior (dark background)
   wire field = (|col_sel) && (v_pos[9:5] != 0);
 
-  // Paddle: 64 x 8 at y 448..455
+  // Paddle: 64 x 8, one cell row high
   wire [9:0] dpx = h_pos - padx;
-  wire paddle_px = (v_pos[9:3] == 56) && (dpx[9:6] == 0);
+  wire paddle_px = (cell_y == PADDLE_CELL_Y) && (dpx[9:6] == 0);
 
   // True for pixels inside an 8-px circle, given the offset (0..7, 0..7) within its 8x8 box.
   // Folds each offset to its distance from the nearest edge (0..3), then cuts the corners,
@@ -218,8 +231,8 @@ module tt_um_tiny_breakout (
   wire ball_px = (dbx[9:3] == 0) && (dby[9:3] == 0) && in_circle8(dbx[2:0], dby[2:0]) &&
                  ~gameover;
 
-  // Spare lives: 8-px circles at y 8..15, x 64, 80
-  wire life_px = (v_pos[9:3] == 1) && ~h_pos[3] && in_circle8(h_pos[2:0], v_pos[2:0]) &&
+  // Spare lives: 8-px circles at x 64, 80
+  wire life_px = (cell_y == LIVES_CELL_Y) && ~h_pos[3] && in_circle8(h_pos[2:0], v_pos[2:0]) &&
                  (((h_pos[9:4] == 4) && (lives != 0)) || ((h_pos[9:4] == 5) && lives[1]));
 
   // Colours: 2 bits each of red, green and blue
@@ -244,12 +257,12 @@ module tt_um_tiny_breakout (
   localparam rgb_t WALL_COLOUR   = GREY;
   localparam rgb_t FIELD_COLOUR  = NAVY;
 
-  // Brick colour by row. Brick rows are vb = 4..9, whose low 3 bits are 4,5,6,7,0,1.
+  // Brick colour by row. Brick rows 4..9 have low 3 bits 4,5,6,7,0,1.
   // (Sliced outside the always_comb: Icarus can't make a process sensitive to a part-select.)
-  wire [2:0] vb_low = vb[2:0];
+  wire [2:0] brick_row_low = brick_row[2:0];
   rgb_t brick_rgb;
   always_comb begin
-    case (vb_low)
+    case (brick_row_low)
       4:       brick_rgb = RED;
       5:       brick_rgb = ORANGE;
       6:       brick_rgb = YELLOW;
@@ -298,7 +311,7 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   wire btn_left  = ui.left  | gp_left;
   wire btn_right = ui.right | gp_right;
-  wire btn_fire  = ui.fire  | gp_fire | autoplay;
+  wire btn_fire  = ui.fire  | gp_fire | ui.autoplay;
 
   // Autoplay: steer the paddle so the ball lands in paddle zone ap_zone (0..3, 16 px each).
   // The zone is re-picked pseudo-randomly after every paddle hit; always aiming at the same
@@ -309,18 +322,18 @@ module tt_um_tiny_breakout (
   wire [7:0] pad_aim = pad_q + ap_zone * 4 + 1;
   wire ap_right = bx[9:2] > pad_aim;
   wire ap_left  = bx[9:2] < pad_aim;
-  wire go_left  = autoplay ? ap_left  : (btn_left & ~btn_right);
-  wire go_right = autoplay ? ap_right : (btn_right & ~btn_left);
+  wire go_left  = ui.autoplay ? ap_left  : (btn_left & ~btn_right);
+  wire go_right = ui.autoplay ? ap_right : (btn_right & ~btn_left);
 
   wire frame_tick = (v_pos == V_VISIBLE) && (h_pos == 0);  // first clock of vertical blanking
   wire ball_lost  = (by >= V_VISIBLE);
   wire cleared    = ~|bricks;
 
   // Next ball direction from this frame's collisions
-  wire n_vy_neg  = hit_p ? 1 : hit_t ? 0 : (vy_neg ^ hit_b);
-  wire p_vx_neg  = hit_p ? ~hit_zone[1] : vx_neg;
-  wire n_vx_neg  = hit_l ? 0 : hit_r ? 1 : p_vx_neg;
-  wire n_vx_fast = hit_p ? (hit_zone[1] ~^ hit_zone[0]) : vx_fast;  // outer quarters = steep x
+  wire n_vy_neg  = hit.p ? 1 : hit.t ? 0 : (vy_neg ^ hit.b);
+  wire p_vx_neg  = hit.p ? ~hit_zone[1] : vx_neg;
+  wire n_vx_neg  = hit.l ? 0 : hit.r ? 1 : p_vx_neg;
+  wire n_vx_fast = hit.p ? (hit_zone[1] ~^ hit_zone[0]) : vx_fast;  // outer quarters = steep x
   wire [9:0] vx  = n_vx_neg ? (n_vx_fast ? -2 : -1) : (n_vx_fast ? 2 : 1);
   wire [9:0] vy  = n_vy_neg ? -2 : 2;
 
@@ -330,7 +343,7 @@ module tt_um_tiny_breakout (
       ap_zone <= 1;
     end else if (frame_tick) begin
       lfsr <= {lfsr[3:0], lfsr[4] ^ lfsr[2]};
-      if (hit_p) ap_zone <= lfsr[1:0];
+      if (hit.p) ap_zone <= lfsr[1:0];
     end
   end
 
@@ -346,18 +359,10 @@ module tt_um_tiny_breakout (
       serve    <= 1;
       gameover <= 0;
       bricks   <= ALL_BRICKS;
-      hit_l    <= 0;
-      hit_r    <= 0;
-      hit_t    <= 0;
-      hit_b    <= 0;
-      hit_p    <= 0;
+      hit      <= '0;
       hit_zone <= 0;
     end else if (frame_tick) begin
-      hit_l <= 0;
-      hit_r <= 0;
-      hit_t <= 0;
-      hit_b <= 0;
-      hit_p <= 0;
+      hit <= '0;
 
       // Paddle
       if (go_left && pad_q != PAD_MIN_Q) pad_q <= pad_q - 1;
@@ -393,15 +398,15 @@ module tt_um_tiny_breakout (
       end
     end else if (ball_px & ~serve) begin
       // Collision detection by pixel overlap during scan-out
-      if (wall_l) hit_l <= 1;
-      if (wall_r) hit_r <= 1;
-      if (wall_t) hit_t <= 1;
+      if (wall_l) hit.l <= 1;
+      if (wall_r) hit.r <= 1;
+      if (wall_t) hit.t <= 1;
       if (paddle_px) begin
-        hit_p    <= 1;
+        hit.p    <= 1;
         hit_zone <= dpx[5:4];
       end
       if (brick_px) begin
-        hit_b  <= 1;
+        hit.b  <= 1;
         bricks <= bricks & ~brick_sel;
       end
     end
