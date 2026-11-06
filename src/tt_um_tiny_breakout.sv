@@ -161,9 +161,19 @@ module tt_um_tiny_breakout (
   logic [1:0]  lives;         // spare balls
   logic        serve;         // ball resting on the paddle
   logic        gameover;
-  logic [47:0] bricks;
+
+  // Brick field: BRICK_COLS x BRICK_ROWS bricks of 64 x 16 px. Counted in brick-sized
+  // steps across the screen, the bricks start at column FIRST_BRICK_COL (x 64) and
+  // row FIRST_BRICK_ROW (y 64).
+  localparam int         BRICK_COLS      = 8;
+  localparam int         BRICK_ROWS      = 6;
+  localparam int         NUM_BRICKS      = BRICK_COLS * BRICK_ROWS;
+  localparam logic [3:0] FIRST_BRICK_COL = 1;
+  localparam logic [5:0] FIRST_BRICK_ROW = 4;
+
+  logic [NUM_BRICKS-1:0] bricks;  // bit = row * BRICK_COLS + col; 1 = brick present
   // Not '1: yosys's built-in frontend sizes '1 in a parameter as a single bit (= 48'h1).
-  localparam logic [47:0] ALL_BRICKS = {48{1'b1}};
+  localparam logic [NUM_BRICKS-1:0] ALL_BRICKS = {NUM_BRICKS{1'b1}};
 
   // Per-frame collision flags: walls left/right/top, brick, paddle
   typedef struct packed { logic l, r, t, b, p; } hits_t;
@@ -175,21 +185,26 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   // Pixel classification for the current beam position
   // ---------------------------------------------------------------------------
-  // Brick field: 8 columns x 64 px (x 64..575), 6 rows x 16 px (y 64..159).
-  // brick_col / brick_row: the 64-px column / 16-px row under the beam; bricks occupy
-  // columns 1..8 and rows 4..9.
+  // The 64-px column and 16-px row under the beam (x 64..575 = columns 1..8,
+  // y 64..159 = rows 4..9 hold bricks)
   wire [3:0] brick_col = h_pos[9:6];
   wire [5:0] brick_row = v_pos[9:4];
-  wire [7:0] col_sel = {brick_col == 8, brick_col == 7, brick_col == 6, brick_col == 5,
-                        brick_col == 4, brick_col == 3, brick_col == 2, brick_col == 1};
-  wire [5:0] row_sel = {brick_row == 9, brick_row == 8, brick_row == 7,
-                        brick_row == 6, brick_row == 5, brick_row == 4};
 
-  // One-hot select of the brick under the beam (bit = row * 8 + col): row r's 8 bits are
-  // the column selects gated by row r. Whole-vector operations simulate much faster.
-  wire [47:0] brick_sel;
-  for (genvar r = 0; r < 6; r++) begin : g_brick_row
-    assign brick_sel[r*8 +: 8] = {8{row_sel[r]}} & col_sel;
+  // One-hot decode: col_sel[c] / row_sel[r] are set when the beam is over brick column c / row r
+  wire [BRICK_COLS-1:0] col_sel;
+  wire [BRICK_ROWS-1:0] row_sel;
+  for (genvar c = 0; c < BRICK_COLS; c++) begin : g_col_sel
+    assign col_sel[c] = (brick_col == FIRST_BRICK_COL + 4'(c));
+  end
+  for (genvar r = 0; r < BRICK_ROWS; r++) begin : g_row_sel
+    assign row_sel[r] = (brick_row == FIRST_BRICK_ROW + 6'(r));
+  end
+
+  // One-hot select of the brick under the beam: row r's bits are the column selects
+  // gated by row r. Whole-vector operations simulate much faster.
+  wire [NUM_BRICKS-1:0] brick_sel;
+  for (genvar r = 0; r < BRICK_ROWS; r++) begin : g_brick_row
+    assign brick_sel[r*BRICK_COLS +: BRICK_COLS] = {BRICK_COLS{row_sel[r]}} & col_sel;
   end
 
   wire brick_gap = (h_pos[5:1] == 0) || (v_pos[3:1] == 0);
