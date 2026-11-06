@@ -11,6 +11,10 @@ test/sim_build
 test/__pycache__/
 test/results.xml
 test/gate_level_netlist.v
+test/unit/sim_build/
+test/unit/*.xml
+__pycache__/
+.pytest_cache/
 sim/*.ppm
 sim/*.png
 sim/harness
