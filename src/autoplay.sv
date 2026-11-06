@@ -5,7 +5,7 @@
  *
  * Autoplay: steers the paddle so the ball lands on a chosen quarter of it.
  *
- * The quarter is re-picked pseudo-randomly after every paddle hit. Always aiming at the same
+ * The quarter is re-picked at random after every paddle hit. Always aiming at the same
  * spot makes the ball settle into a closed loop that never reaches the remaining bricks;
  * since the paddle quarter sets the bounce angle, varying it keeps the ball exploring.
  */
@@ -15,24 +15,22 @@
 module autoplay (
     input  logic       clk,
     input  logic       rst_n,
-    input  logic       frame_tick,   // once per frame: advance the random sequence
+    input  logic       frame_tick,   // once per frame
     input  logic       paddle_hit,   // at frame_tick: the ball hit the paddle this frame
+    input  logic [1:0] random,       // random bits, new every frame
     input  logic [9:0] ball_x,       // left edge of the 8x8 box the round ball is drawn in
     input  logic [9:0] paddle_x,     // left edge of the 64-px paddle (a multiple of 4)
     output logic       steer_left,   // move the paddle left / right this frame
     output logic       steer_right
 );
 
-  logic [4:0] lfsr;         // x^5 + x^3 + 1: cycles through all 31 non-zero values
   logic [1:0] aim_quarter;  // paddle quarter to aim for, 16 px each (0 = leftmost)
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      lfsr        <= 1;  // any non-zero seed
       aim_quarter <= 1;
-    end else if (frame_tick) begin
-      lfsr        <= {lfsr[3:0], lfsr[4] ^ lfsr[2]};
-      if (paddle_hit) aim_quarter <= lfsr[1:0];
+    end else if (frame_tick && paddle_hit) begin
+      aim_quarter <= random;
     end
   end
 

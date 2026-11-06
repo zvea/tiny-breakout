@@ -23,7 +23,7 @@
  * once per frame at the start of vertical blanking, where the ball and
  * paddle are moved.
  *
- * Sections: pins, video timing, game state, controls, what is under the
+ * Sections: pins, video timing and random bits, game state, controls, what is under the
  * beam, collisions, frame update, video output.
  */
 
@@ -62,7 +62,7 @@ module tt_um_tiny_breakout (
   assign ui = ui_in;
 
   // ---------------------------------------------------------------------------
-  // Video timing
+  // Video timing and random bits
   // ---------------------------------------------------------------------------
   logic [9:0] h_pos, v_pos;  // beam position
   logic       visible, h_sync_n, v_sync_n;
@@ -77,6 +77,16 @@ module tt_um_tiny_breakout (
       .h_sync_n    (h_sync_n),
       .v_sync_n    (v_sync_n),
       .vblank_start(frame_tick)
+  );
+
+  // Pseudo-random bits, new every frame (autoplay's aim, the ball's speed rhythm)
+  logic [4:0] rng;
+
+  frame_rng u_frame_rng (
+      .clk       (clk),
+      .rst_n     (rst_n),
+      .frame_tick(frame_tick),
+      .lfsr      (rng)
   );
 
   // ---------------------------------------------------------------------------
@@ -104,7 +114,12 @@ module tt_um_tiny_breakout (
   // negations and absolute values instead: ~6% more logic.)
   logic ball_left;   // moving left (else right)
   logic ball_steep;  // 2 px per frame horizontally (else 1)
-  logic ball_up;     // moving up (else down); always 2 px per frame vertically
+  logic ball_up;     // moving up (else down); 2 px per frame vertically
+
+  // Ball speed: on average speed_level frames in 4, the ball moves twice its usual step
+  // (1x, 1.25x, 1.5x, 1.75x). The level rises as the ball reaches higher brick rows and
+  // starts again at 0 whenever the ball is back on the paddle (new ball, level or game).
+  logic [1:0] speed_level;
 
   logic [1:0] lives;      // spare balls
   logic       serving;    // ball resting on the paddle, waiting to be launched
@@ -156,6 +171,7 @@ module tt_um_tiny_breakout (
       .rst_n      (rst_n),
       .frame_tick (frame_tick),
       .paddle_hit (hit.paddle),
+      .random     (rng[1:0]),
       .ball_x     (ball_x),
       .paddle_x   (paddle_x),
       .steer_left (auto_left),
@@ -277,6 +293,11 @@ module tt_um_tiny_breakout (
   wire [9:0] step_x = next_left ? (next_steep ? -2 : -1) : (next_steep ? 2 : 1);
   wire [9:0] step_y = next_up ? -2 : 2;
 
+  // Faster frames move the ball by twice its step: a shift, i.e. just wiring
+  wire       double_step = rng[3:2] < speed_level;
+  wire [9:0] move_x      = double_step ? {step_x[8:0], 1'b0} : step_x;
+  wire [9:0] move_y      = double_step ? {step_y[8:0], 1'b0} : step_y;
+
   // What each frame update does, in priority order
   wire restart   = game_over & btn_fire;                  // new game after game over
   wire on_paddle = ~game_over & (serving | bricks_empty); // ball waits on the paddle
@@ -311,8 +332,8 @@ module tt_um_tiny_breakout (
       ball_left  <= next_left;
       ball_steep <= next_steep;
       ball_up    <= next_up;
-      ball_x     <= ball_x + step_x;
-      ball_y     <= ball_y + step_y;
+      ball_x     <= ball_x + move_x;
+      ball_y     <= ball_y + move_y;
     end
   end
 
@@ -342,6 +363,21 @@ module tt_um_tiny_breakout (
 
   // Bricks come back for a new game or level
   assign refill_bricks = frame_tick && (restart || (on_paddle && bricks_empty));
+
+  // Ball speed: each pair of brick rows has its own level, rising towards the top. With
+  // brick_row 0 (top) .. 5, inverting its top two bits gives exactly that:
+  // rows 4-5 -> 1, rows 2-3 -> 2, rows 0-1 -> 3.
+  wire [1:0] row_speed = ~brick_row[2:1];
+
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      speed_level <= 0;
+    end else if (frame_tick && on_paddle) begin
+      speed_level <= 0;
+    end else if (clear_brick && row_speed > speed_level) begin
+      speed_level <= row_speed;
+    end
+  end
 
   // ---------------------------------------------------------------------------
   // Video output
@@ -391,7 +427,7 @@ module tt_um_tiny_breakout (
   assign uio_oe  = 0;
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0],
+  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0], rng[4],
                    gp.y, gp.select, gp.up, gp.down, gp.x, gp.l, gp.r, 1'b0};
 
 endmodule

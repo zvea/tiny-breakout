@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for autoplay: paddle steering towards a pseudo-randomly chosen paddle quarter."""
+"""Unit tests for autoplay: paddle steering towards a randomly chosen paddle quarter.
+
+The random bits are an input, so the tests choose them."""
 
 import cocotb
 from cocotb.clock import Clock
@@ -13,6 +15,7 @@ async def start(dut):
     cocotb.start_soon(Clock(dut.clk, 40, unit="ns").start())
     dut.frame_tick.value = 0
     dut.paddle_hit.value = 0
+    dut.random.value = 0
     dut.ball_x.value = 0
     dut.paddle_x.value = 0
     dut.rst_n.value = 0
@@ -21,10 +24,11 @@ async def start(dut):
     await RisingEdge(dut.clk)
 
 
-async def frame(dut, paddle_hit: bool = False):
-    """One frame_tick pulse, optionally reporting a paddle hit."""
+async def frame(dut, paddle_hit: bool = False, random: int = 0):
+    """One frame_tick pulse, optionally reporting a paddle hit, with the given random bits."""
     dut.frame_tick.value = 1
     dut.paddle_hit.value = int(paddle_hit)
+    dut.random.value = random
     await RisingEdge(dut.clk)
     dut.frame_tick.value = 0
     dut.paddle_hit.value = 0
@@ -56,40 +60,24 @@ async def steers_ball_onto_the_quarter_centre(dut):
                 assert (right, left) == (int(ball_q > aim_q), int(ball_q < aim_q)), (
                     f"quarter {quarter}, paddle {paddle_x}, ball {ball_x}"
                 )
-        await frame(dut, paddle_hit=True)
+        await frame(dut, paddle_hit=True, random=(quarter + 1) % 4)
 
 
 @cocotb.test()
 async def quarter_changes_only_on_paddle_hits(dut):
     await start(dut)
     quarter = await read(dut, "aim_quarter")
-    for _ in range(40):
-        await frame(dut)
+    for r in range(40):
+        await frame(dut, random=r % 4)
         assert await read(dut, "aim_quarter") == quarter, "quarter changed without a paddle hit"
-    lfsr = await read(dut, "lfsr")
-    await frame(dut, paddle_hit=True)
-    assert await read(dut, "aim_quarter") == lfsr & 3, "new quarter comes from the random sequence"
 
 
 @cocotb.test()
-async def random_sequence_covers_all_31_nonzero_values(dut):
+async def paddle_hit_picks_the_random_quarter(dut):
     await start(dut)
-    seen = []
-    for _ in range(31):
-        seen.append(await read(dut, "lfsr"))
-        await frame(dut)
-    assert sorted(seen) == list(range(1, 32)), "maximal-length sequence, never zero"
-    assert await read(dut, "lfsr") == seen[0], "period 31"
-
-
-@cocotb.test()
-async def every_quarter_gets_picked(dut):
-    await start(dut)
-    quarters = set()
-    for _ in range(40):
-        await frame(dut, paddle_hit=True)
-        quarters.add(await read(dut, "aim_quarter"))
-    assert quarters == {0, 1, 2, 3}
+    for r in (2, 0, 3, 1, 3):
+        await frame(dut, paddle_hit=True, random=r)
+        assert await read(dut, "aim_quarter") == r
 
 
 def test_autoplay():

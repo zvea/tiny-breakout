@@ -16,6 +16,7 @@
 #include "sim.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace {
@@ -47,6 +48,7 @@ struct View {
   int ball_y = -1;
   int paddle_x = -1;    // left edge of the paddle
   int bricks = 0;       // standing bricks
+  int row_bricks[6] = {};  // standing bricks per row, 0 = top
 };
 
 // find_ball: the ball search scans the whole playfield, the slowest part; skip it when
@@ -80,7 +82,10 @@ View look(const Game &g, bool find_ball = true) {
         int k = at(x, y);
         return k != FIELD && k != WHITE && k != BLACK;
       };
-      if (is_brick(x0 + 4, y0 + 4) || is_brick(x0 + 60, y0 + 13)) v.bricks++;
+      if (is_brick(x0 + 4, y0 + 4) || is_brick(x0 + 60, y0 + 13)) {
+        v.bricks++;
+        v.row_bricks[r]++;
+      }
     }
   return v;
 }
@@ -173,12 +178,19 @@ void paddle_limits() {
 void game_over_and_restart() {
   Game g;
   g.reset();
-  int expected_lives = 2, frame = 0, missing = 0;
+  int expected_lives = 2, frame = 0, missing = 0, since_launch = 1000, prev_y = -1;
   View v = run(g, 1);
   for (; frame < 20000; frame++) {
     // Keep the paddle against the left wall, and launch whenever the ball is resting.
-    g.buttons = LEFT | (resting(v) ? FIRE : 0);
+    bool launch = resting(v);
+    g.buttons = LEFT | (launch ? FIRE : 0);
+    since_launch = launch ? 0 : since_launch + 1;
     v = run(g, 1);
+    // Every new ball starts at the base speed, 2 px per frame, however fast the last one was.
+    if (since_launch >= 2 && since_launch < 12)
+      CHECK(v.ball && std::abs(v.ball_y - prev_y) == 2, "frame %d: new ball moved %d px",
+            frame, std::abs(v.ball_y - prev_y));
+    prev_y = v.ball_y;
     if (v.lives != expected_lives) {
       CHECK(v.lives == expected_lives - 1, "frame %d: life markers %d -> %d", frame,
             expected_lives, v.lives);
@@ -225,6 +237,35 @@ void autoplay_clears_a_level() {
   CHECK(cleared, "level not cleared in %d frames (fewest bricks %d)", frame, fewest);
 }
 
+// The ball moves 2 px per frame vertically until it clears its first brick, and averages
+// 1.75 times that (3.5 px) once it has reached the top two rows.
+void ball_speeds_up() {
+  Game g;
+  g.reset();
+  g.autoplay = true;
+  View v = run(g, 1);
+  int prev_y = v.ball_y, lives = v.lives, frame = 0, samples = 0, sum = 0;
+  for (; frame < 20000 && samples < 400; frame++) {
+    v = run(g, 1);
+    int dy = std::abs(v.ball_y - prev_y);
+    prev_y = v.ball_y;
+    if (v.lives != lives) {  // a lost ball starts again at the base speed: restart the count
+      lives = v.lives;
+      samples = sum = 0;
+    }
+    if (!v.ball || dy == 0 || dy > 4) continue;  // resting on the paddle, or a new ball
+    if (v.bricks == 48) CHECK(dy == 2, "frame %d: %d px per frame before any brick", frame, dy);
+    if (v.row_bricks[0] + v.row_bricks[1] < 16) {  // the top rows have been reached
+      samples++;
+      sum += dy;
+    }
+  }
+  CHECK(samples == 400, "top rows not reached and held for 400 frames by frame %d", frame);
+  double average = samples ? double(sum) / samples : 0;
+  printf("frame %5d: average %.2f px per frame at the top rows\n", frame, average);
+  CHECK(average > 3.3 && average < 3.7, "average step %.2f px, expected about 3.5", average);
+}
+
 struct Scenario {
   const char *name;
   void (*run)();
@@ -235,6 +276,7 @@ const Scenario scenarios[] = {
     {"steering", steering},
     {"paddle_limits", paddle_limits},
     {"game_over_and_restart", game_over_and_restart},
+    {"ball_speeds_up", ball_speeds_up},
     {"autoplay_clears_a_level", autoplay_clears_a_level},
 };
 
