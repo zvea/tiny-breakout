@@ -35,11 +35,23 @@ module tt_um_tiny_breakout (
 );
 
   // ---------------------------------------------------------------------------
-  // VGA timing: 640x480 @ 60 Hz (800 x 525 total)
+  // VGA timing: 640x480 @ 60 Hz
+  // Each line is 800 clocks and each frame 525 lines; beyond the visible area
+  // come the front porch, the sync pulse and the back porch (all black).
   // ---------------------------------------------------------------------------
+  localparam H_VISIBLE    = 640;
+  localparam H_SYNC_START = 656;  // after a 16-clock front porch
+  localparam H_SYNC_END   = 752;  // 96-clock sync pulse, then a 48-clock back porch
+  localparam H_TOTAL      = 800;
+
+  localparam V_VISIBLE    = 480;
+  localparam V_SYNC_START = 490;  // after a 10-line front porch
+  localparam V_SYNC_END   = 492;  // 2-line sync pulse, then a 33-line back porch
+  localparam V_TOTAL      = 525;
+
   reg [9:0] hc, vc;
-  wire h_end = (hc == 10'd799);
-  wire v_end = (vc == 10'd524);
+  wire h_end = (hc == H_TOTAL - 1);
+  wire v_end = (vc == V_TOTAL - 1);
 
   always @(posedge clk) begin
     if (!rst_n) begin
@@ -53,14 +65,21 @@ module tt_um_tiny_breakout (
     end
   end
 
-  wire visible = (hc < 10'd640) && (vc < 10'd480);
-  wire hsync_n = ~((hc >= 10'd656) && (hc < 10'd752));
-  wire vsync_n = ~((vc == 10'd490) || (vc == 10'd491));
+  wire visible = (hc < H_VISIBLE) && (vc < V_VISIBLE);
+  wire hsync_n = ~((hc >= H_SYNC_START) && (hc < H_SYNC_END));
+  wire vsync_n = ~((vc >= V_SYNC_START) && (vc < V_SYNC_END));
 
   // ---------------------------------------------------------------------------
   // Gamepad PMOD receiver (trimmed version of Psychogenic's gamepad_pmod_driver,
   // single controller, 12 bits: {b,y,select,start,up,down,left,right,a,x,l,r})
   // ---------------------------------------------------------------------------
+  // Button positions in gp_shift
+  localparam GP_B     = 11;
+  localparam GP_START = 8;
+  localparam GP_LEFT  = 5;
+  localparam GP_RIGHT = 4;
+  localparam GP_A     = 3;
+
   reg [1:0] gp_data_s, gp_clk_s, gp_latch_s;
   reg       gp_clk_prev, gp_latch_prev;
   reg [11:0] gp_shift;
@@ -87,10 +106,9 @@ module tt_um_tiny_breakout (
       gp_latch_prev <= gp_latch_s[1];
       if (gp_clk_s[1] & ~gp_clk_prev) gp_shift <= {gp_shift[10:0], gp_data_s[1]};
       if (gp_latch_s[1] & ~gp_latch_prev) begin
-        gp_left  <= gp_present & gp_shift[5];
-        gp_right <= gp_present & gp_shift[4];
-        // B, start or A
-        gp_fire  <= gp_present & (gp_shift[11] | gp_shift[8] | gp_shift[3]);
+        gp_left  <= gp_present & gp_shift[GP_LEFT];
+        gp_right <= gp_present & gp_shift[GP_RIGHT];
+        gp_fire  <= gp_present & (gp_shift[GP_B] | gp_shift[GP_START] | gp_shift[GP_A]);
       end
     end
   end
@@ -98,6 +116,14 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   // Game state
   // ---------------------------------------------------------------------------
+  // The paddle position is stored in 4-px units (pad_q = paddle x / 4).
+  localparam PAD_MIN_Q   = 16;   // x = 64, against the left wall
+  localparam PAD_MAX_Q   = 128;  // x = 512, against the right wall
+  localparam PAD_START_Q = 72;   // x = 288, centred
+  localparam SERVE_DX    = 28;   // ball x relative to paddle x when resting on it (centred)
+  localparam SERVE_Y     = 440;  // ball y when resting on the paddle (paddle top is 448)
+  localparam SPARE_LIVES = 2;
+
   reg [9:0]  bx, by;        // ball top-left corner
   reg        vx_neg, vx_fast, vy_neg;
   reg [7:0]  pad_q;         // paddle x / 4  (paddle x = 64..512)
@@ -153,28 +179,46 @@ module tt_um_tiny_breakout (
   wire life_px = (vc[9:3] == 7'd1) && ~hc[3] &&
                  (((hc[9:4] == 6'd4) && (lives != 0)) || ((hc[9:4] == 6'd5) && lives[1]));
 
-  // Brick row colour {R,G,B} 2 bits each
+  // Colours: {R,G,B}, 2 bits each
+  localparam [5:0] BLACK     = 6'b00_00_00;
+  localparam [5:0] WHITE     = 6'b11_11_11;
+  localparam [5:0] PALE_CYAN = 6'b10_11_11;
+  localparam [5:0] GREY      = 6'b01_01_01;
+  localparam [5:0] NAVY      = 6'b00_00_01;
+  localparam [5:0] RED       = 6'b11_00_00;
+  localparam [5:0] ORANGE    = 6'b11_10_00;
+  localparam [5:0] YELLOW    = 6'b11_11_00;
+  localparam [5:0] GREEN     = 6'b00_11_00;
+  localparam [5:0] AZURE     = 6'b00_10_11;
+  localparam [5:0] VIOLET    = 6'b10_00_11;
+
+  localparam [5:0] BALL_COLOUR   = WHITE;
+  localparam [5:0] PADDLE_COLOUR = PALE_CYAN;  // also the spare-life markers
+  localparam [5:0] WALL_COLOUR   = GREY;
+  localparam [5:0] FIELD_COLOUR  = NAVY;
+
+  // Brick colour by row
   reg [5:0] brick_rgb;
   always @(*) begin
     case (vc[6:4])  // rows 4..9 -> vc[6:4] = 4,5,6,7,0,1
-      3'd4:    brick_rgb = 6'b11_00_00;  // red
-      3'd5:    brick_rgb = 6'b11_10_00;  // orange
-      3'd6:    brick_rgb = 6'b11_11_00;  // yellow
-      3'd7:    brick_rgb = 6'b00_11_00;  // green
-      3'd0:    brick_rgb = 6'b00_10_11;  // azure
-      default: brick_rgb = 6'b10_00_11;  // violet
+      3'd4:    brick_rgb = RED;
+      3'd5:    brick_rgb = ORANGE;
+      3'd6:    brick_rgb = YELLOW;
+      3'd7:    brick_rgb = GREEN;
+      3'd0:    brick_rgb = AZURE;
+      default: brick_rgb = VIOLET;
     endcase
   end
 
   reg [5:0] rgb;
   always @(*) begin
-    if (!visible)                     rgb = 6'b00_00_00;
-    else if (ball_px)                 rgb = 6'b11_11_11;
-    else if (paddle_px | life_px)     rgb = 6'b10_11_11;
-    else if (brick_px)                rgb = brick_rgb;
-    else if (wall_l | wall_r | wall_t) rgb = 6'b01_01_01;
-    else if (field)                   rgb = 6'b00_00_01;
-    else                              rgb = 6'b00_00_00;
+    if (!visible)                      rgb = BLACK;
+    else if (ball_px)                  rgb = BALL_COLOUR;
+    else if (paddle_px | life_px)      rgb = PADDLE_COLOUR;
+    else if (brick_px)                 rgb = brick_rgb;
+    else if (wall_l | wall_r | wall_t) rgb = WALL_COLOUR;
+    else if (field)                    rgb = FIELD_COLOUR;
+    else                               rgb = BLACK;
   end
 
   // Registered outputs (glitch-free)
@@ -214,7 +258,7 @@ module tt_um_tiny_breakout (
   wire go_left  = autoplay ? ap_left  : (btn_left & ~btn_right);
   wire go_right = autoplay ? ap_right : (btn_right & ~btn_left);
 
-  wire frame_tick = (vc == 10'd480) && (hc == 10'd0);
+  wire frame_tick = (vc == V_VISIBLE) && (hc == 0);  // first clock of vertical blanking
   wire ball_lost  = by[9] | (by[8:5] == 4'b1111);  // by >= 480
   wire cleared    = ~|bricks;
 
@@ -238,13 +282,13 @@ module tt_um_tiny_breakout (
 
   always @(posedge clk) begin
     if (!rst_n) begin
-      bx       <= 10'd316;  // resting on the paddle
-      by       <= 10'd440;
+      bx       <= PAD_START_Q * 4 + SERVE_DX;  // resting on the paddle
+      by       <= SERVE_Y;
       vx_neg   <= 0;
       vx_fast  <= 0;
       vy_neg   <= 1;
-      pad_q    <= 8'd72;
-      lives    <= 2'd2;
+      pad_q    <= PAD_START_Q;
+      lives    <= SPARE_LIVES;
       serve    <= 1;
       gameover <= 0;
       bricks   <= {48{1'b1}};
@@ -262,21 +306,21 @@ module tt_um_tiny_breakout (
       hit_p <= 0;
 
       // Paddle
-      if (go_left && pad_q != 8'd16) pad_q <= pad_q - 8'd1;
-      else if (go_right && pad_q != 8'd128) pad_q <= pad_q + 8'd1;
+      if (go_left && pad_q != PAD_MIN_Q) pad_q <= pad_q - 8'd1;
+      else if (go_right && pad_q != PAD_MAX_Q) pad_q <= pad_q + 8'd1;
 
       if (gameover) begin
         if (btn_fire) begin
           gameover <= 0;
-          lives    <= 2'd2;
+          lives    <= SPARE_LIVES;
           serve    <= 1;
           bricks   <= {48{1'b1}};
         end
       end else if (serve | cleared) begin
         if (cleared) bricks <= {48{1'b1}};
         serve   <= ~btn_fire;
-        bx      <= padx + 10'd28;
-        by      <= 10'd440;
+        bx      <= padx + SERVE_DX;
+        by      <= SERVE_Y;
         vx_neg  <= 0;
         vx_fast <= 0;
         vy_neg  <= 1;
