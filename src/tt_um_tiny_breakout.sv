@@ -156,7 +156,13 @@ module tt_um_tiny_breakout (
   localparam logic [1:0] SPARE_LIVES = 2;
 
   logic [9:0]  bx, by;        // ball top-left corner
-  logic        vx_neg, vx_fast, vy_neg;
+  // Ball direction and speed, stored as sign and magnitude because that is how the game
+  // changes them: walls set only the horizontal direction, the paddle sets the angle,
+  // bricks flip only the vertical direction. (Two's-complement velocities need
+  // negations and absolute values instead: ~6% more logic.)
+  logic        ball_left;   // moving left (else right)
+  logic        ball_steep;  // 2 px per frame horizontally (else 1)
+  logic        ball_up;     // moving up (else down); always 2 px per frame vertically
   logic [7:0]  pad_q;         // paddle x / 4  (paddle x = 64..512)
   logic [1:0]  lives;         // spare balls
   logic        serve;         // ball resting on the paddle
@@ -346,13 +352,14 @@ module tt_um_tiny_breakout (
   wire ball_lost  = (by >= V_VISIBLE);
   wire cleared    = ~|bricks;
 
-  // Next ball direction from this frame's collisions
-  wire n_vy_neg  = hit.p ? 1 : hit.t ? 0 : (vy_neg ^ hit.b);
-  wire p_vx_neg  = hit.p ? ~hit_zone[1] : vx_neg;
-  wire n_vx_neg  = hit.l ? 0 : hit.r ? 1 : p_vx_neg;
-  wire n_vx_fast = hit.p ? (hit_zone[1] ~^ hit_zone[0]) : vx_fast;  // outer quarters = steep x
-  wire [9:0] vx  = n_vx_neg ? (n_vx_fast ? -2 : -1) : (n_vx_fast ? 2 : 1);
-  wire [9:0] vy  = n_vy_neg ? -2 : 2;
+  // Next ball direction from this frame's collisions. A paddle hit sends the ball up, left
+  // from the left half and right from the right half, steeply from the outer quarters.
+  wire next_up     = hit.p ? 1 : hit.t ? 0 : (ball_up ^ hit.b);
+  wire paddle_left = hit.p ? ~hit_zone[1] : ball_left;
+  wire next_left   = hit.l ? 0 : hit.r ? 1 : paddle_left;
+  wire next_steep  = hit.p ? (hit_zone[1] ~^ hit_zone[0]) : ball_steep;
+  wire [9:0] step_x = next_left ? (next_steep ? -2 : -1) : (next_steep ? 2 : 1);
+  wire [9:0] step_y = next_up ? -2 : 2;
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
@@ -386,23 +393,23 @@ module tt_um_tiny_breakout (
   // Ball position and direction
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      bx      <= PAD_START_Q * 4 + SERVE_DX;  // resting on the paddle
-      by      <= SERVE_Y;
-      vx_neg  <= 0;
-      vx_fast <= 0;
-      vy_neg  <= 1;
+      bx         <= PAD_START_Q * 4 + SERVE_DX;  // resting on the paddle
+      by         <= SERVE_Y;
+      ball_left  <= 0;
+      ball_steep <= 0;
+      ball_up    <= 1;
     end else if (frame_tick && on_paddle) begin
-      bx      <= padx + SERVE_DX;
-      by      <= SERVE_Y;
-      vx_neg  <= 0;
-      vx_fast <= 0;
-      vy_neg  <= 1;
+      bx         <= padx + SERVE_DX;
+      by         <= SERVE_Y;
+      ball_left  <= 0;
+      ball_steep <= 0;
+      ball_up    <= 1;
     end else if (frame_tick && fly) begin
-      vx_neg  <= n_vx_neg;
-      vx_fast <= n_vx_fast;
-      vy_neg  <= n_vy_neg;
-      bx      <= bx + vx;
-      by      <= by + vy;
+      ball_left  <= next_left;
+      ball_steep <= next_steep;
+      ball_up    <= next_up;
+      bx         <= bx + step_x;
+      by         <= by + step_y;
     end
   end
 
