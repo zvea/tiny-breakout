@@ -10,6 +10,7 @@ struct Game {
   Vtt_um_tiny_breakout top;
   uint16_t pad_bits = 0;  // {b,y,sel,start,up,down,left,right,a,x,l,r}
   bool autoplay = false;
+  uint8_t buttons = 0;  // direct button pins ui_in[2:0]: bit 0 LEFT, 1 RIGHT, 2 FIRE
   std::vector<uint8_t> fb = std::vector<uint8_t>(640 * 480);  // raw uo_out per pixel
 
   // One eval per clock: present a rising edge by resetting Verilator's last-seen clock.
@@ -27,7 +28,7 @@ struct Game {
   }
   // Simulates exactly one frame (800 x 525 clocks), starting at h_pos = v_pos = 0.
   void frame() {
-    const uint8_t base = autoplay << 3;
+    const uint8_t base = (buttons & 7) | (autoplay << 3);
     // Gamepad PMOD report once per frame, in the first ~1040 cycles (top border):
     // 24 bits (2nd controller first, all zeros), 40-cycle clock (data stable while clk high),
     // then a latch pulse.

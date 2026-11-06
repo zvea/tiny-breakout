@@ -15,10 +15,6 @@ test/unit/sim_build/
 test/unit/*.xml
 __pycache__/
 .pytest_cache/
-sim/*.ppm
-sim/*.png
-sim/harness
-sim/breakout.cpp
 harden.log
 .venv/
 tt/
@@ -27,3 +23,4 @@ sim/play/obj_*/
 sim/play/build.err
 gds_render.png
 gds_render_preview.svg
+test/system/build/
