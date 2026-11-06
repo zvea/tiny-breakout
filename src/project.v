@@ -59,9 +59,9 @@ module tt_um_tiny_breakout (
       vc <= 0;
     end else if (h_end) begin
       hc <= 0;
-      vc <= v_end ? 10'd0 : vc + 10'd1;
+      vc <= v_end ? 0 : vc + 1;
     end else begin
-      hc <= hc + 10'd1;
+      hc <= hc + 1;
     end
   end
 
@@ -94,7 +94,7 @@ module tt_um_tiny_breakout (
       gp_latch_s    <= 0;
       gp_clk_prev   <= 0;
       gp_latch_prev <= 0;
-      gp_shift      <= 12'hfff;
+      gp_shift      <= 12'hfff;  // all ones = no controller
       gp_left       <= 0;
       gp_right      <= 0;
       gp_fire       <= 0;
@@ -131,13 +131,14 @@ module tt_um_tiny_breakout (
   reg        serve;         // ball resting on the paddle
   reg        gameover;
   reg [47:0] bricks;
+  localparam [47:0] ALL_BRICKS = {48{1'b1}};
 
   // Per-frame collision flags
   reg hit_l, hit_r, hit_t, hit_b, hit_p;
   reg [1:0] hit_zone;
 
   wire autoplay = ui_in[3];
-  wire [9:0] padx = {pad_q, 2'b00};
+  wire [9:0] padx = pad_q * 4;
 
   // ---------------------------------------------------------------------------
   // Pixel classification for the current beam position
@@ -145,9 +146,8 @@ module tt_um_tiny_breakout (
   // Brick field: 8 columns x 64 px (x 64..575), 6 rows x 16 px (y 64..159)
   wire [3:0] hb = hc[9:6];
   wire [5:0] vb = vc[9:4];
-  wire [7:0] col_sel = {hb == 4'd8, hb == 4'd7, hb == 4'd6, hb == 4'd5,
-                        hb == 4'd4, hb == 4'd3, hb == 4'd2, hb == 4'd1};
-  wire [5:0] row_sel = {vb == 6'd9, vb == 6'd8, vb == 6'd7, vb == 6'd6, vb == 6'd5, vb == 6'd4};
+  wire [7:0] col_sel = {hb == 8, hb == 7, hb == 6, hb == 5, hb == 4, hb == 3, hb == 2, hb == 1};
+  wire [5:0] row_sel = {vb == 9, vb == 8, vb == 7, vb == 6, vb == 5, vb == 4};
 
   // One-hot select of the brick under the beam (bit = row * 8 + col).
   // Written as whole-vector operations: same gates, much faster to simulate.
@@ -159,16 +159,16 @@ module tt_um_tiny_breakout (
   wire brick_px  = (|(brick_sel & bricks)) & ~brick_gap;
 
   // Walls: left x 56..63, right x 576..583, top y 24..31
-  wire wall_l = (hc[9:3] == 7'd7) && (vc[9:3] >= 7'd3);
-  wire wall_r = (hc[9:3] == 7'd72) && (vc[9:3] >= 7'd3);
-  wire wall_t = (vc[9:3] == 7'd3) && (hc[9:3] >= 7'd7) && (hc[9:3] <= 7'd72);
+  wire wall_l = (hc[9:3] == 7) && (vc[9:3] >= 3);
+  wire wall_r = (hc[9:3] == 72) && (vc[9:3] >= 3);
+  wire wall_t = (vc[9:3] == 3) && (hc[9:3] >= 7) && (hc[9:3] <= 72);
 
   // Playfield interior (dark background)
   wire field = (|col_sel) && (vc[9:5] != 0);
 
   // Paddle: 64 x 8 at y 448..455
   wire [9:0] dpx = hc - padx;
-  wire paddle_px = (vc[9:3] == 7'd56) && (dpx[9:6] == 0);
+  wire paddle_px = (vc[9:3] == 56) && (dpx[9:6] == 0);
 
   // Ball: 8 x 8
   wire [9:0] dbx = hc - bx;
@@ -176,8 +176,8 @@ module tt_um_tiny_breakout (
   wire ball_px = (dbx[9:3] == 0) && (dby[9:3] == 0) && ~gameover;
 
   // Spare lives: 8x8 squares at y 8..15, x 64, 80
-  wire life_px = (vc[9:3] == 7'd1) && ~hc[3] &&
-                 (((hc[9:4] == 6'd4) && (lives != 0)) || ((hc[9:4] == 6'd5) && lives[1]));
+  wire life_px = (vc[9:3] == 1) && ~hc[3] &&
+                 (((hc[9:4] == 4) && (lives != 0)) || ((hc[9:4] == 5) && lives[1]));
 
   // Colours: {R,G,B}, 2 bits each
   localparam [5:0] BLACK     = 6'b00_00_00;
@@ -201,11 +201,11 @@ module tt_um_tiny_breakout (
   reg [5:0] brick_rgb;
   always @(*) begin
     case (vc[6:4])  // rows 4..9 -> vc[6:4] = 4,5,6,7,0,1
-      3'd4:    brick_rgb = RED;
-      3'd5:    brick_rgb = ORANGE;
-      3'd6:    brick_rgb = YELLOW;
-      3'd7:    brick_rgb = GREEN;
-      3'd0:    brick_rgb = AZURE;
+      4:       brick_rgb = RED;
+      5:       brick_rgb = ORANGE;
+      6:       brick_rgb = YELLOW;
+      7:       brick_rgb = GREEN;
+      0:       brick_rgb = AZURE;
       default: brick_rgb = VIOLET;
     endcase
   end
@@ -252,28 +252,28 @@ module tt_um_tiny_breakout (
   // Ball centre (bx + 4) at zone centre (padx + 16 * zone + 8)  <=>  bx / 4 = pad_q + 4 * zone + 1
   reg [4:0] lfsr;     // x^5 + x^3 + 1, advanced every frame
   reg [1:0] ap_zone;
-  wire [7:0] pad_aim = pad_q + {4'd0, ap_zone, 2'b01};
+  wire [7:0] pad_aim = pad_q + ap_zone * 4 + 1;
   wire ap_right = bx[9:2] > pad_aim;
   wire ap_left  = bx[9:2] < pad_aim;
   wire go_left  = autoplay ? ap_left  : (btn_left & ~btn_right);
   wire go_right = autoplay ? ap_right : (btn_right & ~btn_left);
 
   wire frame_tick = (vc == V_VISIBLE) && (hc == 0);  // first clock of vertical blanking
-  wire ball_lost  = by[9] | (by[8:5] == 4'b1111);  // by >= 480
+  wire ball_lost  = (by >= V_VISIBLE);
   wire cleared    = ~|bricks;
 
   // Next ball direction from this frame's collisions
-  wire n_vy_neg  = hit_p ? 1'b1 : hit_t ? 1'b0 : (vy_neg ^ hit_b);
+  wire n_vy_neg  = hit_p ? 1 : hit_t ? 0 : (vy_neg ^ hit_b);
   wire p_vx_neg  = hit_p ? ~hit_zone[1] : vx_neg;
-  wire n_vx_neg  = hit_l ? 1'b0 : hit_r ? 1'b1 : p_vx_neg;
+  wire n_vx_neg  = hit_l ? 0 : hit_r ? 1 : p_vx_neg;
   wire n_vx_fast = hit_p ? (hit_zone[1] ~^ hit_zone[0]) : vx_fast;  // outer quarters = steep x
-  wire [9:0] vx  = n_vx_neg ? (n_vx_fast ? -10'd2 : -10'd1) : (n_vx_fast ? 10'd2 : 10'd1);
-  wire [9:0] vy  = n_vy_neg ? -10'd2 : 10'd2;
+  wire [9:0] vx  = n_vx_neg ? (n_vx_fast ? -2 : -1) : (n_vx_fast ? 2 : 1);
+  wire [9:0] vy  = n_vy_neg ? -2 : 2;
 
   always @(posedge clk) begin
     if (!rst_n) begin
-      lfsr    <= 5'b00001;
-      ap_zone <= 2'd1;
+      lfsr    <= 1;  // any non-zero seed
+      ap_zone <= 1;
     end else if (frame_tick) begin
       lfsr <= {lfsr[3:0], lfsr[4] ^ lfsr[2]};
       if (hit_p) ap_zone <= lfsr[1:0];
@@ -291,7 +291,7 @@ module tt_um_tiny_breakout (
       lives    <= SPARE_LIVES;
       serve    <= 1;
       gameover <= 0;
-      bricks   <= {48{1'b1}};
+      bricks   <= ALL_BRICKS;
       hit_l    <= 0;
       hit_r    <= 0;
       hit_t    <= 0;
@@ -306,18 +306,18 @@ module tt_um_tiny_breakout (
       hit_p <= 0;
 
       // Paddle
-      if (go_left && pad_q != PAD_MIN_Q) pad_q <= pad_q - 8'd1;
-      else if (go_right && pad_q != PAD_MAX_Q) pad_q <= pad_q + 8'd1;
+      if (go_left && pad_q != PAD_MIN_Q) pad_q <= pad_q - 1;
+      else if (go_right && pad_q != PAD_MAX_Q) pad_q <= pad_q + 1;
 
       if (gameover) begin
         if (btn_fire) begin
           gameover <= 0;
           lives    <= SPARE_LIVES;
           serve    <= 1;
-          bricks   <= {48{1'b1}};
+          bricks   <= ALL_BRICKS;
         end
       end else if (serve | cleared) begin
-        if (cleared) bricks <= {48{1'b1}};
+        if (cleared) bricks <= ALL_BRICKS;
         serve   <= ~btn_fire;
         bx      <= padx + SERVE_DX;
         by      <= SERVE_Y;
@@ -327,7 +327,7 @@ module tt_um_tiny_breakout (
       end else if (ball_lost) begin
         if (lives == 0) gameover <= 1;
         else begin
-          lives <= lives - 2'd1;
+          lives <= lives - 1;
           serve <= 1;
         end
       end else begin
