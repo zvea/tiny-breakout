@@ -202,10 +202,15 @@ module tt_um_tiny_breakout (
   wire btn_right = ui_in[1] | gp_right;
   wire btn_fire  = ui_in[2] | gp_fire | autoplay;
 
-  // Autoplay: steer the paddle centre (pad_q + 7) towards the ball (bx / 4)
-  wire [7:0] pad_ctr = pad_q + 8'd7;
-  wire ap_right = bx[9:2] > pad_ctr;
-  wire ap_left  = bx[9:2] < pad_ctr;
+  // Autoplay: steer the paddle so the ball lands in paddle zone ap_zone (0..3, 16 px each).
+  // The zone is re-picked pseudo-randomly after every paddle hit; always aiming at the same
+  // spot makes the ball settle into a closed loop that never reaches the remaining bricks.
+  // Ball centre (bx + 4) at zone centre (padx + 16 * zone + 8)  <=>  bx / 4 = pad_q + 4 * zone + 1
+  reg [4:0] lfsr;     // x^5 + x^3 + 1, advanced every frame
+  reg [1:0] ap_zone;
+  wire [7:0] pad_aim = pad_q + {4'd0, ap_zone, 2'b01};
+  wire ap_right = bx[9:2] > pad_aim;
+  wire ap_left  = bx[9:2] < pad_aim;
   wire go_left  = autoplay ? ap_left  : (btn_left & ~btn_right);
   wire go_right = autoplay ? ap_right : (btn_right & ~btn_left);
 
@@ -220,6 +225,16 @@ module tt_um_tiny_breakout (
   wire n_vx_fast = hit_p ? (hit_zone[1] ~^ hit_zone[0]) : vx_fast;  // outer quarters = steep x
   wire [9:0] vx  = n_vx_neg ? (n_vx_fast ? -10'd2 : -10'd1) : (n_vx_fast ? 10'd2 : 10'd1);
   wire [9:0] vy  = n_vy_neg ? -10'd2 : 10'd2;
+
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      lfsr    <= 5'b00001;
+      ap_zone <= 2'd1;
+    end else if (frame_tick) begin
+      lfsr <= {lfsr[3:0], lfsr[4] ^ lfsr[2]};
+      if (hit_p) ap_zone <= lfsr[1:0];
+    end
+  end
 
   always @(posedge clk) begin
     if (!rst_n) begin
