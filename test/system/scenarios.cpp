@@ -237,29 +237,44 @@ void autoplay_clears_a_level() {
   CHECK(cleared, "level not cleared in %d frames (fewest bricks %d)", frame, fewest);
 }
 
-// The ball speeds up with the bricks it clears: it moves vertically 2 px per frame at
-// first, 4 px once it has cleared 4 bricks and 6 px once it has cleared 8.
+// The ball speeds up a half step every 4 bricks it clears: vertically it moves 2 px per
+// frame at first (1x), then alternately 2 and 4 (1.5x), 4 (2x), alternately 4 and 6
+// (2.5x), and 6 px (3x) once it has cleared 16.
 void ball_speeds_up() {
   Game g;
   g.reset();
   g.autoplay = true;
   View v = run(g, 2);  // the wall is blank for the first frame, while it fills
-  int prev_y = v.ball_y, prev_bricks = v.bricks, frame = 0, checked[3] = {};
-  for (; frame < 6000 && v.lives == 2 && v.bricks > 36; frame++) {
+  int prev_y = v.ball_y, prev_bricks = v.bricks, frame = 0, checked[5] = {};
+  int prev_dy = 0, prev_step = -1;
+  for (; frame < 10000 && v.lives == 2 && v.bricks > 28; frame++) {
     v = run(g, 1);
     int dy = std::abs(v.ball_y - prev_y), cleared = 48 - v.bricks;
     bool steady = v.bricks == prev_bricks;  // the picture's count lags a brick cleared mid-frame
     prev_y = v.ball_y;
     prev_bricks = v.bricks;
-    if (!v.ball || dy == 0 || !steady || resting(v)) continue;
-    int expected = cleared < 4 ? 2 : cleared < 8 ? 4 : 6;
-    CHECK(dy == expected, "frame %d: %d bricks cleared, moved %d px (expected %d)", frame, cleared,
-          dy, expected);
-    checked[expected / 2 - 1]++;
+    if (!v.ball || dy == 0 || !steady || resting(v)) {
+      prev_step = -1;  // no alternation check across a gap
+      continue;
+    }
+    int step = cleared / 4 < 4 ? cleared / 4 : 4;  // 0..4: 1x, 1.5x, 2x, 2.5x, 3x
+    if (step % 2 == 0) {
+      CHECK(dy == 2 + step, "frame %d: %d bricks cleared, moved %d px (expected %d)", frame,
+            cleared, dy, 2 + step);
+    } else {
+      CHECK(dy == 1 + step || dy == 3 + step, "frame %d: %d bricks cleared, moved %d px (expected %d or %d)",
+            frame, cleared, dy, 1 + step, 3 + step);
+      if (prev_step == step)
+        CHECK(dy != prev_dy, "frame %d: %d bricks cleared, moved %d px twice in a row", frame,
+              cleared, dy);
+    }
+    checked[step]++;
+    prev_dy = dy;
+    prev_step = step;
   }
-  printf("frame %5d: frames checked at 1x/2x/3x: %d/%d/%d\n", frame, checked[0], checked[1],
-         checked[2]);
-  CHECK(checked[0] > 0 && checked[1] > 0 && checked[2] > 0, "not every speed was reached");
+  printf("frame %5d: frames checked at 1x/1.5x/2x/2.5x/3x: %d/%d/%d/%d/%d\n", frame, checked[0],
+         checked[1], checked[2], checked[3], checked[4]);
+  for (int i = 0; i < 5; i++) CHECK(checked[i] > 0, "speed step %d was never reached", i);
 }
 
 // A brick turns the ball back through the edge it came in by: hit on a side, the ball

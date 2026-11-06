@@ -113,10 +113,12 @@ module tt_um_tiny_breakout (
   logic ball_up;     // moving up (else down); 2 px per frame vertically
 
   // Speed: the ball and the paddle move 1, 2 or 3 times per frame, on the first lines of
-  // vertical blanking (480, 481, 482), each time by their usual step. Twice per frame after
-  // the current ball has cleared 4 bricks, three times after 8. Back on the paddle (new
-  // ball, level or game), the speed starts again at once per frame.
-  logic [3:0] speed_level;  // bricks cleared by the current ball, up to 8
+  // vertical blanking (480, 481, 482), each time by their usual step. The speed goes up a
+  // half step every 4 bricks the current ball clears: 1x, 1.5x, 2x, 2.5x, then 3x after 16.
+  // A half step alternates frames (1.5x: 1, 2, 1, 2 ... moves). Back on the paddle (new
+  // ball, level or game), the speed starts again at 1x.
+  logic [4:0] speed_level;  // bricks cleared by the current ball, up to 16
+  logic       odd_frame;    // alternates every frame, for the half steps
 
   logic [1:0] lives;      // spare balls; losing a ball with none left wraps to 3: game over
   logic       serving;    // ball resting on the paddle, waiting to be launched
@@ -321,10 +323,11 @@ module tt_um_tiny_breakout (
   wire [9:0] step_x = next_left ? (next_steep ? -2 : -1) : (next_steep ? 2 : 1);
   wire [7:0] step_y_half = next_up ? -1 : 1;
 
-  // Moves per frame: 1 + speed_level / 4, i.e. 1, 2 or 3. They happen at the start of lines
-  // 480, 481 and 482 (the first is frame_tick): line 480 + k moves if k < moves. Collision
-  // flags are cleared at frame_tick, so the extra moves keep the new direction.
-  wire [1:0] moves     = 2'd1 + speed_level[3:2];
+  // Moves per frame: 1 + speed_level / 8, plus 1 in odd frames for a half step
+  // (speed_level / 4 odd): 1, 1|2, 2, 2|3, 3. They happen at the start of lines 480, 481
+  // and 482 (the first is frame_tick): line 480 + k moves if k < moves. Collision flags
+  // are cleared at frame_tick, so the extra moves keep the new direction.
+  wire [1:0] moves     = 2'd1 + speed_level[4:3] + 2'(speed_level[2] & odd_frame);
   wire       move_tick = (h_pos == 0) && (v_pos[9:2] == SCREEN_H[9:2]) && (v_pos[1:0] < moves);
 
   // What each frame update does, in priority order
@@ -393,9 +396,14 @@ module tt_um_tiny_breakout (
       speed_level <= 0;
     end else if (frame_tick && on_paddle) begin
       speed_level <= 0;
-    end else if (clear_brick && !speed_level[3]) begin  // stops at 8
+    end else if (clear_brick && !speed_level[4]) begin  // stops at 16
       speed_level <= speed_level + 1;
     end
+  end
+
+  always_ff @(posedge clk) begin
+    if (!rst_n) odd_frame <= 0;
+    else if (frame_tick) odd_frame <= ~odd_frame;
   end
 
   // ---------------------------------------------------------------------------
