@@ -5,6 +5,11 @@
  *
  * Tiny Breakout: a brick-breaker game in a single Tiny Tapeout tile.
  *
+ * Style: SystemVerilog. `logic` for all variables, always_ff for flip-flops,
+ * always_comb for combinational blocks, and `wire x = ...` only for one-line
+ * continuous definitions (a `logic x = ...` declaration would be a one-time
+ * initialiser, not a continuous assignment).
+ *
  *   uo_out  : TinyVGA PMOD (640x480 @ 60 Hz, 25.175 MHz clock)
  *   ui_in[4]: Gamepad PMOD latch   (Psychogenic SNES Gamepad PMOD)
  *   ui_in[5]: Gamepad PMOD clock
@@ -24,14 +29,14 @@
 `default_nettype none
 
 module tt_um_tiny_breakout (
-    input  wire [7:0] ui_in,    // Dedicated inputs
-    output wire [7:0] uo_out,   // Dedicated outputs
-    input  wire [7:0] uio_in,   // IOs: Input path
-    output wire [7:0] uio_out,  // IOs: Output path
-    output wire [7:0] uio_oe,   // IOs: Enable path (active high: 0=input, 1=output)
-    input  wire       ena,      // always 1 when the design is powered, so you can ignore it
-    input  wire       clk,      // clock
-    input  wire       rst_n     // reset_n - low to reset
+    input  logic [7:0] ui_in,    // Dedicated inputs
+    output logic [7:0] uo_out,   // Dedicated outputs
+    input  logic [7:0] uio_in,   // IOs: Input path
+    output logic [7:0] uio_out,  // IOs: Output path
+    output logic [7:0] uio_oe,   // IOs: Enable path (active high: 0=input, 1=output)
+    input  logic       ena,      // always 1 when the design is powered, so you can ignore it
+    input  logic       clk,      // clock
+    input  logic       rst_n     // reset_n - low to reset
 );
 
   // ---------------------------------------------------------------------------
@@ -39,21 +44,21 @@ module tt_um_tiny_breakout (
   // Each line is 800 clocks and each frame 525 lines; beyond the visible area
   // come the front porch, the sync pulse and the back porch (all black).
   // ---------------------------------------------------------------------------
-  localparam H_VISIBLE    = 640;
-  localparam H_SYNC_START = 656;  // after a 16-clock front porch
-  localparam H_SYNC_END   = 752;  // 96-clock sync pulse, then a 48-clock back porch
-  localparam H_TOTAL      = 800;
+  localparam logic [9:0] H_VISIBLE    = 640;
+  localparam logic [9:0] H_SYNC_START = 656;  // after a 16-clock front porch
+  localparam logic [9:0] H_SYNC_END   = 752;  // 96-clock sync pulse, then a 48-clock back porch
+  localparam logic [9:0] H_TOTAL      = 800;
 
-  localparam V_VISIBLE    = 480;
-  localparam V_SYNC_START = 490;  // after a 10-line front porch
-  localparam V_SYNC_END   = 492;  // 2-line sync pulse, then a 33-line back porch
-  localparam V_TOTAL      = 525;
+  localparam logic [9:0] V_VISIBLE    = 480;
+  localparam logic [9:0] V_SYNC_START = 490;  // after a 10-line front porch
+  localparam logic [9:0] V_SYNC_END   = 492;  // 2-line sync pulse, then a 33-line back porch
+  localparam logic [9:0] V_TOTAL      = 525;
 
-  reg [9:0] hc, vc;
+  logic [9:0] hc, vc;
   wire h_end = (hc == H_TOTAL - 1);
   wire v_end = (vc == V_TOTAL - 1);
 
-  always @(posedge clk) begin
+  always_ff @(posedge clk) begin
     if (!rst_n) begin
       hc <= 0;
       vc <= 0;
@@ -74,27 +79,27 @@ module tt_um_tiny_breakout (
   // single controller, 12 bits: {b,y,select,start,up,down,left,right,a,x,l,r})
   // ---------------------------------------------------------------------------
   // Button positions in gp_shift
-  localparam GP_B     = 11;
-  localparam GP_START = 8;
-  localparam GP_LEFT  = 5;
-  localparam GP_RIGHT = 4;
-  localparam GP_A     = 3;
+  localparam int GP_B     = 11;
+  localparam int GP_START = 8;
+  localparam int GP_LEFT  = 5;
+  localparam int GP_RIGHT = 4;
+  localparam int GP_A     = 3;
 
-  reg [1:0] gp_data_s, gp_clk_s, gp_latch_s;
-  reg       gp_clk_prev, gp_latch_prev;
-  reg [11:0] gp_shift;
-  reg       gp_left, gp_right, gp_fire;
+  logic [1:0]  gp_data_s, gp_clk_s, gp_latch_s;  // 2-flop synchronisers
+  logic        gp_clk_prev, gp_latch_prev;
+  logic [11:0] gp_shift;
+  logic        gp_left, gp_right, gp_fire;
 
   wire gp_present = ~&gp_shift;  // all ones => no controller
 
-  always @(posedge clk) begin
+  always_ff @(posedge clk) begin
     if (!rst_n) begin
       gp_data_s     <= 0;
       gp_clk_s      <= 0;
       gp_latch_s    <= 0;
       gp_clk_prev   <= 0;
       gp_latch_prev <= 0;
-      gp_shift      <= 12'hfff;  // all ones = no controller
+      gp_shift      <= '1;  // all ones = no controller
       gp_left       <= 0;
       gp_right      <= 0;
       gp_fire       <= 0;
@@ -117,25 +122,26 @@ module tt_um_tiny_breakout (
   // Game state
   // ---------------------------------------------------------------------------
   // The paddle position is stored in 4-px units (pad_q = paddle x / 4).
-  localparam PAD_MIN_Q   = 16;   // x = 64, against the left wall
-  localparam PAD_MAX_Q   = 128;  // x = 512, against the right wall
-  localparam PAD_START_Q = 72;   // x = 288, centred
-  localparam SERVE_DX    = 28;   // ball x relative to paddle x when resting on it (centred)
-  localparam SERVE_Y     = 440;  // ball y when resting on the paddle (paddle top is 448)
-  localparam SPARE_LIVES = 2;
+  localparam logic [7:0] PAD_MIN_Q   = 16;   // x = 64, against the left wall
+  localparam logic [7:0] PAD_MAX_Q   = 128;  // x = 512, against the right wall
+  localparam logic [7:0] PAD_START_Q = 72;   // x = 288, centred
+  localparam logic [9:0] SERVE_DX    = 28;   // ball x relative to paddle x when resting on it (centred)
+  localparam logic [9:0] SERVE_Y     = 440;  // ball y when resting on the paddle (paddle top is 448)
+  localparam logic [1:0] SPARE_LIVES = 2;
 
-  reg [9:0]  bx, by;        // ball top-left corner
-  reg        vx_neg, vx_fast, vy_neg;
-  reg [7:0]  pad_q;         // paddle x / 4  (paddle x = 64..512)
-  reg [1:0]  lives;         // spare balls
-  reg        serve;         // ball resting on the paddle
-  reg        gameover;
-  reg [47:0] bricks;
-  localparam [47:0] ALL_BRICKS = {48{1'b1}};
+  logic [9:0]  bx, by;        // ball top-left corner
+  logic        vx_neg, vx_fast, vy_neg;
+  logic [7:0]  pad_q;         // paddle x / 4  (paddle x = 64..512)
+  logic [1:0]  lives;         // spare balls
+  logic        serve;         // ball resting on the paddle
+  logic        gameover;
+  logic [47:0] bricks;
+  // Not '1: yosys's built-in frontend sizes '1 in a parameter as a single bit (= 48'h1).
+  localparam logic [47:0] ALL_BRICKS = {48{1'b1}};
 
   // Per-frame collision flags
-  reg hit_l, hit_r, hit_t, hit_b, hit_p;
-  reg [1:0] hit_zone;
+  logic hit_l, hit_r, hit_t, hit_b, hit_p;
+  logic [1:0] hit_zone;
 
   wire autoplay = ui_in[3];
   wire [9:0] padx = pad_q * 4;
@@ -180,26 +186,26 @@ module tt_um_tiny_breakout (
                  (((hc[9:4] == 4) && (lives != 0)) || ((hc[9:4] == 5) && lives[1]));
 
   // Colours: {R,G,B}, 2 bits each
-  localparam [5:0] BLACK     = 6'b00_00_00;
-  localparam [5:0] WHITE     = 6'b11_11_11;
-  localparam [5:0] PALE_CYAN = 6'b10_11_11;
-  localparam [5:0] GREY      = 6'b01_01_01;
-  localparam [5:0] NAVY      = 6'b00_00_01;
-  localparam [5:0] RED       = 6'b11_00_00;
-  localparam [5:0] ORANGE    = 6'b11_10_00;
-  localparam [5:0] YELLOW    = 6'b11_11_00;
-  localparam [5:0] GREEN     = 6'b00_11_00;
-  localparam [5:0] AZURE     = 6'b00_10_11;
-  localparam [5:0] VIOLET    = 6'b10_00_11;
+  localparam logic [5:0] BLACK     = 6'b00_00_00;
+  localparam logic [5:0] WHITE     = 6'b11_11_11;
+  localparam logic [5:0] PALE_CYAN = 6'b10_11_11;
+  localparam logic [5:0] GREY      = 6'b01_01_01;
+  localparam logic [5:0] NAVY      = 6'b00_00_01;
+  localparam logic [5:0] RED       = 6'b11_00_00;
+  localparam logic [5:0] ORANGE    = 6'b11_10_00;
+  localparam logic [5:0] YELLOW    = 6'b11_11_00;
+  localparam logic [5:0] GREEN     = 6'b00_11_00;
+  localparam logic [5:0] AZURE     = 6'b00_10_11;
+  localparam logic [5:0] VIOLET    = 6'b10_00_11;
 
-  localparam [5:0] BALL_COLOUR   = WHITE;
-  localparam [5:0] PADDLE_COLOUR = PALE_CYAN;  // also the spare-life markers
-  localparam [5:0] WALL_COLOUR   = GREY;
-  localparam [5:0] FIELD_COLOUR  = NAVY;
+  localparam logic [5:0] BALL_COLOUR   = WHITE;
+  localparam logic [5:0] PADDLE_COLOUR = PALE_CYAN;  // also the spare-life markers
+  localparam logic [5:0] WALL_COLOUR   = GREY;
+  localparam logic [5:0] FIELD_COLOUR  = NAVY;
 
   // Brick colour by row
-  reg [5:0] brick_rgb;
-  always @(*) begin
+  logic [5:0] brick_rgb;
+  always_comb begin
     case (vc[6:4])  // rows 4..9 -> vc[6:4] = 4,5,6,7,0,1
       4:       brick_rgb = RED;
       5:       brick_rgb = ORANGE;
@@ -210,8 +216,8 @@ module tt_um_tiny_breakout (
     endcase
   end
 
-  reg [5:0] rgb;
-  always @(*) begin
+  logic [5:0] rgb;
+  always_comb begin
     if (!visible)                      rgb = BLACK;
     else if (ball_px)                  rgb = BALL_COLOUR;
     else if (paddle_px | life_px)      rgb = PADDLE_COLOUR;
@@ -222,9 +228,9 @@ module tt_um_tiny_breakout (
   end
 
   // Registered outputs (glitch-free)
-  reg [5:0] rgb_q;
-  reg hs_q, vs_q;
-  always @(posedge clk) begin
+  logic [5:0] rgb_q;
+  logic hs_q, vs_q;
+  always_ff @(posedge clk) begin
     if (!rst_n) begin
       rgb_q <= 0;
       hs_q  <= 1;
@@ -250,8 +256,8 @@ module tt_um_tiny_breakout (
   // The zone is re-picked pseudo-randomly after every paddle hit; always aiming at the same
   // spot makes the ball settle into a closed loop that never reaches the remaining bricks.
   // Ball centre (bx + 4) at zone centre (padx + 16 * zone + 8)  <=>  bx / 4 = pad_q + 4 * zone + 1
-  reg [4:0] lfsr;     // x^5 + x^3 + 1, advanced every frame
-  reg [1:0] ap_zone;
+  logic [4:0] lfsr;     // x^5 + x^3 + 1, advanced every frame
+  logic [1:0] ap_zone;
   wire [7:0] pad_aim = pad_q + ap_zone * 4 + 1;
   wire ap_right = bx[9:2] > pad_aim;
   wire ap_left  = bx[9:2] < pad_aim;
@@ -270,7 +276,7 @@ module tt_um_tiny_breakout (
   wire [9:0] vx  = n_vx_neg ? (n_vx_fast ? -2 : -1) : (n_vx_fast ? 2 : 1);
   wire [9:0] vy  = n_vy_neg ? -2 : 2;
 
-  always @(posedge clk) begin
+  always_ff @(posedge clk) begin
     if (!rst_n) begin
       lfsr    <= 1;  // any non-zero seed
       ap_zone <= 1;
@@ -280,7 +286,7 @@ module tt_um_tiny_breakout (
     end
   end
 
-  always @(posedge clk) begin
+  always_ff @(posedge clk) begin
     if (!rst_n) begin
       bx       <= PAD_START_Q * 4 + SERVE_DX;  // resting on the paddle
       by       <= SERVE_Y;
@@ -357,6 +363,6 @@ module tt_um_tiny_breakout (
   assign uio_oe  = 0;
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, uio_in, ui_in[7], 1'b0};
+  wire _unused = &{ena, uio_in, ui_in[7], dpx[3:0], dbx[2:0], dby[2:0], 1'b0};
 
 endmodule
