@@ -26,7 +26,7 @@ namespace {
 constexpr uint8_t LEFT = 1, RIGHT = 2, FIRE = 4;  // direct button pins ui_in[2:0]
 
 // Gamepad report bits {b,y,select,start,up,down,left,right,a,x,l,r}, b most significant
-constexpr uint16_t GP_B = 1 << 11, GP_LEFT = 1 << 5, GP_RIGHT = 1 << 4;
+constexpr uint16_t GP_B = 1 << 11, GP_SELECT = 1 << 9, GP_LEFT = 1 << 5, GP_RIGHT = 1 << 4;
 
 // ---- Reading the picture -----------------------------------------------------------------
 
@@ -266,6 +266,26 @@ void ball_speeds_up() {
   CHECK(average > 3.3 && average < 3.7, "average step %.2f px, expected about 3.5", average);
 }
 
+// Each press of SELECT on the gamepad switches autoplay: on, it launches the ball and
+// steers; off, the paddle only moves when told to. Holding SELECT counts as one press.
+void select_toggles_autoplay() {
+  Game g;
+  g.reset();
+  g.pad_bits = GP_SELECT;  // held for many reports: still a single press
+  run(g, 20);
+  g.pad_bits = 0;
+  View v = run(g, 30);
+  CHECK(v.ball && v.ball_y < 440, "autoplay did not launch the ball: y %d", v.ball_y);
+  g.pad_bits = GP_SELECT;
+  run(g, 3);
+  g.pad_bits = 0;
+  // Autoplay off: wait for the ball to come back to the paddle (or be lost), then the
+  // paddle must stay put without input.
+  int x0 = run(g, 1).paddle_x;
+  v = run(g, 60);
+  CHECK(v.paddle_x == x0, "paddle moved with autoplay off: %d -> %d", x0, v.paddle_x);
+}
+
 struct Scenario {
   const char *name;
   void (*run)();
@@ -276,6 +296,7 @@ const Scenario scenarios[] = {
     {"steering", steering},
     {"paddle_limits", paddle_limits},
     {"game_over_and_restart", game_over_and_restart},
+    {"select_toggles_autoplay", select_toggles_autoplay},
     {"ball_speeds_up", ball_speeds_up},
     {"autoplay_clears_a_level", autoplay_clears_a_level},
 };

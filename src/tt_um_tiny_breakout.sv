@@ -14,7 +14,8 @@
  *   uo_out     : TinyVGA PMOD (640x480 @ 60 Hz, 25.175 MHz clock)
  *   ui_in[0..2]: direct buttons LEFT, RIGHT, FIRE (active high, for simulators /
  *                plain buttons; FIRE launches the ball / restarts after game over)
- *   ui_in[3]   : AUTOPLAY (paddle tracks the ball, auto-launch)
+ *   ui_in[3]   : AUTOPLAY (paddle tracks the ball, auto-launch); on the gamepad,
+ *                SELECT switches autoplay on and off
  *   ui_in[4..6]: Gamepad PMOD latch, clock, data (Psychogenic SNES Gamepad PMOD)
  *
  * Collisions are detected by pixel overlap while the frame is being drawn:
@@ -136,6 +137,8 @@ module tt_um_tiny_breakout (
   gamepad_pkg::gamepad_t gp;        // gamepad report, all zero without a controller
   logic                  gp_valid;  // gp is complete (one clock per report)
   logic                  gp_left, gp_right, gp_fire;  // game controls from the last report
+  logic                  gp_select;    // SELECT in the last report
+  logic                  gp_autoplay;  // autoplay switched on with SELECT
 
   gamepad_rx u_gamepad_rx (
       .clk         (clk),
@@ -147,22 +150,28 @@ module tt_um_tiny_breakout (
       .report_valid(gp_valid)
   );
 
-  // Keep only the game's controls from each report: fire is B, start or A
+  // Keep only the game's controls from each report: fire is B, start or A. Each press of
+  // SELECT (released in the previous report, pressed in this one) switches autoplay.
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      gp_left  <= 0;
-      gp_right <= 0;
-      gp_fire  <= 0;
+      gp_left     <= 0;
+      gp_right    <= 0;
+      gp_fire     <= 0;
+      gp_select   <= 0;
+      gp_autoplay <= 0;
     end else if (gp_valid) begin
-      gp_left  <= gp.left;
-      gp_right <= gp.right;
-      gp_fire  <= gp.b | gp.start | gp.a;
+      gp_left   <= gp.left;
+      gp_right  <= gp.right;
+      gp_fire   <= gp.b | gp.start | gp.a;
+      gp_select <= gp.select;
+      if (gp.select && !gp_select) gp_autoplay <= ~gp_autoplay;
     end
   end
 
+  wire autoplay  = ui.autoplay | gp_autoplay;
   wire btn_left  = ui.left  | gp_left;
   wire btn_right = ui.right | gp_right;
-  wire btn_fire  = ui.fire  | gp_fire | ui.autoplay;  // autoplay launches the ball itself
+  wire btn_fire  = ui.fire  | gp_fire | autoplay;  // autoplay launches the ball itself
 
   logic auto_left, auto_right;
 
@@ -179,8 +188,8 @@ module tt_um_tiny_breakout (
   );
 
   // Paddle steering: from autoplay, or from the buttons (left and right together cancel)
-  wire go_left  = ui.autoplay ? auto_left  : (btn_left & ~btn_right);
-  wire go_right = ui.autoplay ? auto_right : (btn_right & ~btn_left);
+  wire go_left  = autoplay ? auto_left  : (btn_left & ~btn_right);
+  wire go_right = autoplay ? auto_right : (btn_right & ~btn_left);
 
   // ---------------------------------------------------------------------------
   // What is under the beam
@@ -428,6 +437,6 @@ module tt_um_tiny_breakout (
 
   // List all unused inputs to prevent warnings
   wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0], rng[4],
-                   gp.y, gp.select, gp.up, gp.down, gp.x, gp.l, gp.r, 1'b0};
+                   gp.y, gp.up, gp.down, gp.x, gp.l, gp.r, 1'b0};
 
 endmodule
