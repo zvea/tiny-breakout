@@ -108,35 +108,35 @@ module tt_um_tiny_breakout (
     logic b, y, select, start, up, down, left, right, a, x, l, r;
   } gamepad_t;
 
-  logic [1:0]  gp_data_s, gp_clk_s, gp_latch_s;  // 2-flop synchronisers
-  logic        gp_clk_prev, gp_latch_prev;
+  // Inputs pass through 2-flop synchronisers ([1:0]); clock and latch keep one more
+  // bit of history ([2]) so their rising edges can be detected.
+  logic [1:0]  gp_data_s;
+  logic [2:0]  gp_clk_s, gp_latch_s;
   logic [11:0] gp_shift;
   gamepad_t    gp_buttons;  // gp_shift viewed as named buttons
   logic        gp_left, gp_right, gp_fire;
 
   assign gp_buttons = gp_shift;
 
-  wire gp_present = ~&gp_shift;  // all ones => no controller
+  wire gp_present    = ~&gp_shift;  // all ones => no controller
+  wire gp_clk_rise   = gp_clk_s[1]   & ~gp_clk_s[2];
+  wire gp_latch_rise = gp_latch_s[1] & ~gp_latch_s[2];
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       gp_data_s     <= 0;
       gp_clk_s      <= 0;
       gp_latch_s    <= 0;
-      gp_clk_prev   <= 0;
-      gp_latch_prev <= 0;
       gp_shift      <= '1;  // all ones = no controller
       gp_left       <= 0;
       gp_right      <= 0;
       gp_fire       <= 0;
     end else begin
       gp_data_s     <= {gp_data_s[0], ui.gp_data};
-      gp_clk_s      <= {gp_clk_s[0], ui.gp_clk};
-      gp_latch_s    <= {gp_latch_s[0], ui.gp_latch};
-      gp_clk_prev   <= gp_clk_s[1];
-      gp_latch_prev <= gp_latch_s[1];
-      if (gp_clk_s[1] & ~gp_clk_prev) gp_shift <= {gp_shift[10:0], gp_data_s[1]};
-      if (gp_latch_s[1] & ~gp_latch_prev) begin
+      gp_clk_s      <= {gp_clk_s[1:0], ui.gp_clk};
+      gp_latch_s    <= {gp_latch_s[1:0], ui.gp_latch};
+      if (gp_clk_rise) gp_shift <= {gp_shift[10:0], gp_data_s[1]};
+      if (gp_latch_rise) begin
         gp_left  <= gp_present & gp_buttons.left;
         gp_right <= gp_present & gp_buttons.right;
         gp_fire  <= gp_present & (gp_buttons.b | gp_buttons.start | gp_buttons.a);
