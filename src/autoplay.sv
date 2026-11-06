@@ -17,7 +17,7 @@ module autoplay (
     input  logic       rst_n,
     input  logic       frame_tick,   // once per frame: advance the random sequence
     input  logic       paddle_hit,   // at frame_tick: the ball hit the paddle this frame
-    input  logic [9:0] ball_x,       // left edge of the 8-px ball
+    input  logic [9:0] ball_x,       // left edge of the 8x8 box the round ball is drawn in
     input  logic [9:0] paddle_x,     // left edge of the 64-px paddle (a multiple of 4)
     output logic       steer_left,   // move the paddle left / right this frame
     output logic       steer_right

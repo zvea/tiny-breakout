@@ -121,7 +121,7 @@ module tt_um_tiny_breakout (
   localparam logic [9:0] SERVE_Y     = 440;  // ball y when resting on the paddle (paddle top is 448)
   localparam logic [1:0] SPARE_LIVES = 2;
 
-  logic [9:0]  bx, by;        // ball top-left corner
+  logic [9:0]  bx, by;        // ball position: top-left of the 8x8 box the round ball is drawn in
   // Ball direction and speed, stored as sign and magnitude because that is how the game
   // changes them: walls set only the horizontal direction, the paddle sets the angle,
   // bricks flip only the vertical direction. (Two's-complement velocities need
@@ -227,8 +227,8 @@ module tt_um_tiny_breakout (
   localparam rgb_t AZURE     = 6'b00_10_11;
   localparam rgb_t VIOLET    = 6'b10_00_11;
 
-  localparam rgb_t BALL_COLOUR   = WHITE;
-  localparam rgb_t PADDLE_COLOUR = PALE_CYAN;  // also the spare-life markers
+  localparam rgb_t BALL_COLOUR   = WHITE;      // also the spare-life markers (spare balls)
+  localparam rgb_t PADDLE_COLOUR = PALE_CYAN;
   localparam rgb_t WALL_COLOUR   = GREY;
   localparam rgb_t FIELD_COLOUR  = NAVY;
 
@@ -248,8 +248,8 @@ module tt_um_tiny_breakout (
   rgb_t rgb;
   always_comb begin
     if (!visible)                      rgb = BLACK;
-    else if (ball_px)                  rgb = BALL_COLOUR;
-    else if (paddle_px | life_px)      rgb = PADDLE_COLOUR;
+    else if (ball_px | life_px)        rgb = BALL_COLOUR;
+    else if (paddle_px)                rgb = PADDLE_COLOUR;
     else if (brick_px)                 rgb = brick_rgb;
     else if (wall_l | wall_r | wall_t) rgb = WALL_COLOUR;
     else if (field)                    rgb = FIELD_COLOUR;
