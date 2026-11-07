@@ -9,7 +9,8 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   sideways; a hit on its top or bottom sends it back vertically.
 - **Speed:** rises by half a step for every 4 bricks the current ball clears, from 1x up to
   3x.
-- **Lives:** you have 2 spare balls, shown top left. Losing the last one ends the game.
+- **Lives and score:** you have 2 spare balls, shown top left; the score, top right, counts
+  10 per brick. Losing the last ball ends the game.
 - **Levels:** when the wall is cleared, the game pauses for half a second, gives back a spare
   ball (up to 2) and builds a new wall. Each level's balls start half a step faster, up to
   2.5x from the 4th level.

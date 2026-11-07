@@ -37,7 +37,7 @@
 module tt_um_tiny_breakout #(
     // Optional features, chosen at build time. The Tiny Tapeout wrapper uses the defaults;
     // simulators can override them (Verilator -G, Icarus -P).
-    parameter bit ENABLE_SCORE = 0  // 4-digit score, top right: costs about 8 percentage points of tile utilisation
+    parameter bit ENABLE_SCORE = 1  // 4-digit score, top right: about 7 points of tile utilisation
 ) (
     input  logic [7:0] ui_in,    // Dedicated inputs
     output logic [7:0] uo_out,   // Dedicated outputs

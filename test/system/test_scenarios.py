@@ -45,8 +45,9 @@ def scenarios_binary() -> Path:
         "-CFLAGS", f"-O3 -I{ROOT / 'sim' / 'play'}",
         "--exe", str(HERE / "scenarios.cpp"), *map(str, sources()),
         "--top-module", "tt_um_tiny_breakout", "-Mdir", str(BUILD), "-j", "8",
-        f"-GENABLE_SCORE={os.environ.get('ENABLE_SCORE', '0')}",  # ENABLE_SCORE=1 pytest ...
     ]  # fmt: skip
+    if "ENABLE_SCORE" in os.environ:  # e.g. ENABLE_SCORE=0 pytest ...; else the RTL's default
+        cmd.append(f"-GENABLE_SCORE={os.environ['ENABLE_SCORE']}")
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return BUILD / "Vtt_um_tiny_breakout"
