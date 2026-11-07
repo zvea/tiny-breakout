@@ -1,5 +1,9 @@
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
+"""Tiny Tapeout full-chip tests (tb.v), on the RTL or the gate-level netlist (GATES=yes).
+
+They use only the chip's pins, as internal signal names don't survive synthesis.
+"""
 
 import cocotb
 from cocotb.clock import Clock
@@ -61,31 +65,42 @@ async def send_gamepad(dut, buttons12):
     await ClockCycles(dut.clk, 10)
 
 
+async def paddle_left_edge(dut):
+    """x of the paddle's first pixel on line 451 (paddle at y 448..455) in the next frame.
+
+    Found from the sync pulses: vsync ends at line 492 and the k-th hsync pulse after that
+    starts on line 491 + k at h 656, so the 484th is on line 450, and pixel x of line 451
+    comes 144 + x clocks later (both outputs are registered alike).
+    """
+    while bit(dut, VSYNC) == 1:
+        await RisingEdge(dut.clk)
+    while bit(dut, VSYNC) == 0:
+        await RisingEdge(dut.clk)
+    pulses, prev = 0, bit(dut, HSYNC)
+    while pulses < 484:
+        await RisingEdge(dut.clk)
+        cur = bit(dut, HSYNC)
+        pulses += prev == 1 and cur == 0
+        prev = cur
+    for d in range(1, 144 + 640):
+        await RisingEdge(dut.clk)
+        # paddle colour is R=2, G=3, B=3
+        if d >= 144 and bit(dut, 5) == 1 and bit(dut, 1) == 1 and bit(dut, 2) == 1 and bit(dut, 4) == 0:
+            return d - 144
+    return None
+
+
 @cocotb.test()
 async def test_gamepad_and_paddle(dut):
-    """Holding RIGHT on the gamepad moves the paddle right (checked on the paddle row)."""
+    """Holding LEFT on the gamepad moves the paddle left (autoplay would steer it right)."""
     await reset(dut)
-
-    async def paddle_left_edge():
-        # wait for the start of line 450 (in the paddle row), find first paddle pixel
-        while True:
-            await RisingEdge(dut.clk)
-            if int(dut.user_project.v_pos.value) == 450 and int(dut.user_project.h_pos.value) == 0:
-                break
-        for x in range(640):
-            await RisingEdge(dut.clk)
-            # paddle colour is R=2,G=3,B=3; outputs are registered one cycle
-            if bit(dut, 5) == 1 and bit(dut, 1) == 1 and bit(dut, 2) == 1 and bit(dut, 4) == 0:
-                return x
-        return None
-
-    # Until a controller is seen the game plays itself (demo), steering the paddle; the
-    # first report after reset is ignored (it may be incomplete), the second shows the
-    # controller and starts a new game. The real PMOD sends reports continuously.
-    await send_gamepad(dut, 1 << 4)  # RIGHT
-    await send_gamepad(dut, 1 << 4)
-    x1 = await paddle_left_edge()
-    x2 = await paddle_left_edge()
+    # The first report after reset is ignored (it may be incomplete); the second shows a
+    # controller before the first frame update, so the demo never starts. The real PMOD
+    # sends reports continuously.
+    await send_gamepad(dut, 1 << 5)  # LEFT
+    await send_gamepad(dut, 1 << 5)
+    x1 = await paddle_left_edge(dut)
+    x2 = await paddle_left_edge(dut)
     dut._log.info(f"paddle x: {x1} -> {x2}")
     assert x1 is not None and x2 is not None
-    assert x2 > x1
+    assert x2 < x1

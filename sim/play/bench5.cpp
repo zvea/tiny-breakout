@@ -1,3 +1,7 @@
+// Measures how fast sim.h simulates frames (autoplay running), to compare Verilator
+// versions and options. Build like build.sh, with this file in place of serve.cpp; run as
+// ./Vtt_um_tiny_breakout [frames] (default 300). The printed sum only keeps the frame
+// buffer reads from being optimised away.
 #include "sim.h"
 #include <chrono>
 #include <cstdio>

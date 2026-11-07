@@ -44,8 +44,10 @@ async def read(dut, name: str) -> int:
 async def steers_ball_onto_the_quarter_centre(dut):
     """Steer right/left exactly when the ball centre is right/left of the quarter centre."""
     await start(dut)
-    for _ in range(4):  # try several quarters
+    tested = set()
+    while tested != {0, 1, 2, 3}:  # every quarter (the LFSR gets there within 8 hits)
         quarter = await read(dut, "aim_quarter")
+        tested.add(quarter)
         for paddle_x in (64, 200, 512):
             for ball_x in range(paddle_x - 16, paddle_x + 80):
                 dut.paddle_x.value = paddle_x

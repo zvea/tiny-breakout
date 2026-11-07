@@ -3,13 +3,10 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * The score: a 3-digit decimal counter, and whether the beam is on one of its digits.
- *
- * It is shown with a fixed 0 after it, as arcade games often do: a point reads as 10, and
- * the display runs 0000 .. 9990. The digits are seven-segment style, 8 x 14 px with 2-px
- * strokes, in 16 x 16-px cells at x 512..575, y 0..15 (the digit at y 2..15). Counting in
- * decimal (BCD) costs a little more than binary, but the digits can then be drawn
- * directly, without dividing by 10. After 999 the count starts again from 000.
+ * The score: a 3-digit BCD counter and its display. A fixed 0 follows the count, so a point
+ * reads as 10 and the display runs 0000 .. 9990, wrapping after 999 points. Seven-segment
+ * digits, 8 x 14 px with 2-px strokes, in 16 x 16-px cells at x 512..575, y 0..15 (digit at
+ * x 4..11, y 2..15). BCD costs a little more than binary but needs no division to draw.
  */
 
 `default_nettype none
@@ -18,7 +15,7 @@ module score (
     input  logic       clk,
     input  logic       rst_n,
     input  logic       clear,     // back to 000 (new game)
-    input  logic       add,       // one point (one clock per point)
+    input  logic       add,       // adds one point per clock while high
     input  logic [9:0] h_pos,     // beam position
     input  logic [9:0] v_pos,
     output logic       score_px   // a lit segment of a digit is under the beam
@@ -74,7 +71,7 @@ module score (
   end
 
   // Where each segment is within the cell (x, y 0..15): the digit spans x 4..11, y 2..15
-  wire [3:1] x = h_pos[3:1];
+  wire [3:1] x = h_pos[3:1];  // in 2-px units: bit 0 is never needed
   wire [3:0] y = v_pos[3:0];
   wire left_col   = (x[3:1] == 3'b010);  // x 4..5
   wire right_col  = (x[3:1] == 3'b101);  // x 10..11

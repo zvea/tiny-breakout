@@ -6,8 +6,7 @@
  * Pixel colours with 2 bits per channel (64 colours, as the TinyVGA PMOD shows them),
  * and names for the ones this project uses.
  *
- * Note: refer to these as colour_pkg::name. The yosys frontend used by the flow (0.62)
- * does not support `import`.
+ * Refer to these as colour_pkg::name: the flow's yosys (0.62) does not support `import`.
  */
 
 package colour_pkg;

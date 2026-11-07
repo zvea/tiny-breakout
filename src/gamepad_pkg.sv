@@ -5,8 +5,7 @@
  *
  * Types for the Psychogenic SNES Gamepad PMOD (https://github.com/psychogenic/gamepad-pmod).
  *
- * Note: refer to these as gamepad_pkg::name. The yosys frontend used by the flow (0.62)
- * does not support `import`.
+ * Refer to these as gamepad_pkg::name: the flow's yosys (0.62) does not support `import`.
  */
 
 package gamepad_pkg;

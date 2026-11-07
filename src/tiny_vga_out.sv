@@ -23,8 +23,8 @@ module tiny_vga_out (
     output logic [7:0]       uo_out     // TinyVGA PMOD pins
 );
 
-  // TinyVGA PMOD pin layout, most significant bit first: 2 bits per colour, with each
-  // colour's bits on different pins
+  // TinyVGA PMOD pins, most significant first: each colour's high bit (r1, g1, b1) in the low
+  // nibble, its low bit in the high nibble
   typedef struct packed {
     logic h_sync, b0, g0, r0, v_sync, b1, g1, r1;
   } pins_t;
@@ -34,7 +34,7 @@ module tiny_vga_out (
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      rgb_q    <= 0;
+      rgb_q    <= colour_pkg::BLACK;
       h_sync_q <= 1;
       v_sync_q <= 1;
     end else begin

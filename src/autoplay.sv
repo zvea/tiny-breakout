@@ -5,12 +5,10 @@
  *
  * Autoplay: steers the paddle so the ball lands on a chosen quarter of it.
  *
- * After every paddle hit it aims at another quarter, picked pseudo-randomly: always aiming
- * at the same spot makes the ball settle into a closed loop that never reaches the
- * remaining bricks, and since the paddle quarter sets the bounce angle, varying it keeps
- * the ball exploring. The choice comes from an LFSR that steps every frame, independently
- * of the game: picking from the game's own state (such as the ball's position) was tried,
- * and the game then fell into loops that never cleared the last bricks.
+ * After each paddle hit it picks the target quarter (possibly the same one) from an LFSR
+ * that steps every frame. The quarter sets the bounce angle, and a fixed target lets the
+ * ball settle into a loop that never reaches the last bricks. Picking from the game's own
+ * state (such as the ball's position) was tried and also fell into such loops.
  */
 
 `default_nettype none
@@ -42,12 +40,12 @@ module autoplay (
   // Ball centre (ball_x + 4) over the quarter's centre (paddle_x + 16 * aim_quarter + 8),
   // compared in 4-px units: ball_x / 4 = paddle_x / 4 + 4 * aim_quarter + 1. The paddle
   // moves one 4-px step at a time and this is re-evaluated before each step, so it stops
-  // exactly on target.
-  wire [7:0] ball_q = ball_x[9:2];
-  wire [7:0] aim_q  = paddle_x[9:2] + aim_quarter * 4 + 1;
+  // on target (to within 4 px).
+  wire [7:0] ball_x4 = ball_x[9:2];
+  wire [7:0] aim_x4  = paddle_x[9:2] + aim_quarter * 4 + 1;
 
-  assign steer_right = ball_q > aim_q;
-  assign steer_left  = ball_q < aim_q;
+  assign steer_right = ball_x4 > aim_x4;
+  assign steer_left  = ball_x4 < aim_x4;
 
   wire _unused = &{ball_x[1:0], paddle_x[1:0], 1'b0};
 

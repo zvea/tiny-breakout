@@ -1,5 +1,5 @@
 // Verilator model wrapper: runs one VGA frame at a time, emulating the Gamepad PMOD.
-// Built against Verilator 4.228 (its scheduler has far less per-eval overhead than 5.x).
+// Needs Verilator 4.x: tick() relies on its internals (__Vclklast); 5.x is also ~2x slower here.
 #pragma once
 #include "Vtt_um_tiny_breakout.h"
 #include "Vtt_um_tiny_breakout___024root.h"
@@ -30,7 +30,7 @@ struct Game {
   // Simulates exactly one frame (800 x 525 clocks), starting at h_pos = v_pos = 0.
   void frame() {
     const uint8_t base = (buttons & 7) | (autoplay << 3);
-    // Gamepad PMOD report once per frame, in the first ~1040 cycles (top border):
+    // Gamepad PMOD report once per frame, in its first 1040 clocks:
     // 24 bits (2nd controller first, all zeros), 40-cycle clock (data stable while clk high),
     // then a latch pulse.
     uint8_t pmod[24 * 40 + 80];

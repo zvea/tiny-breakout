@@ -5,8 +5,8 @@
  *
  * The wall of bricks: which bricks are still standing, and what lies under the beam.
  *
- * 8 columns x 6 rows of 64 x 16 px bricks at x 64..575, y 64..159, each with a 2-px gap
- * on its left and top edges.
+ * 8 columns x 6 rows of 64 x 16-px cells at x 64..575, y 64..159; each brick fills its cell
+ * but for a 2-px gap on the left and top.
  *
  * The bricks are kept as a ring that turns with the beam, so the brick under the beam is
  * always bricks[0][0]. That needs no 48-way read multiplexer or write decoder, and halves
@@ -42,12 +42,14 @@ module brick_wall (
 
   localparam int COLS = 8;
   localparam int ROWS = 6;
+  localparam logic [3:0] FIRST_COL = 1;  // in 64-px columns: x 64
+  localparam logic [5:0] FIRST_ROW = 4;  // in 16-px rows: y 64
 
   // The 64-px column and 16-px row under the beam: the wall is columns 1..8, rows 4..9
   wire [3:0] col     = h_pos[9:6];
   wire [5:0] row     = v_pos[9:4];
-  wire       in_cols = (col >= 1) && (col <= 8);
-  wire       in_rows = (row >= 4) && (row <= 9);
+  wire       in_cols = (col >= FIRST_COL) && (col < FIRST_COL + 4'(COLS));
+  wire       in_rows = (row >= FIRST_ROW) && (row < FIRST_ROW + 6'(ROWS));
   wire       gap     = (h_pos[5:1] == 0) || (v_pos[3:1] == 0);  // 2-px gap left of / above each brick
 
   logic [ROWS-1:0][COLS-1:0] bricks;  // 1 = standing; bricks[0][0] is under the beam
@@ -69,10 +71,11 @@ module brick_wall (
     end
   end
 
-  // Filling lasts until the last row turn of the frame after the refill
+  // Filling ends at the last row turn (line 144) of the next frame; refill must come after
+  // line 144, as it does at frame_tick (line 480)
   always_ff @(posedge clk) begin
     if (!rst_n || refill) filling <= 1;
-    else if (row_turn && row == 9) filling <= 0;
+    else if (row_turn && row == FIRST_ROW + 6'(ROWS - 1)) filling <= 0;
   end
 
   assign brick_px = in_cols & in_rows & ~gap & bricks[0][0] & ~filling;

@@ -167,7 +167,13 @@ void steering() {
     start_game(g);
     int x0 = run(g, 2).paddle_x;
     press(g, false, true);
-    int x1 = run(g, 10).paddle_x;
+    View v;
+    for (int i = 0; i < 10; i++) {  // the resting ball stays centred on the moving paddle
+      v = run(g, 1);
+      CHECK(resting(v), "%s: moving right, frame %d: ball at x %d, paddle %d", name, i, v.ball_x,
+            v.paddle_x);
+    }
+    int x1 = v.paddle_x;
     CHECK(x1 >= x0 + 32 && x1 <= x0 + 40, "%s: right moved the paddle %d -> %d", name, x0, x1);
     press(g, true, false);
     int x2 = run(g, 10).paddle_x;
@@ -352,8 +358,8 @@ void brick_bounces() {
   CHECK(checked[0] > 0 && checked[1] > 0, "did not see both kinds of bounce");
 }
 
-// The vertical steps of a ball just launched from the paddle (2 or 4 px per frame), for
-// `frames` frames: at 1.5x they alternate.
+// Waits for the launch, then returns whether the ball's vertical steps alternate 2, 4, 2 ...
+// px (1.5x) for `frames` frames.
 bool launch_steps_alternate_2_4(Game &g, View &v, int frames) {
   for (int i = 0; i < 2000 && resting(v); i++) v = run(g, 1);  // wait for the launch
   int prev_y = v.ball_y, prev_dy = 0;
@@ -460,8 +466,7 @@ void select_toggles_autoplay() {
   g.pad_bits = GP_SELECT;
   run(g, 3);
   g.pad_bits = 0;
-  // Autoplay off: wait for the ball to come back to the paddle (or be lost), then the
-  // paddle must stay put without input.
+  // Autoplay off: without input the paddle stays put.
   int x0 = run(g, 1).paddle_x;
   v = run(g, 60);
   CHECK(v.paddle_x == x0, "paddle moved with autoplay off: %d -> %d", x0, v.paddle_x);
