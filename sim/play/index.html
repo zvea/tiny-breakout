@@ -55,7 +55,8 @@ async function stream(){
      latest=buf.subarray(4,4+len);buf=buf.slice(4+len);n++;
     }
     const t=performance.now();
-    if(t-t0>1000){st.textContent=`${(n*1000/(t-t0)).toFixed(1)} fps received (real hardware: 60)${auto?' · AUTOPLAY':''}`;n=0;t0=t}
+    // Every frame is simulated, none skipped: below 60 fps the game runs in slow motion
+    if(t-t0>1000){const fps=n*1000/(t-t0);st.textContent=`${fps.toFixed(1)} fps · running at ${Math.round(fps/60*100)}% of real speed${auto?' · AUTOPLAY':''}`;n=0;t0=t}
    }
   }catch(e){}
   st.textContent='disconnected – retrying…';
