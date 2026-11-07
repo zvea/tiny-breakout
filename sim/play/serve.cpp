@@ -4,7 +4,8 @@
 //               and pushes every frame as [u32 little-endian length][RLE payload]. RLE payload
 //               is (count, RRGGBB) byte pairs covering 640x480. Only one viewer at a time: a new
 //               /stream takes over from the previous one.
-// GET /keys?k=K sets the controls. K bits: 1 left, 2 right, 4 fire (B), 8 autoplay, 16 reset.
+// GET /keys?k=K sets the controls. K bits: 1 left, 2 right, 4 fire (gamepad A), 8 autoplay,
+//               16 reset.
 // Anything else returns index.html.
 //
 // Streaming (rather than request/response per frame) keeps the frame rate independent of the

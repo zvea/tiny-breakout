@@ -40,7 +40,10 @@ async def start(dut, prime: bool = True):
 async def send(dut, first: list[int], second: list[int] | None = None, half: int = 4) -> dict:
     """Sends one report (controller 2, then controller 1, then the latch pulse) and returns
     the outputs once it has gone through. `half` is half a PMOD clock period in system
-    clocks; the real PMOD is much slower, which only matters for the synchronisers."""
+    clocks; the real PMOD is much slower, which only matters for the synchronisers.
+
+    left, right and fire are None while not connected: they mean nothing then, and are X
+    (unreset) until the first report is caught."""
     for bit in (second or controller()) + first:
         dut.pmod_data.value = bit
         await ClockCycles(dut.clk, half)
@@ -53,7 +56,9 @@ async def send(dut, first: list[int], second: list[int] | None = None, half: int
     dut.pmod_latch.value = 0
     await ClockCycles(dut.clk, 4)  # through the synchroniser
     await ReadOnly()
-    out = {n: int(getattr(dut, n).value) for n in ("connected", "left", "right", "fire", "select_autoplay")}
+    out = {n: int(getattr(dut, n).value) for n in ("connected", "select_autoplay")}
+    for n in ("left", "right", "fire"):
+        out[n] = int(getattr(dut, n).value) if out["connected"] else None
     await RisingEdge(dut.clk)
     return out
 

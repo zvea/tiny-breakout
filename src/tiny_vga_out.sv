@@ -26,27 +26,27 @@ module tiny_vga_out (
   // TinyVGA PMOD pins, most significant first: each colour's high bit (r1, g1, b1) in the low
   // nibble, its low bit in the high nibble
   typedef struct packed {
-    logic h_sync, b0, g0, r0, v_sync, b1, g1, r1;
+    logic h_sync_n, b0, g0, r0, v_sync_n, b1, g1, r1;
   } pins_t;
 
   colour_pkg::rgb_t rgb_q;
-  logic             h_sync_q, v_sync_q;
+  logic             h_sync_n_q, v_sync_n_q;
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      rgb_q    <= colour_pkg::BLACK;
-      h_sync_q <= 1;
-      v_sync_q <= 1;
+      rgb_q      <= colour_pkg::BLACK;
+      h_sync_n_q <= 1;
+      v_sync_n_q <= 1;
     end else begin
-      rgb_q    <= visible ? colour : colour_pkg::BLACK;
-      h_sync_q <= h_sync_n;
-      v_sync_q <= v_sync_n;
+      rgb_q      <= visible ? colour : colour_pkg::BLACK;
+      h_sync_n_q <= h_sync_n;
+      v_sync_n_q <= v_sync_n;
     end
   end
 
   pins_t pins;
-  assign pins.h_sync        = h_sync_q;
-  assign pins.v_sync        = v_sync_q;
+  assign pins.h_sync_n      = h_sync_n_q;
+  assign pins.v_sync_n      = v_sync_n_q;
   assign {pins.r1, pins.r0} = rgb_q.r;
   assign {pins.g1, pins.g0} = rgb_q.g;
   assign {pins.b1, pins.b0} = rgb_q.b;

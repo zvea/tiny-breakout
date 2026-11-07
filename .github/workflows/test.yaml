@@ -31,10 +31,16 @@ jobs:
           # make will return success even if the tests fail, so check results.xml for failed tests
           python -m cocotb_tools.check_results results.xml
 
+      - name: Run unit tests
+        if: success() || failure()
+        run: SIM=icarus pytest test/unit --junitxml=test/unit/results.xml
+
       - name: Test Summary
         uses: test-summary/action@v2.4
         with:
-          paths: "test/results.xml"
+          paths: |
+            test/results.xml
+            test/unit/results.xml
         if: always()
 
       - name: upload waveform and test results

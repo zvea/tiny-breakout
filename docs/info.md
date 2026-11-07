@@ -32,7 +32,8 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 | Autoplay | SELECT switches it on; left, right or fire switches it off | `ui[3]` high |
 
 The direct inputs are active high, for plain buttons or for simulators that can't produce
-the gamepad's serial signal. Pressing one also ends the demo.
+the gamepad's serial signal. Pressing left, right or fire (`ui[0]` to `ui[2]`) also ends the
+demo.
 
 ## External hardware
 

@@ -6,7 +6,8 @@ SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = colour_pkg.sv gamepad_pkg.sv gamepad_rx.sv vga_timing.sv autoplay.sv brick_wall.sv score.sv tiny_vga_out.sv tt_um_tiny_breakout.sv
+# The source files listed in info.yaml, in order
+PROJECT_SOURCES = $(shell sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p' $(SRC_DIR)/../info.yaml)
 
 ifneq ($(GATES),yes)
 

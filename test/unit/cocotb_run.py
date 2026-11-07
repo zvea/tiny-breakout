@@ -4,8 +4,8 @@
 
 Used by the pytest entry points in the test_*.py files next to this one:
 
-    pytest test/unit               # Verilator (default): ~30 s, mostly compiling
-    SIM=icarus pytest test/unit    # Icarus Verilog, as in the Tiny Tapeout CI: ~75 s
+    pytest test/unit               # Verilator (default): ~70 s
+    SIM=icarus pytest test/unit    # Icarus Verilog, as in CI: ~5.5 min (brick_wall alone ~4)
 """
 
 import os

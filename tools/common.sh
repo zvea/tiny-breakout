@@ -4,7 +4,7 @@
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 YOSYS="$ROOT/.venv/bin/yowasp-yosys"
 
-sources() { sed -n 's/^ *- "\([a-z_0-9]*\.sv\)".*/\1/p' "$ROOT/info.yaml"; }
+sources() { sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p' "$ROOT/info.yaml"; }
 
 # The typical-corner library of sky130's high-density cells, from $PDK_ROOT or ciel's default
 liberty() {
@@ -29,9 +29,10 @@ for i in range(n):
     t = s
     if pairs[i % len(pairs)]:
         ma, mb = (re.search(p, t) for p in pairs[i % len(pairs)])
-        if ma and mb:
-            a, b = ma.group(0), mb.group(0)
-            t = t.replace(a, "\0").replace(b, a).replace("\0", b)
+        if not (ma and mb):
+            sys.exit(f"orderings: no match for {pairs[i % len(pairs)]} in {top}: update tools/common.sh")
+        a, b = ma.group(0), mb.group(0)
+        t = t.replace(a, "\0").replace(b, a).replace("\0", b)
     open(f"{out}{i}.sv", "w").write(t)
 PY
 }

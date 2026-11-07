@@ -14,7 +14,7 @@
  *   ui_in[0..2]: direct buttons LEFT, RIGHT, FIRE (active high, for simulators /
  *                plain buttons; FIRE launches the ball / restarts after game over;
  *                on the gamepad, fire is A, X, L or R)
- *   ui_in[3]   : AUTOPLAY (paddle tracks the ball, auto-launch); on the gamepad, SELECT
+ *   ui_in[3]   : AUTOPLAY (paddle steers itself, auto-launch); on the gamepad, SELECT
  *                switches autoplay on and left, right or fire switches it off
  *   ui_in[4..6]: Gamepad PMOD latch, clock, data (Psychogenic SNES Gamepad PMOD)
  * With no controller connected the game plays itself (demo); see "Demo" below.
@@ -298,7 +298,7 @@ module tt_um_tiny_breakout (
   end
 
   wire ball_px = in_ball_x && in_ball_y &&
-                 in_circle8(ball_dx[2:0], ball_dy[2:0]) && ~game_over;
+                 in_circle8(ball_dx, ball_dy) && ~game_over;
 
   // Spare lives: 8-px circles at x 64 (with 1 or 2 spare balls) and x 80 (with 2), y 8..15
   wire life_slot_1 = (h_pos[9:4] == 4) && (lives >= 1) && (lives <= SPARE_LIVES);
@@ -318,8 +318,8 @@ module tt_um_tiny_breakout (
   // and the top or bottom), the one its 8x8 box is less far past; ties go to top/bottom.
   // Measured in the brick's 64x16 cell (brick at x 2..63, y 2..15) at the first touched
   // pixel, where the brick vanishes.
-  wire signed [7:0] box_x = 8'(h_pos[5:0]) - 8'(ball_dx[2:0]);  // may be negative
-  wire signed [7:0] box_y = 8'(v_pos[3:0]) - 8'(ball_dy[2:0]);
+  wire signed [7:0] box_x = 8'(h_pos[5:0]) - 8'(ball_dx);  // may be negative
+  wire signed [7:0] box_y = 8'(v_pos[3:0]) - 8'(ball_dy);
   wire signed [7:0] past_side = ball_left ? 64 - box_x : box_x + 6;  // right / left edge
   wire signed [7:0] past_flat = ball_up   ? 16 - box_y : box_y + 6;  // bottom / top edge
   wire              side_hit  = past_side < past_flat;
