@@ -1,42 +1,57 @@
-![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
+![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg)
 
-# Tiny Tapeout Verilog Project Template
+# Tiny Breakout
 
-- [Read the documentation for project](docs/info.md)
+A complete VGA brick-breaker game in a single [Tiny Tapeout](https://tinytapeout.com) tile.
 
-## What is Tiny Tapeout?
+![Tiny Breakout, mid-game](docs/img/gameplay.png)
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+Tiny Breakout consists of some 17,000 transistors in 1,300 standard cells. There is no
+processor or frame buffer; the game keeps its state in 164 flip-flops.
 
-To learn more and get started, visit https://tinytapeout.com.
+## The game
 
-## Set up your Verilog project
+The rules are in [docs/info.md](docs/info.md). Play with an SNES controller
+or plain buttons; SELECT hands the paddle over to autoplay, and with no controller connected
+the game plays itself as a demo.
 
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
+## How it fits in one tile
 
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
+Every pixel of the 640×480, 60 Hz picture is worked out from the beam position as it is
+drawn.
 
-## Enable GitHub actions to build the results page
+- The bricks are kept in a ring of flip-flops that turns with the beam, so the brick under the
+  beam is always in the same flip-flop. This avoids a 48-way multiplexer and halves the wall's
+  logic ([brick_wall.sv](src/brick_wall.sv)).
+- Collisions are read off the picture: a ball pixel drawn over a brick or the paddle is a hit.
+  The ball's offset within its own 8×8 box at that pixel tells which edge of the brick it came
+  through, so it bounces the right way.
+- A faster ball doesn't take bigger steps: it moves up to three times per frame, during
+  vertical blanking.
 
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
+![The hardened tile](docs/img/layout.png)
 
-## Resources
+## Trying it without hardware
 
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
+The interactive player runs the design's RTL in Verilator and streams the picture to a browser
+at up to 60 frames a second. It needs Verilator 4 (see [test/README.md](test/README.md#setting-up)):
 
-## What next?
+```sh
+cd sim/play
+./build.sh
+./obj_serve/Vtt_um_tiny_breakout    # then open http://localhost:8765/
+```
 
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+## Hardware
+
+- A Tiny Tapeout chip with this design selected, clocked at 25.175 MHz.
+- A [TinyVGA PMOD](https://github.com/mole99/tiny-vga) on the outputs, and a VGA monitor.
+- A [Gamepad PMOD](https://github.com/psychogenic/gamepad-pmod) and an SNES-compatible
+  controller on the inputs, or buttons on `ui[0]` to `ui[2]` and a switch on `ui[3]` for
+  autoplay.
+
+Pinout and controls are in [docs/info.md](docs/info.md).
+
+## Licence
+
+[Apache 2.0](LICENSE).
