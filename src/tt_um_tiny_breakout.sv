@@ -512,8 +512,26 @@ module tt_um_tiny_breakout (
       .uo_out  (uo_out)
   );
 
-  assign uio_out = 0;
-  assign uio_oe  = 0;
+  // ---------------------------------------------------------------------------
+  // Sound (Audio Pmod on uio[7]); silent in the demo
+  // ---------------------------------------------------------------------------
+  logic audio;
+
+  sound u_sound (
+      .clk       (clk),
+      .rst_n     (rst_n),
+      .frame_tick(frame_tick),
+      .lost      (lose_ball),
+      .brick     (hit.brick_top_bottom | hit.brick_side),
+      .paddle    (hit.paddle),
+      .wall      (fly & (touch_wall_l | touch_wall_r | touch_wall_t)),
+      .mute      (demo),
+      .v_pos     (v_pos),
+      .audio     (audio)
+  );
+
+  assign uio_out = {audio, 7'b0};
+  assign uio_oe  = 8'b1000_0000;
 
   // Unused inputs and signal bits, listed to silence lint warnings
   wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0], 1'b0};
