@@ -303,10 +303,27 @@ module tt_um_tiny_breakout #(
     in_circle8 = (ex + ey) >= 2;  // not "return": the flow's yosys (0.62) lacks it
   endfunction
 
-  // Ball: 8-px circle. Collisions use this shape too.
-  wire [9:0] ball_dx = h_pos - ball_x;  // beam offset from the ball's box
-  wire [9:0] ball_dy = v_pos - ball_y;
-  wire ball_px = (ball_dx[9:3] == 0) && (ball_dy[9:3] == 0) &&
+  // Ball: 8-px circle, which collisions use too. Its 8x8 box is found by racing the beam
+  // rather than by subtracting: it starts where the beam meets the box's corner and lasts
+  // until the 3-bit offset wraps to 0 (8 px / 8 lines). The flip-flops hold the previous
+  // clock's state.
+  wire [2:0] ball_dx = h_pos[2:0] - ball_x[2:0];  // beam offset within the ball's box
+  wire [2:0] ball_dy = v_pos[2:0] - ball_y[2:0];
+  logic in_ball_x_q, in_ball_y_q;
+  wire  in_ball_x = (h_pos == ball_x) | (in_ball_x_q & (ball_dx != 0));
+  wire  in_ball_y = (v_pos == ball_y) | (in_ball_y_q & (ball_dy != 0));
+
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      in_ball_x_q <= 0;
+      in_ball_y_q <= 0;
+    end else begin
+      in_ball_x_q <= in_ball_x;
+      in_ball_y_q <= in_ball_y;
+    end
+  end
+
+  wire ball_px = in_ball_x && in_ball_y &&
                  in_circle8(ball_dx[2:0], ball_dy[2:0]) && ~game_over;
 
   // Spare lives: 8-px circles at x 64 (with 1 or 2 spare balls) and x 80 (with 2), y 8..15
