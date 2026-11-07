@@ -45,6 +45,13 @@
     "sky130_fd_sc_hd__clkdlybuf4s50_1", "sky130_fd_sc_hd__clkdlybuf4s50_2"
   ],
 
+  "//": "Tiny Breakout: small clock buffers. The leaf buffers take the root buffer's type, so the",
+  "//": "default clkbuf_16 root gave 32 clkbuf_16 leaves driving 5-6 flip-flops each (1,076 um2 of",
+  "//": "clock tree). clkbuf_4/2 gives ~400 um2, no clock-pin slew violations, +0.01-0.02 ns skew.",
+  "//": "clkbuf_2 throughout was smaller still but left clock pins over their slew limit.",
+  "CTS_ROOT_BUFFER": "sky130_fd_sc_hd__clkbuf_4",
+  "CTS_CLK_BUFFERS": ["sky130_fd_sc_hd__clkbuf_4", "sky130_fd_sc_hd__clkbuf_2"],
+
   "//": "RUN_LINTER, LINTER_INCLUDE_PDK_MODELS - Disabling the linter is not recommended!",
   "RUN_LINTER": 1,
   "LINTER_INCLUDE_PDK_MODELS": 1,
