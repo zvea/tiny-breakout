@@ -141,8 +141,11 @@ async def missing_controller_reads_as_nothing_pressed(dut):
     together (impossible on a d-pad) is what the receiver checks."""
     await start(dut)
     assert await send(dut, controller("left", "b"), controller()) == expected(controller("left", "b"))
+    assert int(dut.connected.value) == 1, "a controller is connected"
     assert await send(dut, NO_CONTROLLER, controller()) == 0
+    assert int(dut.connected.value) == 0, "no controller"
     assert await send(dut, controller("up", "down", "a"), controller()) == 0
+    assert int(dut.connected.value) == 0, "up and down together: no controller"
 
 
 @cocotb.test()

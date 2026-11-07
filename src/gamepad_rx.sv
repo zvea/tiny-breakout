@@ -29,6 +29,7 @@ module gamepad_rx (
     input  logic                  pmod_clk,
     input  logic                  pmod_data,
     output gamepad_pkg::gamepad_t report,       // 1 = pressed; valid with report_valid
+    output logic                  connected,    // a controller is connected: valid with it
     output logic                  report_valid  // a complete report is ready
 );
 
@@ -65,6 +66,7 @@ module gamepad_rx (
   wire present = ~(shift.up & shift.down);
 
   assign report       = present ? shift : '0;
+  assign connected    = present;
   assign report_valid = latch_s[1] & primed;
 
 endmodule

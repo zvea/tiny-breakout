@@ -14,8 +14,9 @@
  *   uo_out     : TinyVGA PMOD (640x480 @ 60 Hz, 25.175 MHz clock)
  *   ui_in[0..2]: direct buttons LEFT, RIGHT, FIRE (active high, for simulators /
  *                plain buttons; FIRE launches the ball / restarts after game over)
- *   ui_in[3]   : AUTOPLAY (paddle tracks the ball, auto-launch); on the gamepad,
- *                SELECT switches autoplay on and off
+ *   ui_in[3]   : AUTOPLAY (paddle tracks the ball, auto-launch); on the gamepad, SELECT
+ *                switches autoplay on and off. With no controller connected the game
+ *                plays itself (demo) until one is, or a direct button is pressed.
  *   ui_in[4..6]: Gamepad PMOD latch, clock, data (Psychogenic SNES Gamepad PMOD)
  *
  * Collisions with bricks and the paddle are detected by pixel overlap while
@@ -117,16 +118,22 @@ module tt_um_tiny_breakout #(
   logic ball_up;     // moving up (else down); 2 px per frame vertically
 
   // Speed: the ball and the paddle move 1, 2 or 3 times per frame, on the first lines of
-  // vertical blanking (480, 481, 482), each time by their usual step. The speed goes up a
-  // half step every 4 bricks the current ball clears: 1x, 1.5x, 2x, 2.5x, then 3x after 16.
-  // A half step alternates frames (1.5x: 1, 2, 1, 2 ... moves). Back on the paddle (new
-  // ball, level or game), the speed starts again at 1x.
-  logic [4:0] speed_level;  // bricks cleared by the current ball, up to 16
+  // vertical blanking (480, 481, 482), each time by their usual step. speed_level goes up
+  // by one for each brick the current ball clears, and the speed a half step every 4:
+  // 1x, 1.5x, 2x, 2.5x, then 3x from 16. A half step alternates frames (1.5x: 1, 2, 1, 2
+  // ... moves). Each new ball starts 4 bricks further up per level: 1x, 1.5x, 2x, then
+  // 2.5x from level 4 on.
+  //
+  // While the empty wall waits to be refilled, speed_level doubles as the pause timer: it
+  // counts 16..31 on odd frames (about half a second).
+  logic [4:0] speed_level;
   logic       odd_frame;    // alternates every frame, for the half steps
 
   logic [1:0] lives;      // spare balls; losing a ball with none left wraps to 3: game over
   logic       serving;    // ball resting on the paddle, waiting to be launched
   wire        game_over = (lives == 3);
+  logic [1:0] level;      // 0 .. 3: from the 4th level on it stays at 3
+  wire  [1:0] level_up = (level == 3) ? 2'd3 : level + 1;  // the level after this one
 
   // Collision flags, gathered during each frame and consumed at frame_tick
   // (brick_top_bottom / brick_side: a brick was hit on its top or bottom / on a side edge).
@@ -142,9 +149,11 @@ module tt_um_tiny_breakout #(
   // ---------------------------------------------------------------------------
   gamepad_pkg::gamepad_t gp;        // gamepad report, all zero without a controller
   logic                  gp_valid;  // gp is complete (a few clocks per report)
+  logic                  gp_connected;  // a controller is connected (as of the last report)
+  logic                  gp_connected_now;
   logic                  gp_left, gp_right, gp_fire;  // game controls from the last report
-  logic                  gp_select;    // SELECT in the last report
-  logic                  gp_autoplay;  // autoplay switched on with SELECT
+  logic                  gp_select;     // SELECT in the last report
+  logic                  gp_autoplay;   // autoplay switched on with SELECT
 
   gamepad_rx u_gamepad_rx (
       .clk         (clk),
@@ -153,6 +162,7 @@ module tt_um_tiny_breakout #(
       .pmod_clk    (ui.gp_clk),
       .pmod_data   (ui.gp_data),
       .report      (gp),
+      .connected   (gp_connected_now),
       .report_valid(gp_valid)
   );
 
@@ -160,21 +170,41 @@ module tt_um_tiny_breakout #(
   // SELECT (released in the previous report, pressed in this one) switches autoplay.
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      gp_left     <= 0;
-      gp_right    <= 0;
-      gp_fire     <= 0;
-      gp_select   <= 0;
-      gp_autoplay <= 0;
+      gp_connected <= 0;  // until a report says otherwise (none come without the PMOD)
+      gp_left      <= 0;
+      gp_right     <= 0;
+      gp_fire      <= 0;
+      gp_select    <= 0;
+      gp_autoplay  <= 0;
     end else if (gp_valid) begin
-      gp_left   <= gp.left;
-      gp_right  <= gp.right;
-      gp_fire   <= gp.b | gp.start | gp.a;
-      gp_select <= gp.select;
+      gp_connected <= gp_connected_now;
+      gp_left      <= gp.left;
+      gp_right     <= gp.right;
+      gp_fire      <= gp.b | gp.start | gp.a;
+      gp_select    <= gp.select;
       if (gp.select && !gp_select) gp_autoplay <= ~gp_autoplay;
     end
   end
 
-  wire autoplay  = ui.autoplay | gp_autoplay;
+  // Demo: with no controller connected the game plays itself, from power-up. Connecting a
+  // controller ends it, and so does a press of a direct button (for simulators that only
+  // toggle pins); either way a new game starts. Decided at the frame update.
+  logic demo_allowed;  // no direct button pressed since power-up
+  logic demo_was;      // the demo ran in the previous frame
+  wire  demo     = demo_allowed & ~gp_connected;
+  wire  end_demo = demo_was & ~demo;
+
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      demo_allowed <= 1;
+      demo_was     <= 0;
+    end else if (frame_tick) begin
+      if (ui.left || ui.right || ui.fire) demo_allowed <= 0;
+      demo_was <= demo;
+    end
+  end
+
+  wire autoplay  = ui.autoplay | gp_autoplay | demo;
   wire btn_left  = ui.left  | gp_left;
   wire btn_right = ui.right | gp_right;
   wire btn_fire  = ui.fire  | gp_fire | autoplay;  // autoplay launches the ball itself
@@ -228,7 +258,7 @@ module tt_um_tiny_breakout #(
     score u_score (
         .clk     (clk),
         .rst_n   (rst_n),
-        .clear   (frame_tick && restart),
+        .clear   (frame_tick && new_game),
         .add     (clear_brick),
         .h_pos   (h_pos),
         .v_pos   (v_pos),
@@ -345,18 +375,23 @@ module tt_um_tiny_breakout #(
   wire [9:0] step_x = next_left ? (next_steep ? -2 : -1) : (next_steep ? 2 : 1);
   wire [7:0] step_y_half = next_up ? -1 : 1;
 
-  // Moves per frame: 1 + speed_level / 8, plus 1 in odd frames for a half step
-  // (speed_level / 4 odd): 1, 1|2, 2, 2|3, 3. They happen at the start of lines 480, 481
-  // and 482 (the first is frame_tick): line 480 + k moves if k < moves. Collision flags
-  // are cleared at frame_tick, so the extra moves keep the new direction.
-  wire [1:0] moves     = 2'd1 + speed_level[4:3] + 2'(speed_level[2] & odd_frame);
-  wire       move_tick = (h_pos == 0) && (v_pos[9:2] == SCREEN_H[9:2]) && (v_pos[1:0] < moves);
+  // Moves per frame: 3 from speed_level 16 (and in the pause); below that 1 + speed_level
+  // / 8, plus 1 in odd frames for a half step (speed_level / 4 odd): 1, 1|2, 2, 2|3, 3.
+  // They happen at the start of lines 480, 481 and 482 (the first is frame_tick): line
+  // 480 + k moves if k < moves. Collision flags are cleared at frame_tick, so the extra
+  // moves keep the new direction.
+  wire [1:0] moves = speed_level[4] ? 2'd3
+                                    : 2'd1 + 2'(speed_level[3]) + 2'(speed_level[2] & odd_frame);
+  wire move_tick = (h_pos == 0) && (v_pos[9:2] == SCREEN_H[9:2]) && (v_pos[1:0] < moves);
 
   // What each frame update does, in priority order
-  wire restart   = game_over & btn_fire;                  // new game after game over
-  wire on_paddle = ~game_over & (serving | bricks_empty); // ball waits on the paddle
-  wire lose_ball = ~game_over & ~on_paddle & ball_lost;   // ball fell off the bottom
-  wire fly       = ~game_over & ~on_paddle & ~ball_lost;  // ball in flight
+  wire restart    = game_over & btn_fire;                  // new game after game over
+  wire new_game   = restart | end_demo;                    // ... or when the demo ends
+  wire on_paddle  = ~game_over & (serving | bricks_empty); // ball waits on the paddle
+  wire lose_ball  = ~game_over & ~on_paddle & ball_lost;   // ball fell off the bottom
+  wire fly        = ~game_over & ~on_paddle & ~ball_lost;  // ball in flight
+  wire paused     = on_paddle & bricks_empty;              // the wall was cleared ...
+  wire next_level = paused & (speed_level == 31);          // ... and the pause is over
 
   // Paddle
   always_ff @(posedge clk) begin
@@ -391,17 +426,18 @@ module tt_um_tiny_breakout #(
     end
   end
 
-  // Game progress: spare lives (and game over), serving
+  // Game progress: spare lives (and game over), serving, level
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       lives   <= SPARE_LIVES;
       serving <= 1;
     end else if (frame_tick) begin
-      if (restart) begin
+      if (new_game) begin
         lives   <= SPARE_LIVES;
         serving <= 1;
       end else if (on_paddle) begin
         serving <= ~btn_fire;
+        if (next_level && lives != 2) lives <= lives + 1;  // a spare ball for the level
       end else if (lose_ball) begin
         lives   <= lives - 1;  // from 0 to 3: game over
         serving <= 1;
@@ -409,15 +445,26 @@ module tt_um_tiny_breakout #(
     end
   end
 
-  // Bricks come back for a new game or level
-  assign refill_bricks = frame_tick && (restart || (on_paddle && bricks_empty));
+  always_ff @(posedge clk) begin
+    if (!rst_n) level <= 0;
+    else if (frame_tick && new_game) level <= 0;
+    else if (frame_tick && next_level) level <= level_up;
+  end
 
-  // Speed: count the current ball's bricks, from 0 again whenever the ball is on the paddle
+  // Bricks come back for a new game, or after the pause for the next level
+  assign refill_bricks = frame_tick && (new_game || next_level);
+
+  // Speed: count the current ball's bricks from the level's start (4 per level) while it
+  // flies; in the pause, count 16..31 on odd frames
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       speed_level <= 0;
+    end else if (frame_tick && paused) begin
+      if (next_level) speed_level <= {1'b0, level_up, 2'b00};  // the ball may launch at once
+      else if (!speed_level[4]) speed_level <= 16;
+      else if (odd_frame) speed_level <= speed_level + 1;
     end else if (frame_tick && on_paddle) begin
-      speed_level <= 0;
+      speed_level <= {1'b0, level, 2'b00};
     end else if (clear_brick && !speed_level[4]) begin  // stops at 16
       speed_level <= speed_level + 1;
     end

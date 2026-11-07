@@ -9,6 +9,7 @@
 struct Game {
   Vtt_um_tiny_breakout top;
   uint16_t pad_bits = 0;  // {b,y,sel,start,up,down,left,right,a,x,l,r}
+  bool pmod_plugged = true;  // Gamepad PMOD plugged in (false: its pins stay low, no reports)
   bool autoplay = false;
   uint8_t buttons = 0;  // direct button pins ui_in[2:0]: bit 0 LEFT, 1 RIGHT, 2 FIRE
   std::vector<uint8_t> fb = std::vector<uint8_t>(640 * 480);  // raw uo_out per pixel
@@ -38,6 +39,7 @@ struct Game {
       for (int i = 0; i < 40; i++) pmod[bit * 40 + i] = base | (d << 6) | ((i >= 20) << 5);
     }
     for (int i = 0; i < 80; i++) pmod[960 + i] = base | ((i >= 20 && i < 60) << 4);
+    if (!pmod_plugged) for (uint8_t &b : pmod) b = base;
     // Capture visible pixels (outputs are registered: 1-cycle latency, same as the RTL tests).
     uint8_t *p = fb.data();
     int cyc = 0;

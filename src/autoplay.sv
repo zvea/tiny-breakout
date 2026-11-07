@@ -5,11 +5,12 @@
  *
  * Autoplay: steers the paddle so the ball lands on a chosen quarter of it.
  *
- * After every paddle hit it aims at another quarter: always aiming at the same spot makes
- * the ball settle into a closed loop that never reaches the remaining bricks, and since the
- * paddle quarter sets the bounce angle, varying it keeps the ball exploring. The next
- * quarter is 1 or 2 further on, depending on the ball's exact position at the hit
- * (ball_x[2]): free, and irregular enough to keep the ball off repeating paths.
+ * After every paddle hit it aims at another quarter, picked pseudo-randomly: always aiming
+ * at the same spot makes the ball settle into a closed loop that never reaches the
+ * remaining bricks, and since the paddle quarter sets the bounce angle, varying it keeps
+ * the ball exploring. The choice comes from an LFSR that steps every frame, independently
+ * of the game: picking from the game's own state (such as the ball's position) was tried,
+ * and the game then fell into loops that never cleared the last bricks.
  */
 
 `default_nettype none
@@ -17,7 +18,7 @@
 module autoplay (
     input  logic       clk,
     input  logic       rst_n,
-    input  logic       frame_tick,   // once per frame
+    input  logic       frame_tick,   // once per frame: the LFSR steps
     input  logic       paddle_hit,   // at frame_tick: the ball hit the paddle this frame
     input  logic [9:0] ball_x,       // left edge of the 8x8 box the round ball is drawn in
     input  logic [9:0] paddle_x,     // left edge of the 64-px paddle (a multiple of 4)
@@ -25,13 +26,16 @@ module autoplay (
     output logic       steer_right
 );
 
+  logic [4:0] lfsr;         // x^5 + x^3 + 1: cycles through all 31 non-zero values
   logic [1:0] aim_quarter;  // paddle quarter to aim for, 16 px each (0 = leftmost)
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
+      lfsr        <= 1;  // any non-zero seed
       aim_quarter <= 1;
-    end else if (frame_tick && paddle_hit) begin
-      aim_quarter <= aim_quarter + 2'd1 + 2'(ball_x[2]);
+    end else if (frame_tick) begin
+      lfsr <= {lfsr[3:0], lfsr[4] ^ lfsr[2]};
+      if (paddle_hit) aim_quarter <= lfsr[1:0];
     end
   end
 

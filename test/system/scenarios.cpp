@@ -128,6 +128,11 @@ View run(Game &g, int frames, bool find_ball = true) {
   return look(g, find_ball);
 }
 
+// With no controller connected the game plays itself (demo). The emulated controller is
+// recognised from its second report, which ends the demo and starts a new game; returns
+// the view once that game's wall is in.
+View start_game(Game &g) { return run(g, 4); }
+
 // ---- Scenarios ---------------------------------------------------------------------------
 
 // A new game shows the full wall, two spare balls and the ball resting on the paddle; it
@@ -135,7 +140,7 @@ View run(Game &g, int frames, bool find_ball = true) {
 void launch() {
   Game g;
   g.reset();
-  View v = run(g, 2);
+  View v = start_game(g);
   CHECK(v.bricks == 48, "bricks %d", v.bricks);
   CHECK(v.lives == 2, "life markers %d", v.lives);
   CHECK(resting(v), "ball at (%d, %d), paddle at %d", v.ball_x, v.ball_y, v.paddle_x);
@@ -159,6 +164,7 @@ void steering() {
     };
     Game g;
     g.reset();
+    start_game(g);
     int x0 = run(g, 2).paddle_x;
     press(g, false, true);
     int x1 = run(g, 10).paddle_x;
@@ -179,6 +185,7 @@ void steering() {
 void paddle_limits() {
   Game g;
   g.reset();
+  start_game(g);
   g.buttons = LEFT;
   View v = run(g, 100);
   CHECK(v.paddle_x == 64, "left limit %d", v.paddle_x);
@@ -193,7 +200,7 @@ void game_over_and_restart() {
   Game g;
   g.reset();
   int expected_lives = 2, frame = 0, missing = 0, since_launch = 1000, prev_y = -1;
-  View v = run(g, 1);
+  View v = start_game(g);
   const bool scored = v.score >= 0;  // built with ENABLE_SCORE
   for (; frame < 20000; frame++) {
     // Keep the paddle against the left wall, and launch whenever the ball is resting.
@@ -243,16 +250,16 @@ void autoplay_clears_a_level() {
   g.autoplay = true;
   int fewest = 48, frame = 0, lives_lost = 0, lives = 2, prev_bricks = 48;
   bool cleared = false;
-  View v = run(g, 1, false);
+  View v = start_game(g);
   const bool scored = v.score >= 0;  // built with ENABLE_SCORE
   for (; frame < 40000 && !cleared; frame++) {
     v = run(g, 1, false);
     if (v.lives < lives) lives_lost += lives - v.lives;
     lives = v.lives;
     if (v.bricks < fewest) fewest = v.bricks;
-    cleared = fewest <= 1 && v.bricks == 48;  // the last brick vanishes mid-frame
+    cleared = fewest == 0 && v.bricks > 0;  // the next wall has come in
     // The score (10 per brick) is drawn above the wall: compare once the count is steady
-    if (scored && v.bricks == prev_bricks && v.bricks > 0 && !cleared)
+    if (scored && v.bricks == prev_bricks && v.bricks > 0 && fewest > 0)
       CHECK(v.score == 10 * (48 - v.bricks), "frame %d: score %d with %d bricks cleared", frame,
             v.score, 48 - v.bricks);
     prev_bricks = v.bricks;
@@ -271,7 +278,7 @@ void ball_speeds_up() {
   Game g;
   g.reset();
   g.autoplay = true;
-  View v = run(g, 2);  // the wall is blank for the first frame, while it fills
+  View v = start_game(g);
   int prev_y = v.ball_y, prev_bricks = v.bricks, frame = 0, checked[5] = {};
   int prev_dy = 0, prev_step = -1;
   for (; frame < 10000 && v.lives == 2 && v.bricks > 28; frame++) {
@@ -313,6 +320,7 @@ void brick_bounces() {
   g.autoplay = true;
   constexpr int N = 2500;
   static View v[N];
+  start_game(g);
   for (int t = 0; t < N; t++) v[t] = run(g, 1);
   int checked[2] = {};  // side, top/bottom
   for (int s = 2; s + 2 < N; s++) {
@@ -344,11 +352,106 @@ void brick_bounces() {
   CHECK(checked[0] > 0 && checked[1] > 0, "did not see both kinds of bounce");
 }
 
+// The vertical steps of a ball just launched from the paddle (2 or 4 px per frame), for
+// `frames` frames: at 1.5x they alternate.
+bool launch_steps_alternate_2_4(Game &g, View &v, int frames) {
+  for (int i = 0; i < 2000 && resting(v); i++) v = run(g, 1);  // wait for the launch
+  int prev_y = v.ball_y, prev_dy = 0;
+  bool ok = true;
+  for (int i = 0; i < frames; i++) {
+    v = run(g, 1);
+    int dy = prev_y - v.ball_y;
+    prev_y = v.ball_y;
+    if ((dy != 2 && dy != 4) || dy == prev_dy) {
+      printf("  launch frame %d: moved %d px up (previous %d)\n", i, dy, prev_dy);
+      ok = false;
+    }
+    prev_dy = dy;
+  }
+  return ok;
+}
+
+// Clearing a level: the empty wall stays for about half a second, a spare ball comes back
+// (one is lost first, as there are at most 2), the next wall comes in, and the next
+// level's balls start at 1.5x, also after a ball is lost.
+void level_cleared() {
+  Game g;
+  g.reset();
+  View v = start_game(g);
+  int frame = 0;
+  for (; frame < 5000 && v.lives == 2; frame++) {  // lose a ball: paddle against the left wall
+    g.buttons = LEFT | (resting(v) ? FIRE : 0);
+    v = run(g, 1);
+  }
+  CHECK(v.lives == 1, "frame %d: still %d spare balls", frame, v.lives);
+  g.buttons = 0;
+  g.autoplay = true;
+  for (; frame < 30000 && v.bricks > 0; frame++) v = run(g, 1, false);
+  CHECK(v.bricks == 0, "frame %d: level not cleared (%d bricks)", frame, v.bricks);
+  int pause = 0;
+  for (; pause < 100 && v.bricks == 0; pause++) v = run(g, 1, false);
+  printf("frame %5d: level cleared, empty wall for %d frames\n", frame, pause);
+  CHECK(pause >= 28 && pause <= 36, "empty wall for %d frames (expected about 32)", pause);
+  v = run(g, 1);  // past the filling frame
+  CHECK(v.bricks == 48, "level 2 wall has %d bricks", v.bricks);
+  CHECK(v.lives == 2, "%d spare balls after the level (expected one back)", v.lives);
+  CHECK(launch_steps_alternate_2_4(g, v, 12), "level 2 ball did not start at 1.5x");
+  // Lose a ball in level 2: the next one starts at the level's speed again
+  g.autoplay = false;
+  for (int i = 0; i < 5000 && v.lives == 2; i++) {
+    g.buttons = LEFT;
+    v = run(g, 1);
+  }
+  CHECK(v.lives == 1, "no ball lost in level 2");
+  for (int i = 0; i < 100 && !resting(v); i++) v = run(g, 1);
+  g.buttons = FIRE;
+  v = run(g, 1);
+  g.buttons = 0;
+  CHECK(launch_steps_alternate_2_4(g, v, 12), "level 2 ball after a loss did not start at 1.5x");
+}
+
+// With no controller connected the game plays itself (demo): with no Gamepad PMOD at all,
+// or with the PMOD reporting no controller (all ones). The demo ends, starting a new game,
+// when a direct button is pressed or a controller is connected; after that nothing moves
+// without input.
+void demo_until_a_controller_or_button() {
+  for (int how = 0; how < 2; how++) {
+    const char *name = how ? "PMOD without controller, then one connected" : "no PMOD, then a button";
+    Game g;
+    g.reset();
+    if (how) g.pad_bits = 0x0fff;  // the PMOD reports no controller
+    else g.pmod_plugged = false;
+    View v = run(g, 4);
+    int bricks0 = v.bricks;
+    v = run(g, 600);
+    CHECK(v.bricks < bricks0, "%s: demo cleared no bricks in 600 frames (%d left)", name, v.bricks);
+    CHECK(!resting(v), "%s: in the demo the ball is resting on the paddle", name);
+    if (how) {
+      g.pad_bits = 0;  // a controller is connected, nothing pressed
+      v = run(g, 3);
+    } else {
+      g.buttons = LEFT;
+      run(g, 1);
+      g.buttons = 0;
+      v = run(g, 3);  // the new game starts at the next frame update, then its wall fills
+    }
+    CHECK(v.bricks == 48 && v.lives == 2, "%s: then %d bricks, %d spare balls", name, v.bricks,
+          v.lives);
+    CHECK(resting(v), "%s: then the ball is at (%d, %d), paddle %d", name, v.ball_x, v.ball_y,
+          v.paddle_x);
+    int x0 = v.paddle_x;
+    v = run(g, 60);
+    CHECK(resting(v) && v.paddle_x == x0, "%s: without input, ball (%d, %d), paddle %d -> %d",
+          name, v.ball_x, v.ball_y, x0, v.paddle_x);
+  }
+}
+
 // Each press of SELECT on the gamepad switches autoplay: on, it launches the ball and
 // steers; off, the paddle only moves when told to. Holding SELECT counts as one press.
 void select_toggles_autoplay() {
   Game g;
   g.reset();
+  start_game(g);
   g.pad_bits = GP_SELECT;  // held for many reports: still a single press
   run(g, 20);
   g.pad_bits = 0;
@@ -374,9 +477,11 @@ const Scenario scenarios[] = {
     {"steering", steering},
     {"paddle_limits", paddle_limits},
     {"game_over_and_restart", game_over_and_restart},
+    {"demo_until_a_controller_or_button", demo_until_a_controller_or_button},
     {"select_toggles_autoplay", select_toggles_autoplay},
     {"ball_speeds_up", ball_speeds_up},
     {"brick_bounces", brick_bounces},
+    {"level_cleared", level_cleared},
     {"autoplay_clears_a_level", autoplay_clears_a_level},
 };
 

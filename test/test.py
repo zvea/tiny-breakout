@@ -79,13 +79,13 @@ async def test_gamepad_and_paddle(dut):
                 return x
         return None
 
-    x0 = await paddle_left_edge()
-    # The first report after reset is ignored (it may be incomplete); the real PMOD
-    # sends them continuously.
+    # Until a controller is seen the game plays itself (demo), steering the paddle; the
+    # first report after reset is ignored (it may be incomplete), the second shows the
+    # controller and starts a new game. The real PMOD sends reports continuously.
     await send_gamepad(dut, 1 << 4)  # RIGHT
     await send_gamepad(dut, 1 << 4)
     x1 = await paddle_left_edge()
     x2 = await paddle_left_edge()
-    dut._log.info(f"paddle x: {x0} -> {x1} -> {x2}")
-    assert x0 is not None and x2 is not None
-    assert x2 > x0
+    dut._log.info(f"paddle x: {x1} -> {x2}")
+    assert x1 is not None and x2 is not None
+    assert x2 > x1

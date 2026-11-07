@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for autoplay: paddle steering towards a paddle quarter that changes after
-every paddle hit."""
+"""Unit tests for autoplay: paddle steering towards a paddle quarter that is picked anew,
+pseudo-randomly, after every paddle hit (from a 5-bit LFSR, x^5 + x^3 + 1, that steps
+every frame)."""
 
 import cocotb
 from cocotb.clock import Clock
@@ -69,24 +70,46 @@ async def quarter_changes_only_on_paddle_hits(dut):
         assert await read(dut, "aim_quarter") == quarter, "quarter changed without a paddle hit"
 
 
+def lfsr_states(n: int) -> list[int]:
+    """The LFSR's value at each of the first n frames after reset (seed 1)."""
+    states, s = [], 1
+    for _ in range(n):
+        states.append(s)
+        s = ((s << 1) & 0x1F) | (((s >> 4) ^ (s >> 2)) & 1)
+    return states
+
+
 @cocotb.test()
-async def each_hit_moves_the_aim_on_by_1_or_2_quarters(dut):
-    """The step depends on bit 2 of the ball's x position at the hit."""
+async def each_hit_takes_the_quarter_from_the_lfsr(dut):
+    """At a hit, the new quarter is the LFSR's low 2 bits in that frame, whatever the ball's
+    position, and the LFSR keeps stepping every frame with or without hits."""
     await start(dut)
-    quarter = await read(dut, "aim_quarter")
-    for ball_x in (100, 104, 108, 300, 305, 202, 64, 70):
-        dut.ball_x.value = ball_x
-        await frame(dut, paddle_hit=True)
-        quarter = (quarter + 1 + ((ball_x >> 2) & 1)) % 4
-        assert await read(dut, "aim_quarter") == quarter, f"ball_x {ball_x}"
+    states = lfsr_states(60)
+    for f in range(60):
+        hit = f % 3 == 1 or f % 7 == 0
+        dut.ball_x.value = 100 + f
+        quarter = await read(dut, "aim_quarter")
+        await frame(dut, paddle_hit=hit)
+        expected = states[f] & 3 if hit else quarter
+        assert await read(dut, "aim_quarter") == expected, f"frame {f}"
+
+
+@cocotb.test()
+async def lfsr_runs_through_all_31_non_zero_states(dut):
+    assert sorted(set(lfsr_states(31))) == list(range(1, 32))
+    await start(dut)
+    seen = set()
+    for _ in range(31):
+        seen.add(await read(dut, "lfsr"))
+        await frame(dut)
+    assert seen == set(range(1, 32))
 
 
 @cocotb.test()
 async def every_quarter_gets_picked(dut):
     await start(dut)
     quarters = set()
-    for ball_x in range(64, 104):
-        dut.ball_x.value = ball_x
+    for _ in range(40):
         await frame(dut, paddle_hit=True)
         quarters.add(await read(dut, "aim_quarter"))
     assert quarters == {0, 1, 2, 3}
