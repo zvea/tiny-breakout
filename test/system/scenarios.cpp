@@ -244,6 +244,58 @@ void falling_ball_lights_the_border() {
   printf("frame %5d: game over; border lit for %d frames as the balls fell\n", frame, lit);
 }
 
+// Lines from the top that are black at x 300, a column the status line, top wall, bricks,
+// field and paddle all cross (none of them black) and the score does not.
+int black_from_top(const Game &g) {
+  int y = 0;
+  while (y < 480 && colour(g.fb[y * 640 + 300]) == BLACK) y++;
+  return y;
+}
+
+// Game over brings a black curtain down from the top, 16 px a frame, until only the score is
+// left; the next game brings the picture back.
+void game_over_curtain() {
+  Game g;
+  g.reset();
+  View v = start_game(g);
+  int frame = 0, score = -1, missing = 0;
+  // Until the curtain shows (more than the 24-line status line is black), or the ball has
+  // been gone for 10 frames: game over, with no curtain
+  for (; frame < 20000 && black_from_top(g) <= 24 && missing < 10; frame++) {
+    score = v.score;
+    g.buttons = LEFT | (resting(v) ? FIRE : 0);  // paddle against the left wall
+    v = run(g, 1);
+    missing = v.ball ? 0 : missing + 1;
+  }
+  CHECK(black_from_top(g) > 24, "no curtain by frame %d (ball gone for %d frames)", frame, missing);
+  if (black_from_top(g) <= 24) return;
+  printf("frame %5d: the curtain starts, score %d\n", frame, score);
+  // The first frame that shows it has it 32 lines down (game over, then 16, then 32: the first
+  // 16 are the black status line anyway), then 16 more each frame until it reaches the bottom
+  g.buttons = 0;
+  for (int line = 32; line <= 480 + 32; line += 16) {
+    int expected = line < 480 ? line : 480;
+    CHECK(black_from_top(g) == expected, "curtain at %d lines, expected %d", black_from_top(g),
+          expected);
+    v = run(g, 1);
+  }
+  int others = 0;
+  for (int y = 0; y < 480; y++)
+    for (int x = 0; x < 640; x++)
+      if (!(x >= 512 && x < 576 && y < 16) && colour(g.fb[y * 640 + x]) != BLACK) others++;
+  CHECK(others == 0, "after the curtain: %d pixels besides the score are not black", others);
+  CHECK(v.score == score, "after the curtain: score %d, was %d", v.score, score);
+  // A new game brings the picture back
+  g.buttons = FIRE;
+  run(g, 1);
+  g.buttons = 0;
+  v = run(g, 2);
+  CHECK(black_from_top(g) == 24, "after restart: %d black lines from the top", black_from_top(g));
+  CHECK(v.bricks == 48 && v.lives == 2 && v.score == 0 && resting(v),
+        "after restart: %d bricks, %d markers, score %d, ball at (%d, %d)", v.bricks, v.lives,
+        v.score, v.ball_x, v.ball_y);
+}
+
 void game_over_and_restart() {
   Game g;
   g.reset();
@@ -521,6 +573,7 @@ const Scenario scenarios[] = {
     {"paddle_limits", paddle_limits},
     {"falling_ball_lights_the_border", falling_ball_lights_the_border},
     {"game_over_and_restart", game_over_and_restart},
+    {"game_over_curtain", game_over_curtain},
     {"demo_until_a_controller_or_button", demo_until_a_controller_or_button},
     {"select_turns_autoplay_on", select_turns_autoplay_on},
     {"ball_speeds_up", ball_speeds_up},

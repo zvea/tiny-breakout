@@ -122,7 +122,7 @@ module tt_um_tiny_breakout (
   // start a half step faster, up to 2.5x from the 4th level.
   //
   // In the pause after a cleared wall, speed_level is the timer: 16..31 on odd frames
-  // (about half a second).
+  // (about half a second). After game over it is the curtain's line: 0..31, one per frame.
   logic [4:0] speed_level;
   logic       odd_frame;  // alternates every frame, for the half steps
 
@@ -447,7 +447,8 @@ module tt_um_tiny_breakout (
   assign refill_bricks = frame_tick && (new_game || level_done);
 
   // speed_level: 4 x level while the ball is on the paddle, +1 per brick while it flies (up
-  // to 16); in the pause, 16..31 on odd frames
+  // to 16); in the pause, 16..31 on odd frames; from a lost ball, 0 (the next frame sets it
+  // from the level, unless that was the last ball); after game over, +1 per frame up to 31
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       speed_level <= 0;
@@ -458,6 +459,10 @@ module tt_um_tiny_breakout (
       else if (odd_frame) speed_level <= speed_level + 1;
     end else if (frame_tick && on_paddle) begin
       speed_level <= {1'b0, level, 2'b00};
+    end else if (frame_tick && lose_ball) begin
+      speed_level <= 0;
+    end else if (frame_tick && game_over && speed_level != 31) begin
+      speed_level <= speed_level + 1;
     end else if (clear_brick && !speed_level[4]) begin  // stops at 16
       speed_level <= speed_level + 1;
     end
@@ -482,6 +487,10 @@ module tt_um_tiny_breakout (
   // (a ball at rest on the paddle is at y 440; after game over it stays below the screen). Not
   // from fly: that is valid only at frame_tick, as the wall's emptiness is read off the picture.
   wire ball_doomed = (ball_y[9:3] > PADDLE_CELL_Y) && !ball_lost;
+
+  // Game over: a black curtain comes down from the top, 16 px a frame (half a second to the
+  // bottom), leaving only the score. speed_level is its line.
+  wire curtain = game_over && (v_pos[9:4] < {1'b0, speed_level});
   // Red that brightens as it falls: ball_y[4:3] is 1, 2, 3 for y 456, 464, 472 (maroon, dark
   // red, red), so the pulse keeps pace with the ball
   colour_pkg::rgb_t lost_rgb;
@@ -504,13 +513,14 @@ module tt_um_tiny_breakout (
   // area, tiny_vga_out blanks the output.)
   colour_pkg::rgb_t rgb;
   always_comb begin
-    if (ball_px | life_px | score_px) rgb = BALL_COLOUR;
-    else if (paddle_px)               rgb = PADDLE_COLOUR;
-    else if (brick_px)                rgb = brick_rgb;
-    else if (wall_px)                 rgb = WALL_COLOUR;
-    else if (field_px)                rgb = FIELD_COLOUR;
-    else if (ball_doomed)             rgb = lost_rgb;
-    else                              rgb = colour_pkg::BLACK;
+    if (curtain && !score_px)              rgb = colour_pkg::BLACK;
+    else if (ball_px | life_px | score_px) rgb = BALL_COLOUR;
+    else if (paddle_px)                    rgb = PADDLE_COLOUR;
+    else if (brick_px)                     rgb = brick_rgb;
+    else if (wall_px)                      rgb = WALL_COLOUR;
+    else if (field_px)                     rgb = FIELD_COLOUR;
+    else if (ball_doomed)                  rgb = lost_rgb;
+    else                                   rgb = colour_pkg::BLACK;
   end
 
   tiny_vga_out u_tiny_vga_out (
