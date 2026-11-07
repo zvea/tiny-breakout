@@ -8,7 +8,6 @@ The design's source files are read from info.yaml, so this stays in step with th
 Needs Verilator 4.x: sim/play/sim.h uses its one-eval-per-clock trick.
 """
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -46,8 +45,6 @@ def scenarios_binary() -> Path:
         "--exe", str(HERE / "scenarios.cpp"), *map(str, sources()),
         "--top-module", "tt_um_tiny_breakout", "-Mdir", str(BUILD), "-j", "8",
     ]  # fmt: skip
-    if "ENABLE_SCORE" in os.environ:  # e.g. ENABLE_SCORE=0 pytest ...; else the RTL's default
-        cmd.append(f"-GENABLE_SCORE={os.environ['ENABLE_SCORE']}")
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return BUILD / "Vtt_um_tiny_breakout"

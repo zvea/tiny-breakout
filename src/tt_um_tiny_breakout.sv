@@ -34,11 +34,7 @@
 
 `default_nettype none
 
-module tt_um_tiny_breakout #(
-    // Optional features, chosen at build time. The Tiny Tapeout wrapper uses the defaults;
-    // simulators can override them (Verilator -G, Icarus -P).
-    parameter bit ENABLE_SCORE = 1  // 4-digit score, top right: about 7 points of tile utilisation
-) (
+module tt_um_tiny_breakout (
     input  logic [7:0] ui_in,    // Dedicated inputs
     output logic [7:0] uo_out,   // Dedicated outputs
     input  logic [7:0] uio_in,   // IOs: Input path
@@ -234,23 +230,18 @@ module tt_um_tiny_breakout #(
       .empty       (bricks_empty)
   );
 
-  // Score (ENABLE_SCORE): 10 per brick (shown with a fixed last 0), back to 0000 for a new
-  // game; top right
+  // Score: 10 per brick (shown with a fixed last 0), back to 0000 for a new game; top right
   logic score_px;
 
-  if (ENABLE_SCORE) begin : g_score
-    score u_score (
-        .clk     (clk),
-        .rst_n   (rst_n),
-        .clear   (frame_tick && new_game),
-        .add     (clear_brick),
-        .h_pos   (h_pos),
-        .v_pos   (v_pos),
-        .score_px(score_px)
-    );
-  end else begin : g_no_score
-    assign score_px = 0;
-  end
+  score u_score (
+      .clk     (clk),
+      .rst_n   (rst_n),
+      .clear   (frame_tick && new_game),
+      .add     (clear_brick),
+      .h_pos   (h_pos),
+      .v_pos   (v_pos),
+      .score_px(score_px)
+  );
 
   // Walls, paddle and life markers are aligned to a grid of 8x8-px cells
   wire [6:0] cell_x = h_pos[9:3];
