@@ -12,9 +12,10 @@
  * Pins (see inputs_t below and tiny_vga_out.sv for the exact bit layout):
  *   uo_out     : TinyVGA PMOD (640x480 @ 60 Hz, 25.175 MHz clock)
  *   ui_in[0..2]: direct buttons LEFT, RIGHT, FIRE (active high, for simulators /
- *                plain buttons; FIRE launches the ball / restarts after game over)
+ *                plain buttons; FIRE launches the ball / restarts after game over;
+ *                on the gamepad, fire is A, X, L or R)
  *   ui_in[3]   : AUTOPLAY (paddle tracks the ball, auto-launch); on the gamepad, SELECT
- *                switches autoplay on and off
+ *                switches autoplay on and left, right or fire switches it off
  *   ui_in[4..6]: Gamepad PMOD latch, clock, data (Psychogenic SNES Gamepad PMOD)
  * With no controller connected the game plays itself (demo); see "Demo" below.
  *
@@ -148,44 +149,26 @@ module tt_um_tiny_breakout #(
   // ---------------------------------------------------------------------------
   // Controls: gamepad, direct buttons and autoplay
   // ---------------------------------------------------------------------------
-  gamepad_pkg::gamepad_t gp;                // gamepad report, all zero without a controller
-  logic                  gp_valid;          // gp is complete (a few clocks per report)
-  logic                  gp_connected_now;  // from gamepad_rx, valid with gp_valid
-  logic                  gp_connected;      // a controller is connected (as of the last report)
-  logic                  gp_left, gp_right, gp_fire;  // game controls from the last report
-  logic                  gp_select;         // SELECT in the last report
-  logic                  gp_autoplay;       // autoplay switched on with SELECT
+  logic gp_connected;                             // a controller is connected (last report)
+  logic gp_left_raw, gp_right_raw, gp_fire_raw;  // pressed in the last report, unmasked
+  logic gp_autoplay;                              // switched on with SELECT
 
   gamepad_rx u_gamepad_rx (
-      .clk         (clk),
-      .rst_n       (rst_n),
-      .pmod_latch  (ui.gp_latch),
-      .pmod_clk    (ui.gp_clk),
-      .pmod_data   (ui.gp_data),
-      .report      (gp),
-      .connected   (gp_connected_now),
-      .report_valid(gp_valid)
+      .clk            (clk),
+      .rst_n          (rst_n),
+      .pmod_latch     (ui.gp_latch),
+      .pmod_clk       (ui.gp_clk),
+      .pmod_data      (ui.gp_data),
+      .connected      (gp_connected),
+      .left           (gp_left_raw),
+      .right          (gp_right_raw),
+      .fire           (gp_fire_raw),
+      .select_autoplay(gp_autoplay)
   );
 
-  // Keep only the game's controls from each report: fire is B, start or A. Each press of
-  // SELECT (released in the previous report, pressed in this one) switches autoplay.
-  always_ff @(posedge clk) begin
-    if (!rst_n) begin
-      gp_connected <= 0;  // until a report says otherwise (none come without the PMOD)
-      gp_left      <= 0;
-      gp_right     <= 0;
-      gp_fire      <= 0;
-      gp_select    <= 0;
-      gp_autoplay  <= 0;
-    end else if (gp_valid) begin
-      gp_connected <= gp_connected_now;
-      gp_left      <= gp.left;
-      gp_right     <= gp.right;
-      gp_fire      <= gp.b | gp.start | gp.a;
-      gp_select    <= gp.select;
-      if (gp.select && !gp_select) gp_autoplay <= ~gp_autoplay;
-    end
-  end
+  wire gp_left  = gp_left_raw  & gp_connected;
+  wire gp_right = gp_right_raw & gp_connected;
+  wire gp_fire  = gp_fire_raw  & gp_connected;
 
   // Demo: autoplay while no controller is connected, until a direct button is pressed
   // (held at a frame update; for simulators that only toggle pins). Ending the demo starts
@@ -542,7 +525,6 @@ module tt_um_tiny_breakout #(
   assign uio_oe  = 0;
 
   // Unused inputs and signal bits, listed to silence lint warnings
-  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0],
-                   gp.y, gp.up, gp.down, gp.x, gp.l, gp.r, 1'b0};
+  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0], 1'b0};
 
 endmodule

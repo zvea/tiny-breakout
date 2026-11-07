@@ -27,8 +27,8 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 | Control | Gamepad | Direct input |
 |---|---|---|
 | Move left / right | D-pad left / right | `ui[0]` / `ui[1]` |
-| Launch the ball, or start a new game after game over | B, A or START | `ui[2]` |
-| Autoplay | SELECT switches it on and off | `ui[3]` high |
+| Launch the ball, or start a new game after game over | A, X, L or R | `ui[2]` |
+| Autoplay | SELECT switches it on; left, right or fire switches it off | `ui[3]` high |
 
 The direct inputs are active high, for plain buttons or for simulators that can't produce
 the gamepad's serial signal. Pressing one also ends the demo.

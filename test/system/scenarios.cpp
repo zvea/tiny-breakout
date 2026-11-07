@@ -26,7 +26,7 @@ namespace {
 constexpr uint8_t LEFT = 1, RIGHT = 2, FIRE = 4;  // direct button pins ui_in[2:0]
 
 // Gamepad report bits {b,y,select,start,up,down,left,right,a,x,l,r}, b most significant
-constexpr uint16_t GP_B = 1 << 11, GP_SELECT = 1 << 9, GP_LEFT = 1 << 5, GP_RIGHT = 1 << 4;
+constexpr uint16_t GP_SELECT = 1 << 9, GP_LEFT = 1 << 5, GP_RIGHT = 1 << 4;
 
 // ---- Reading the picture -----------------------------------------------------------------
 
@@ -452,21 +452,20 @@ void demo_until_a_controller_or_button() {
   }
 }
 
-// Each press of SELECT on the gamepad switches autoplay: on, it launches the ball and
-// steers; off, the paddle only moves when told to. Holding SELECT counts as one press.
-void select_toggles_autoplay() {
+// SELECT on the gamepad switches autoplay on: it launches the ball and steers. Left, right
+// or fire switches it off, after which the paddle only moves when told to.
+void select_turns_autoplay_on() {
   Game g;
   g.reset();
   start_game(g);
-  g.pad_bits = GP_SELECT;  // held for many reports: still a single press
-  run(g, 20);
-  g.pad_bits = 0;
-  View v = run(g, 30);
-  CHECK(v.ball && v.ball_y < 440, "autoplay did not launch the ball: y %d", v.ball_y);
   g.pad_bits = GP_SELECT;
   run(g, 3);
   g.pad_bits = 0;
-  // Autoplay off: without input the paddle stays put.
+  View v = run(g, 30);
+  CHECK(v.ball && v.ball_y < 440, "autoplay did not launch the ball: y %d", v.ball_y);
+  g.pad_bits = GP_LEFT;
+  run(g, 2);
+  g.pad_bits = 0;
   int x0 = run(g, 1).paddle_x;
   v = run(g, 60);
   CHECK(v.paddle_x == x0, "paddle moved with autoplay off: %d -> %d", x0, v.paddle_x);
@@ -483,7 +482,7 @@ const Scenario scenarios[] = {
     {"paddle_limits", paddle_limits},
     {"game_over_and_restart", game_over_and_restart},
     {"demo_until_a_controller_or_button", demo_until_a_controller_or_button},
-    {"select_toggles_autoplay", select_toggles_autoplay},
+    {"select_turns_autoplay_on", select_turns_autoplay_on},
     {"ball_speeds_up", ball_speeds_up},
     {"brick_bounces", brick_bounces},
     {"level_cleared", level_cleared},

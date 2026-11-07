@@ -88,7 +88,7 @@ static void streamer() {
     }
     if (reset_req.exchange(false)) g.reset();
     int k = keys.load();
-    g.pad_bits = ((k & 1) << 5) | ((k & 2) << 3) | ((k & 4) ? (1 << 11) : 0);  // left, right, B
+    g.pad_bits = ((k & 1) << 5) | ((k & 2) << 3) | ((k & 4) << 1);  // left, right, A (fire)
     g.autoplay = k & 8;
     g.frame();
 
