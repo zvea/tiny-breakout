@@ -28,6 +28,12 @@
   "//": "77.2% and 80.7% (with the score) routed with 0 DRC, LVS and antenna errors.",
   "GRT_ADJUSTMENT": 0.1,
 
+  "//": "Tiny Breakout: synthesise with ABC's AREA 2 script instead of the default AREA 0. At ~80%",
+  "//": "utilisation, whether detailed routing converges depends on the exact netlist: AREA 0's",
+  "//": "netlist of the current RTL got stuck, AREA 2's routed with 0 DRC, LVS and antenna errors.",
+  "//": "Harden locally after any RTL change; another edit may need another strategy.",
+  "SYNTH_STRATEGY": "AREA 2",
+
   "//": "RUN_LINTER, LINTER_INCLUDE_PDK_MODELS - Disabling the linter is not recommended!",
   "RUN_LINTER": 1,
   "LINTER_INCLUDE_PDK_MODELS": 1,
