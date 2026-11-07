@@ -33,5 +33,13 @@ if "$YOSYS" -q -p "
   echo "EQUIVALENT: $(grep -oE '[0-9]+ \$equiv cells' lec.txt | head -1 | grep -oE '^[0-9]+') matched signals proven"
 else
   echo "NOT EQUIVALENT (or the check failed; see $W/lec.log):"
-  grep -E 'ERROR|Of those|Unproven' lec.log lec.txt 2>/dev/null | head -8; exit 1
+  grep -E 'ERROR|Of those|Unproven' lec.log lec.txt 2>/dev/null | head -8
+  # Synthesis may recode a state register (e.g. binary to one-hot) under the same name, which
+  # name-based pairing cannot check: say so, as it looks like a real mismatch
+  if grep -h "Recoding FSM" "$RUN"/*-yosys-synthesis/yosys-synthesis.log 2>/dev/null | head -3 | grep -q .; then
+    echo "Note: synthesis recoded these state machines, so their registers can't be paired by name:"
+    grep -h "Recoding FSM" "$RUN"/*-yosys-synthesis/yosys-synthesis.log | sed -E "s/.*FSM .\\\$fsm\\\$.(\S+)\\\$.*/  \1/" | sort -u
+    echo '(* fsm_encoding = "none" *) on the register keeps it as written.'
+  fi
+  exit 1
 fi
