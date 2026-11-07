@@ -4,9 +4,10 @@
 // Interactive RTL simulation: Verilator model + tiny HTTP server. Open http://localhost:PORT/
 //
 // GET /stream   long-lived response; the server runs the game at 60 fps (real hardware rate)
-//               and pushes every frame as [u32 little-endian length][RLE payload]. RLE payload
-//               is (count, RRGGBB) byte pairs covering 640x480. Only one viewer at a time: a new
-//               /stream takes over from the previous one.
+//               and pushes every frame as [u32 video length][u32 audio sample count][video]
+//               [audio], little-endian. Video is (count, RRGGBB) byte pairs covering 640x480;
+//               audio is the frame's 48 kHz samples as s16 (the Audio Pmod on uio[7], see
+//               sim.h). Only one viewer at a time: a new /stream takes over from the previous one.
 // GET /keys?k=K sets the controls. K bits: 1 left, 2 right, 4 fire (gamepad A), 8 autoplay,
 //               16 reset.
 // Anything else returns index.html.
@@ -16,6 +17,7 @@
 #include "sim.h"
 #include <arpa/inet.h>
 #include <atomic>
+#include <cmath>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
@@ -96,7 +98,7 @@ static void streamer() {
     g.autoplay = k & 8;
     g.frame();
 
-    msg.assign(4, '\0');
+    msg.assign(8, '\0');
     const auto &fb = g.fb;
     for (size_t i = 0; i < fb.size();) {
       size_t j = i;
@@ -106,8 +108,14 @@ static void streamer() {
       msg += (char)v;
       i = j;
     }
-    uint32_t len = msg.size() - 4;
+    uint32_t len = msg.size() - 8, nsamp = g.audio.size();
     memcpy(&msg[0], &len, 4);
+    memcpy(&msg[4], &nsamp, 4);
+    for (float s : g.audio) {
+      int v = (int)lrintf(s * 32767.0f);
+      int16_t q = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+      msg.append((const char *)&q, 2);
+    }
     if (!send_all(fd, msg.data(), msg.size())) {  // viewer went away
       close(fd);
       fd = -1;

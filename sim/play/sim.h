@@ -17,6 +17,38 @@ struct Game {
   uint8_t buttons = 0;  // direct button pins ui_in[2:0]: bit 0 LEFT, 1 RIGHT, 2 FIRE
   std::vector<uint8_t> fb = std::vector<uint8_t>(640 * 480);  // raw uo_out per pixel
 
+  // Audio Pmod on uio[7], as heard from its headphone jack: 800 samples per frame (48 kHz at
+  // 60 fps; one sample per 525 clocks). The pin is sampled every clock and decimated with a
+  // 3rd-order CIC filter (unsigned wrap-around is how a CIC works); then a 1st-order high-pass
+  // at ~50 Hz stands in for the Pmod's AC coupling into headphones. The Pmod's 400 kHz LC
+  // filter only shapes ultrasonic content, which the decimation removes anyway. Samples run
+  // from about -0.5 to 0.5 (a full-scale square wave).
+  static constexpr int AUDIO_PER_FRAME = 800, CLOCKS_PER_SAMPLE = 525;
+  std::vector<float> audio = std::vector<float>(AUDIO_PER_FRAME);
+  uint64_t cic_i[3] = {}, cic_c[3] = {};
+  int cic_n = 0;
+  float hp_x = 0, hp_y = 0;
+  inline void audio_clock(float *&out) {
+    uint64_t pin = (top.uio_oe & top.uio_out) >> 7 & 1;
+    cic_i[0] += pin;
+    cic_i[1] += cic_i[0];
+    cic_i[2] += cic_i[1];
+    if (++cic_n < CLOCKS_PER_SAMPLE) return;
+    cic_n = 0;
+    uint64_t d = cic_i[2];
+    for (uint64_t &c : cic_c) {  // combs
+      uint64_t prev = c;
+      c = d;
+      d -= prev;
+    }
+    constexpr float GAIN = 1.0f / (float(CLOCKS_PER_SAMPLE) * CLOCKS_PER_SAMPLE * CLOCKS_PER_SAMPLE);
+    constexpr float HP_A = 0.99348f;  // exp(-2 pi 50 Hz / 48 kHz)
+    float x = float(int64_t(d)) * GAIN;  // 0 .. 1: fraction of time the pin was high
+    hp_y = HP_A * (hp_y + x - hp_x);
+    hp_x = x;
+    *out++ = hp_y;
+  }
+
   // One eval per clock: present a rising edge by resetting Verilator's last-seen clock.
   inline void tick(uint8_t ui) {
     top.ui_in = ui;
@@ -45,11 +77,13 @@ struct Game {
     if (!pmod_plugged) for (uint8_t &b : pmod) b = base;
     // Capture visible pixels (outputs are registered: 1-cycle latency, same as the RTL tests).
     uint8_t *p = fb.data();
+    float *a = audio.data();
     int cyc = 0;
     for (int y = 0; y < 525; y++)
       for (int x = 0; x < 800; x++, cyc++) {
         tick(cyc < (int)sizeof pmod ? pmod[cyc] : base);
         if (y < 480 && x < 640) *p++ = top.uo_out;
+        audio_clock(a);
       }
   }
 };
