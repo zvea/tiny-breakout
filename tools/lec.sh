@@ -14,7 +14,7 @@ set -euo pipefail
 RUN=$(cd "$1" && pwd); SRC=$(cd "${2:-$ROOT/src}" && pwd)
 NL="$RUN/final/nl/tt_um_tiny_breakout.nl.v"
 [ -f "$NL" ] || { echo "no final netlist: $NL"; exit 1; }
-W="$ROOT/build/lec"; rm -rf "$W"; mkdir -p "$W"
+W="$ROOT/build/lec/$(basename "$RUN")"; rm -rf "$W"; mkdir -p "$W"  # per run: hardens can run in parallel
 LIB=$(liberty); [ -n "$LIB" ] || { echo "sky130 library not found (set PDK_ROOT)"; exit 1; }
 cp "$LIB" "$W/hd.lib"
 for f in $(sources); do cat "$SRC/$f"; done > "$W/rtl.v"
@@ -32,6 +32,6 @@ if "$YOSYS" -q -p "
   tee -q -o lec.txt equiv_status -assert" > lec.log 2>&1; then
   echo "EQUIVALENT: $(grep -oE '[0-9]+ \$equiv cells' lec.txt | head -1 | grep -oE '^[0-9]+') matched signals proven"
 else
-  echo "NOT EQUIVALENT (or the check failed; see build/lec/lec.log):"
+  echo "NOT EQUIVALENT (or the check failed; see $W/lec.log):"
   grep -E 'ERROR|Of those|Unproven' lec.log lec.txt 2>/dev/null | head -8; exit 1
 fi
