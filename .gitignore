@@ -24,3 +24,5 @@ sim/play/build.err
 gds_render.png
 gds_render_preview.svg
 test/system/build/
+/build/
+.exp_src_*/
