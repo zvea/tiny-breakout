@@ -29,7 +29,9 @@ drawn.
 - A faster ball doesn't take bigger steps: it moves up to three times per frame, during
   vertical blanking.
 
-![The hardened tile](docs/img/layout.png)
+[![The hardened tile](docs/img/layout.png)](https://gds-explorer.tinytapeout.com/viewer?file=https://zvea.github.io/tiny-breakout/tinytapeout.oas&pdk=sky130A)
+
+The layout can also be [explored in 3D](https://gds-explorer.tinytapeout.com/viewer?file=https://zvea.github.io/tiny-breakout/tinytapeout.oas&pdk=sky130A).
 
 ## Trying it without hardware
 
