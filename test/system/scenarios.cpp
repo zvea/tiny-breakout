@@ -202,6 +202,48 @@ void paddle_limits() {
 
 // Letting the ball fall uses up the spare balls one by one, then the game is over: no
 // ball and no markers. FIRE starts a new game with a full wall and two spare balls.
+// The black border (the status line and the strips beside the walls) as one colour, from
+// three spots; -1 if they differ.
+int border_colour(const Game &g) {
+  auto at = [&](int x, int y) { return colour(g.fb[y * 640 + x]); };
+  int top = at(300, 8), left = at(20, 300), right = at(620, 470);
+  return top == left && left == right ? top : -1;
+}
+
+// A ball that has fallen below the paddle (top at y >= 456) is lost: the border turns red,
+// brighter in each 8-px band it falls through (maroon, dark red, red), and black again once
+// the ball has left the screen. Black at every other time, game over included.
+void falling_ball_lights_the_border() {
+  Game g;
+  g.reset();
+  View v = start_game(g);
+  int frame = 0, lit = 0, missing = 0;
+  bool shades[4] = {};
+  for (; frame < 20000; frame++) {
+    g.buttons = LEFT | (resting(v) ? FIRE : 0);  // paddle against the left wall
+    v = run(g, 1);
+    // Red channel = the ball's 8-px band below the paddle; black while it is higher, and once
+    // it has left the screen (then it is not visible)
+    int expected = v.ball && v.ball_y >= 456 ? ((v.ball_y >> 3) & 3) << 4 : BLACK;
+    CHECK(border_colour(g) == expected, "frame %d: ball at y %d, border %#x, expected %#x", frame,
+          v.ball ? v.ball_y : -1, border_colour(g), expected);
+    if (expected != BLACK) {
+      lit++;
+      shades[expected >> 4] = true;
+    }
+    missing = v.ball ? 0 : missing + 1;
+    if (missing == 3) {  // game over: in play the ball is never hidden for more than a frame
+      run(g, 30);
+      CHECK(border_colour(g) == BLACK, "after game over: border %#x", border_colour(g));
+      break;
+    }
+  }
+  CHECK(missing == 3, "no game over within %d frames", frame);
+  CHECK(lit > 0 && shades[1] && shades[2] && shades[3],
+        "the border never showed all three shades (%d lit frames)", lit);
+  printf("frame %5d: game over; border lit for %d frames as the balls fell\n", frame, lit);
+}
+
 void game_over_and_restart() {
   Game g;
   g.reset();
@@ -477,6 +519,7 @@ const Scenario scenarios[] = {
     {"launch", launch},
     {"steering", steering},
     {"paddle_limits", paddle_limits},
+    {"falling_ball_lights_the_border", falling_ball_lights_the_border},
     {"game_over_and_restart", game_over_and_restart},
     {"demo_until_a_controller_or_button", demo_until_a_controller_or_button},
     {"select_turns_autoplay_on", select_turns_autoplay_on},

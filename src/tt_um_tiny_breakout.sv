@@ -477,6 +477,16 @@ module tt_um_tiny_breakout (
   localparam colour_pkg::rgb_t WALL_COLOUR   = colour_pkg::GREY;
   localparam colour_pkg::rgb_t FIELD_COLOUR  = colour_pkg::NAVY;
 
+  // A ball wholly below the paddle (y >= 456) can no longer touch it, or anything else that
+  // would send it up: it is lost. The black border shows it until the ball leaves the screen
+  // (a ball at rest on the paddle is at y 440; after game over it stays below the screen). Not
+  // from fly: that is valid only at frame_tick, as the wall's emptiness is read off the picture.
+  wire ball_doomed = (ball_y[9:3] > PADDLE_CELL_Y) && !ball_lost;
+  // Red that brightens as it falls: ball_y[4:3] is 1, 2, 3 for y 456, 464, 472 (maroon, dark
+  // red, red), so the pulse keeps pace with the ball
+  colour_pkg::rgb_t lost_rgb;
+  assign lost_rgb = {ball_y[4:3], 4'b0000};  // {r, g, b}
+
   // Brick colour by row, top to bottom
   colour_pkg::rgb_t brick_rgb;
   always_comb begin
@@ -499,6 +509,7 @@ module tt_um_tiny_breakout (
     else if (brick_px)                rgb = brick_rgb;
     else if (wall_px)                 rgb = WALL_COLOUR;
     else if (field_px)                rgb = FIELD_COLOUR;
+    else if (ball_doomed)             rgb = lost_rgb;
     else                              rgb = colour_pkg::BLACK;
   end
 
