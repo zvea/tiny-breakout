@@ -3,7 +3,7 @@
 # Runs the Tiny Tapeout flow (LibreLane, dockerized) with src/config.json on the sources in
 # SRC_DIR (default src), into runs/exp_TAG, and prints the results:
 #   place:  up to global placement; TT's utilisation figure (GPL-0019). About 4 minutes.
-#   harden: the whole flow; also DRC, LVS, antenna and timing. About 15 minutes.
+#   harden: the whole flow; also DRC, LVS, antenna, timing and tools/lec.sh. About 15 minutes.
 # EXTRA_CFG='{"KEY": value}' overrides config values, for experiments.
 # Needs src/user_config.json: ./tt/tt_tool.py --create-user-config
 #
@@ -47,4 +47,6 @@ for k in ["route__drc_errors", "magic__drc_error__count", "design__lvs_error__co
     print(f"  {k}: {m.get(k, 'n/a')}")
 PY
   echo "  GDS: $D/final/gds/tt_um_tiny_breakout.gds"
+  # The netlist must implement the RTL: LVS only checks the layout against the netlist
+  if LEC=$("$ROOT/tools/lec.sh" "$D" "$C"); then echo "  LEC: $LEC"; else echo "  LEC: $LEC"; exit 1; fi
 fi
