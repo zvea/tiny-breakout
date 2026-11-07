@@ -50,8 +50,8 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   // Bits 4..6 are fixed by the Gamepad PMOD's default pinout (PMOD IO5..IO7), see
   // https://github.com/psychogenic/gamepad-pmod. Bits 0..3 are this design's own choice:
-  // direct controls for simulators such as tiny_explorer, which can toggle input pins
-  // but can't generate the gamepad's serial stream.
+  // direct controls for simulators such as tiny_explorer (https://znah.net/tiny_explorer/),
+  // which can toggle input pins but can't generate the gamepad's serial stream.
   typedef struct packed {
     logic unused;    // [7]
     logic gp_data;   // [6] Gamepad PMOD
@@ -112,7 +112,7 @@ module tt_um_tiny_breakout (
   // bricks flip only the vertical direction. (Two's-complement velocities need
   // negations and absolute values instead: ~6% more logic.)
   logic ball_left;   // moving left (else right)
-  logic ball_steep;  // 2 px per move horizontally (else 1)
+  logic ball_flat;   // 2 px per move horizontally (else 1): 45 degrees, else about 63
   logic ball_up;     // moving up (else down); 2 px per move vertically
 
   // Speed: the ball and paddle make 1, 2 or 3 moves per frame (see move_tick), each by
@@ -357,13 +357,13 @@ module tt_um_tiny_breakout (
   wire touch_wall_t = frame_tick && (ball_y[9:5] == 0);
 
   // Next ball direction from this frame's collisions. A paddle hit sends the ball up, left
-  // from the left half and right from the right half, steeply from the outer quarters.
-  // A brick turns it back vertically or horizontally, by the edge it hit.
+  // from the left half and right from the right half, at a flatter angle from the outer
+  // quarters. A brick turns it back vertically or horizontally, by the edge it hit.
   wire next_up           = hit.paddle ? 1 : touch_wall_t ? 0 : (ball_up ^ hit.brick_top_bottom);
   wire left_after_bounce = hit.paddle ? ~hit_quarter[1] : (ball_left ^ hit.brick_side);
   wire next_left         = touch_wall_l ? 0 : touch_wall_r ? 1 : left_after_bounce;
-  wire next_steep        = hit.paddle ? (hit_quarter[1] ~^ hit_quarter[0]) : ball_steep;
-  wire [9:0] step_x = next_left ? (next_steep ? -2 : -1) : (next_steep ? 2 : 1);
+  wire next_flat         = hit.paddle ? (hit_quarter[1] ~^ hit_quarter[0]) : ball_flat;
+  wire [9:0] step_x = next_left ? (next_flat ? -2 : -1) : (next_flat ? 2 : 1);
   wire [7:0] step_y_half = next_up ? -1 : 1;
 
   // Moves per frame: 3 from speed_level 16 (and in the pause); below that 1 + speed_level[3],
@@ -400,19 +400,19 @@ module tt_um_tiny_breakout (
       ball_x      <= PADDLE_START_X4 * 4 + SERVE_DX;  // resting on the paddle
       ball_y_half <= SERVE_Y[8:1];
       ball_left   <= 0;
-      ball_steep  <= 0;
+      ball_flat   <= 0;
       ball_up     <= 1;
     end else if (move_tick && on_paddle) begin
       ball_x      <= 10'(paddle_x4_next) * 4 + SERVE_DX;
       ball_y_half <= SERVE_Y[8:1];
       ball_left   <= 0;
-      ball_steep  <= 0;
+      ball_flat   <= 0;
       ball_up     <= 1;
     end else if (move_tick && fly) begin
       ball_x      <= ball_x + step_x;
       ball_y_half <= ball_y_half + step_y_half;
       ball_left   <= next_left;
-      ball_steep  <= next_steep;
+      ball_flat   <= next_flat;
       ball_up     <= next_up;
     end
   end

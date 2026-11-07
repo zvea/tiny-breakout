@@ -5,6 +5,9 @@
 # synthesis area. For refactors and renames that must not change the hardware.
 # GOLD_RENAMES='rename old new; ...' renames signals in REV's design first, so renamed
 # registers still pair up.
+#
+# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
 REV=${1:-HEAD}

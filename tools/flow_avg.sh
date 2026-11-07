@@ -3,6 +3,9 @@
 # TT utilisation (flow.sh place) for 3 orderings of the top module's register declarations,
 # and their mean: synthesis results shift by up to a point with declaration order alone, so
 # compare means. Runs the three in sequence, about 12 minutes.
+#
+# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
 [ $# -ge 1 ] || { sed -n '2,5p' "$0"; exit 2; }

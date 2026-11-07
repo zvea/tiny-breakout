@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+// SPDX-License-Identifier: Apache-2.0
+//
 // Verilator model wrapper: runs one VGA frame at a time, emulating the Gamepad PMOD.
 // Needs Verilator 4.x: tick() relies on its internals (__Vclklast); 5.x is also ~2x slower here.
 #pragma once

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+// SPDX-License-Identifier: Apache-2.0
+//
 // Interactive RTL simulation: Verilator model + tiny HTTP server. Open http://localhost:PORT/
 //
 // GET /stream   long-lived response; the server runs the game at 60 fps (real hardware rate)

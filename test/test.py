@@ -96,7 +96,7 @@ async def test_gamepad_and_paddle(dut):
     await reset(dut)
     # The first report after reset is ignored (it may be incomplete); the second shows a
     # controller before the first frame update, so the demo never starts. The real PMOD
-    # sends reports continuously.
+    # reports on every change, and at least once a second in Tiny Tapeout's configuration.
     await send_gamepad(dut, 1 << 5)  # LEFT
     await send_gamepad(dut, 1 << 5)
     x1 = await paddle_left_edge(dut)

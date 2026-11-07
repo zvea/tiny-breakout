@@ -23,6 +23,11 @@
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
   "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.05,
 
+  "//": "Tiny Breakout: the global router reserves 10% of each layer's tracks instead of 30%.",
+  "//": "With 30%, designs at ~77% utilisation and up overflowed and did not route; with 10%,",
+  "//": "77.2% and 80.7% (with the score) routed with 0 DRC, LVS and antenna errors.",
+  "GRT_ADJUSTMENT": 0.1,
+
   "//": "RUN_LINTER, LINTER_INCLUDE_PDK_MODELS - Disabling the linter is not recommended!",
   "RUN_LINTER": 1,
   "LINTER_INCLUDE_PDK_MODELS": 1,
@@ -54,11 +59,6 @@
   "FP_SIZING": "absolute",
 
   "GRT_ALLOW_CONGESTION": 1,
-
-  "//": "Tiny Breakout: the global router reserves 10% of each layer's tracks instead of 30%.",
-  "//": "With 30%, designs at ~77% utilisation and up overflowed and did not route; with 10%,",
-  "//": "77.2% and 80.7% (with the score) routed with 0 DRC, LVS and antenna errors.",
-  "GRT_ADJUSTMENT": 0.1,
 
   "FP_IO_HLENGTH": 2,
   "FP_IO_VLENGTH": 2,

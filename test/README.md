@@ -5,7 +5,7 @@ Three layers, from module to whole game:
 | Tests | What they check | Command | Time |
 |---|---|---|---|
 | [unit/](unit) | Each module on its own, through its ports (cocotb) | `pytest test/unit` | ~70 s (Verilator), ~5.5 min (`SIM=icarus`) |
-| [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~85 s |
+| [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~1.5 min |
 | [system/](system) | 10 gameplay scenarios, judged only from the decoded video output | `pytest test/system` | ~5 min |
 
 CI ([.github/workflows/test.yaml](../.github/workflows/test.yaml)) runs `test.py` and the unit
@@ -16,7 +16,7 @@ system scenarios run only locally, because they need Verilator 4.x.
 
 Commands run from the repository root.
 
-**Python** (3.13 here): a virtual environment in `.venv` with the test packages and, for
+**Python** (CI uses 3.11): a virtual environment in `.venv` with the test packages and, for
 hardening and [tools/](../tools), LibreLane and yowasp-yosys:
 
 ```sh
@@ -25,9 +25,10 @@ python3 -m venv .venv
 ```
 
 **Simulators**: two [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html)
-environments from conda-forge, under `.tools/` (git-ignored). The tests and scripts find them
-there when the tools aren't on `PATH`. conda-forge's Verilator builds with conda's own C++
-compiler, so it is listed too.
+environments from conda-forge, under `.tools/` (git-ignored). The unit tests use `.tools/env`
+when the simulator isn't on `PATH`; the system tests and the player always use `.tools/v4`; the
+full-chip `make` needs `PATH` set, as shown below. conda-forge's Verilator builds with conda's
+own C++ compiler, so it is listed too.
 
 ```sh
 # Verilator 5 and Icarus Verilog: unit tests and lint
@@ -51,10 +52,11 @@ SIM=icarus .venv/bin/pytest test/unit      # Icarus, as in CI
 
 ### Gate-level simulation
 
-Harden the design, then copy the netlist from the run and run `test.py` against it:
+Harden the design (`tools/flow.sh harden TAG`, see [tools/README.md](../tools/README.md)), then
+copy the netlist from the run and run `test.py` against it:
 
 ```sh
-cp runs/wokwi/final/pnl/tt_um_tiny_breakout.pnl.v test/gate_level_netlist.v
+cp runs/exp_TAG/final/pnl/tt_um_tiny_breakout.pnl.v test/gate_level_netlist.v
 (cd test && make -B GATES=yes)
 ```
 

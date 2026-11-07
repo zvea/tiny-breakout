@@ -1,6 +1,9 @@
 #!/bin/bash
 # Shared by the scripts in tools/: the repo root, the design's sources (in info.yaml order),
 # the sky130 cell library and the local yosys.
+#
+# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-License-Identifier: Apache-2.0
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 YOSYS="$ROOT/.venv/bin/yowasp-yosys"
 

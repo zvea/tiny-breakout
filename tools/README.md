@@ -19,8 +19,15 @@ Notes:
 - **Noise:** synthesis results shift with the order of register declarations alone (about a
   point of utilisation, or 50-100 µm² locally), so compare means over orderings.
 - **Routability:** the only real test is `flow.sh harden` (0 DRC, LVS and antenna errors).
-- **Setup:** `.venv` as in [test/README.md](../test/README.md#setting-up). The flow also needs
-  `src/user_config.json` (`./tt/tt_tool.py --create-user-config`) and Docker. The local scripts need the sky130 PDK, found via `$PDK_ROOT` or ciel's default
-  `~/.ciel`.
+- **Setup:** `.venv` as in [test/README.md](../test/README.md#setting-up), and Docker. The flow
+  also needs Tiny Tapeout's support tools in `tt/` (git-ignored) and `src/user_config.json`:
+
+  ```sh
+  git clone https://github.com/TinyTapeout/tt-support-tools tt
+  .venv/bin/pip install -r tt/requirements.txt
+  .venv/bin/python tt/tt_tool.py --create-user-config
+  ```
+
+  The local scripts need the sky130 PDK, found via `$PDK_ROOT` or ciel's default `~/.ciel`.
 - **Experiments:** `EXTRA_CFG='{"KEY": value}'` overrides flow settings for one run, and
   `GOLD_RENAMES='rename old new;'` lets `equiv.sh` pair up renamed registers.

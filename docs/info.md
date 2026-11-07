@@ -5,7 +5,7 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 
 - **Wall:** 8 x 6 bricks, coloured by row from red at the top to violet at the bottom.
 - **Ball:** bounces off the walls, the paddle and the bricks. Where it lands on the paddle
-  sets its angle (steeper towards the ends). A brick hit on its side sends the ball back
+  sets its angle (flatter towards the ends). A brick hit on its side sends the ball back
   sideways; a hit on its top or bottom sends it back vertically.
 - **Speed:** rises by half a step for every 4 bricks the current ball clears, from 1x up to
   3x.
