@@ -80,7 +80,7 @@ View look(const Game &g, bool find_ball = true) {
     v.paddle_w++;
   // Score: 4 seven-segment digits in 16-px slots from x 512, read from the middle of each
   // segment (a..g)
-  static const int seg_x[7] = {7, 10, 10, 7, 4, 4, 7}, seg_y[7] = {2, 5, 12, 14, 12, 5, 8};
+  static const int seg_x[7] = {7, 10, 10, 7, 4, 4, 7}, seg_y[7] = {5, 8, 15, 17, 15, 8, 11};
   static const int digit_segments[10] = {0x7e, 0x30, 0x6d, 0x79, 0x33, 0x5b, 0x5f, 0x70, 0x7f, 0x7b};
   v.score = 0;
   for (int slot = 0; slot < 4 && v.score >= 0; slot++) {
@@ -300,7 +300,8 @@ void game_over_curtain() {
   int others = 0;
   for (int y = 0; y < 480; y++)
     for (int x = 0; x < 640; x++)
-      if (!(x >= 512 && x < 576 && y < 16) && colour(g.fb[y * 640 + x]) != BLACK) others++;
+      if (!(x >= 512 && x < 576 && y >= 3 && y < 19) && colour(g.fb[y * 640 + x]) != BLACK)
+        others++;  // the score's cells: x 512..575, y 3..18
   CHECK(others == 0, "after the curtain: %d pixels besides the score are not black", others);
   CHECK(v.score == score, "after the curtain: score %d, was %d", v.score, score);
   // A new game brings the picture back

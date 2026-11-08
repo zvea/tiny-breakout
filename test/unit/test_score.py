@@ -13,7 +13,7 @@ from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge
 
 from cocotb_run import run
 
-FIRST_X = 512
+FIRST_X, FIRST_Y = 512, 3  # the slots' top left: the digits are centred in the 24-line band
 # Middle of each segment (x, y) within a 16 x 16 slot, in the order a, b, c, d, e, f, g
 SEGMENT_MIDDLES = [(7, 2), (10, 5), (10, 12), (7, 14), (4, 12), (4, 5), (7, 8)]
 DIGIT_SEGMENTS = {  # lit segments, as a string of a..g
@@ -50,7 +50,7 @@ async def shown(dut) -> int:
     for slot in range(4):
         segments = ""
         for name, (x, y) in zip("abcdefg", SEGMENT_MIDDLES):
-            if await lit(dut, FIRST_X + 16 * slot + x, y):
+            if await lit(dut, FIRST_X + 16 * slot + x, FIRST_Y + y):
                 segments += name
         assert segments in SEGMENTS_DIGIT, f"slot {slot} shows segments '{segments}': not a digit"
         number = number * 10 + SEGMENTS_DIGIT[segments]
@@ -87,7 +87,7 @@ async def every_digit_is_drawn_right(dut):
     for d in range(10):
         segments = ""
         for name, (x, y) in zip("abcdefg", SEGMENT_MIDDLES):
-            if await lit(dut, FIRST_X + 32 + x, y):
+            if await lit(dut, FIRST_X + 32 + x, FIRST_Y + y):
                 segments += name
         assert segments == DIGIT_SEGMENTS[d], f"digit {d} shows '{segments}'"
         await add(dut, 1)
@@ -124,7 +124,8 @@ async def stops_at_9990_until_cleared(dut):
 async def nothing_lit_outside_the_digits(dut):
     await start(dut)
     await add(dut, 888)  # all segments lit
-    for x, y in [(511, 8), (576, 8), (520, 16), (520, 1), (512 + 3, 8), (512 + 12, 8), (300, 8)]:
+    for x, y in [(511, 11), (576, 11), (520, 19), (520, 4), (512 + 3, 11), (512 + 12, 11),
+                 (300, 11)]:
         assert await lit(dut, x, y) == 0, f"({x}, {y}) is lit"
 
 

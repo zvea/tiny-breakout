@@ -6,7 +6,8 @@
  * The score: a 3-digit BCD counter and its display. A fixed 0 follows the count, so a point
  * reads as 10 and the display runs 0000 .. 9990, where it stops, so a player sees it maxed out
  * rather than reset. Seven-segment digits, 8 x 14 px with 2-px strokes, in 16 x 16-px cells at
- * x 512..575, y 0..15 (digit at x 4..11, y 2..15). BCD costs a little more than binary but
+ * x 512..575, y 3..18 (digit at x 4..11, y 5..18): centred in the black band above the top
+ * wall (y 0..23), level with the spare-ball markers. BCD costs a little more than binary but
  * needs no division to draw.
  */
 
@@ -40,10 +41,13 @@ module score (
     end
   end
 
-  // The digit under the beam: slots FIRST_SLOT .. FIRST_SLOT + 3 on the top 16 lines,
-  // the last one the fixed 0
+  // The cells are 3 lines down the screen: cell_y, the line within them, is 0..15 on lines 3..18
+  wire [4:0] cell_y = v_pos[4:0] - 5'd3;
+
+  // The digit under the beam: slots FIRST_SLOT .. FIRST_SLOT + 3 on lines 3..18, the last one
+  // the fixed 0
   wire [5:0] slot    = h_pos[9:4] - FIRST_SLOT;
-  wire       in_slot = (v_pos[9:4] == 0) && (slot[5:2] == 0);
+  wire       in_slot = (v_pos[9:5] == 0) && !cell_y[4] && (slot[5:2] == 0);
   logic [3:0] digit;
   always_comb begin
     case (slot[1:0])
@@ -74,7 +78,7 @@ module score (
 
   // Where each segment is within the cell (x, y 0..15): the digit spans x 4..11, y 2..15
   wire [3:1] x = h_pos[3:1];  // in 2-px units: bit 0 is never needed
-  wire [3:0] y = v_pos[3:0];
+  wire [3:0] y = cell_y[3:0];
   wire left_col   = (x[3:1] == 3'b010);  // x 4..5
   wire right_col  = (x[3:1] == 3'b101);  // x 10..11
   wire across     = (x[3:2] == 2'b01) || (x[3:2] == 2'b10);  // x 4..11
