@@ -365,8 +365,15 @@ module tt_um_tiny_breakout (
   wire left_after_bounce = hit.paddle ? ~hit_quarter[1] : (ball_left ^ hit.brick_side);
   wire next_left         = touch_wall_l ? 0 : touch_wall_r ? 1 : left_after_bounce;
   wire next_flat         = hit.paddle ? (hit_quarter[1] ~^ hit_quarter[0]) : ball_flat;
+  // One move's step: x by -2, -1, 1 or 2 (left or right, flat or steep); y by 2 px up or down,
+  // which is -1 or 1 in ball_y_half.
   wire [9:0] step_x = next_left ? (next_flat ? -2 : -1) : (next_flat ? 2 : 1);
-  wire [7:0] step_y_half = next_up ? -1 : 1;
+
+  // The moved ball_y_half. This means ball_y_half + (next_up ? -1 : 1), written as an
+  // incrementer between two sets of XOR gates: moving up, the XORs invert the value before
+  // and after adding 1, and in two's complement ~(~y + 1) = y - 1 (as ~y = -y - 1). Synthesis
+  // builds this smaller than an adder whose step changes sign, so keep this form.
+  wire [7:0] ball_y_half_moved = ((ball_y_half ^ {8{next_up}}) + 1) ^ {8{next_up}};
 
   // Moves per frame over the 4-frame phase 0, 1, 2, 3: one on even frames; one on odd frames
   // too if speed_level[3] (2x); one more in phase 1 if speed_level[2] (a half step); and
@@ -397,8 +404,17 @@ module tt_um_tiny_breakout (
     else if (move_tick) paddle_x4 <= paddle_x4_next;
   end
 
+  // The ball's next x. Both ways it moves are a base plus an offset: resting on the paddle it
+  // is placed at the paddle's x + SERVE_DX, and in flight it steps from its own x by step_x.
+  // Choosing the operands and adding once, instead of writing the two sums in their branches
+  // below, leaves a single 10-bit adder and a plain load in front of ball_x; yosys does not
+  // merge the two sums by itself, and the separate adders cost noticeably more area.
+  wire [9:0] ball_x_next = (on_paddle ? 10'(paddle_x4_next) * 4 : ball_x) +
+                           (on_paddle ? SERVE_DX : step_x);
+
   // Ball position and direction. On the paddle it is placed at every move, after that
-  // move's paddle step, so it stays centred while the paddle moves.
+  // move's paddle step, so it stays centred while the paddle moves. Both the placing and the
+  // moving load ball_x_next (above).
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       ball_x      <= PADDLE_START_X4 * 4 + SERVE_DX;  // resting on the paddle
@@ -407,7 +423,7 @@ module tt_um_tiny_breakout (
       ball_flat   <= 0;
       ball_up     <= 1;
     end else if (move_tick && on_paddle) begin
-      ball_x      <= 10'(paddle_x4_next) * 4 + SERVE_DX;
+      ball_x      <= ball_x_next;
       ball_y_half <= SERVE_Y[8:1];
       ball_left   <= 0;
       ball_flat   <= 0;
@@ -420,8 +436,8 @@ module tt_um_tiny_breakout (
       ball_flat <= next_flat;
       ball_up   <= next_up;
       if (move_tick) begin
-        ball_x      <= ball_x + step_x;
-        ball_y_half <= ball_y_half + step_y_half;
+        ball_x      <= ball_x_next;
+        ball_y_half <= ball_y_half_moved;
       end
     end
   end
