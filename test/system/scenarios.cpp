@@ -524,6 +524,53 @@ bool is_pattern_wall(uint64_t standing) {
   return false;
 }
 
+// Where the ball lands on the paddle sets its bounce: left from the left half, right from the
+// right half, at the flatter angle (2 px across per 2 px up) from the last 16 px at each end,
+// else the steeper one (1 px across). The zone is the one under the last ball pixel to touch
+// the paddle, the right end of the ball's bottom row (ball x + 5), in the last frame it
+// touches. Autoplay aims at all four zones in turn; the first level's paddle is 96 px.
+void paddle_zones_set_the_angle() {
+  Game g;
+  g.reset();
+  g.autoplay = true;
+  View v = start_game(g), prev, touch, from;
+  int checked[4] = {}, tracking = -1;  // tracking: frames since the ball left the paddle
+  auto done = [&] {
+    return checked[0] && checked[1] && checked[2] && checked[3] &&
+           checked[0] + checked[1] + checked[2] + checked[3] >= 16;
+  };
+  auto on_paddle_row = [](const View &w) {
+    return w.ball && w.ball_y + 7 >= 448 && w.ball_y <= 455;
+  };
+  for (int frame = 0; frame < 12000 && !done(); frame++) {
+    prev = v;
+    v = run(g, 1);
+    bool left_paddle = on_paddle_row(prev) && !on_paddle_row(v) && v.ball && v.ball_y < prev.ball_y;
+    if (tracking < 0 && left_paddle) {
+      touch = prev;  // the last frame the ball touched the paddle: it decided the bounce
+      from = v;
+      tracking = 0;  // follow the ball up for 8 frames
+    } else if (tracking >= 0 && ++tracking == 8) {
+      tracking = -1;
+      int dx = v.ball_x - from.ball_x, dy = from.ball_y - v.ball_y;
+      // Only bounces with the ball's bottom row wholly over the paddle, clear of the walls
+      bool clean = v.ball && dy > 0 && touch.paddle_x <= touch.ball_x + 2 &&
+                   touch.ball_x + 5 < touch.paddle_x + touch.paddle_w && from.ball_x >= 80 &&
+                   from.ball_x <= 552 && v.ball_x >= 80 && v.ball_x <= 552;
+      if (!clean) continue;
+      int half = touch.paddle_w / 2, d = touch.ball_x + 5 - (touch.paddle_x + half);
+      bool right = d >= 0, outer = d < 16 - half || d >= half - 16;
+      int zone = right ? (outer ? 3 : 2) : (outer ? 0 : 1);
+      CHECK((dx > 0) == right && std::abs(dx) * (outer ? 1 : 2) == dy,
+            "frame %d: zone %d (pixel %+d px from the centre of a %d-px paddle): then %+d px "
+            "across for %d up", frame, zone, d, touch.paddle_w, dx, dy);
+      checked[zone]++;
+    }
+  }
+  printf("bounces checked by zone: %d %d %d %d\n", checked[0], checked[1], checked[2], checked[3]);
+  CHECK(done(), "too few bounces seen in some zone");
+}
+
 // Clearing a level: the empty wall stays for about a second, with rainbow bands over the
 // field and the border, a spare ball comes back (one is lost first, as there are at most 2),
 // the next wall comes in as one of the patterns with a narrower paddle (96 px, then 80), and
@@ -578,6 +625,23 @@ void level_cleared() {
   v = run(g, 1);
   g.buttons = 0;
   CHECK(launch_at_1x(g, v, 16), "level 2 ball after a loss did not start at 1x");
+  // Lose the remaining balls, then restart: the new game's paddle is 96 px again, centred
+  int missing = 0;  // game over: no spare balls, and the ball gone for more than a frame
+  for (int i = 0; i < 20000 && !(v.lives == 0 && missing == 3); i++) {
+    g.buttons = LEFT | (resting(v) ? FIRE : 0);
+    v = run(g, 1);
+    missing = v.ball ? 0 : missing + 1;
+  }
+  CHECK(v.lives == 0 && missing == 3, "no game over in level 2 (%d spare balls)", v.lives);
+  g.buttons = 0;
+  run(g, 40);  // the curtain
+  g.buttons = FIRE;
+  run(g, 1);
+  g.buttons = 0;
+  v = settle(g, run(g, 2));
+  CHECK(v.paddle_w == 96 && v.paddle_x == 272 && resting(v),
+        "after a restart from level 2: paddle %d px at x %d, ball at (%d, %d)", v.paddle_w,
+        v.paddle_x, v.ball_x, v.ball_y);
 }
 
 // With no controller connected the game plays itself (demo): with no Gamepad PMOD at all,
@@ -656,6 +720,7 @@ const Scenario scenarios[] = {
     {"select_turns_autoplay_on", select_turns_autoplay_on},
     {"ball_speeds_up", ball_speeds_up},
     {"brick_bounces", brick_bounces},
+    {"paddle_zones_set_the_angle", paddle_zones_set_the_angle},
     {"level_cleared", level_cleared},
     {"autoplay_clears_a_level", autoplay_clears_a_level},
 };
