@@ -354,7 +354,14 @@ void game_over_and_restart() {
   g.buttons = FIRE;
   run(g, 1);
   g.buttons = 0;
-  v = settle(g, run(g, 2));
+  // From the first frame of the new game nothing of the old one shows: the border is black
+  // (it once flashed the level-clear rainbow, as the curtain's count carried over)
+  for (int i = 0; i < 3; i++) {
+    v = run(g, 1);
+    CHECK(border_colour(g) == BLACK, "frame %d after restart: border %#x", i,
+          border_colour(g));
+  }
+  v = settle(g, v);
   CHECK(v.lives == 2, "after restart: life markers %d", v.lives);
   CHECK(v.score == 0, "after restart: score %d", v.score);
   CHECK(v.bricks == 48, "after restart: bricks %d", v.bricks);

@@ -424,14 +424,18 @@ module tt_um_tiny_breakout (
   // Paddle: one 4-px step per move, stopping at the walls, where its centre is half a width
   // from x 64 or x 576: centre / 4 = 16 + 2 x paddle_w16 or 144 - 2 x paddle_w16. A narrower
   // paddle only moves its stops outwards; a new game widens it again, so it starts centred.
+  //
+  // A new game puts the paddle, the ball and its speed back as reset does (below): the paddle
+  // centred, the ball resting on it, 1x. Doing it in the same clock for all three keeps the
+  // ball on the paddle, and no state from the last game (such as speed_level at 31, after the
+  // curtain) carries into the first frame of the new one.
   wire [7:0] paddle_half4   = {4'b0, paddle_w16, 1'b0};  // half the width, in 4 px
   wire [7:0] paddle_c4_next = (go_left  && paddle_c4 != 8'd16 + paddle_half4)  ? paddle_c4 - 1 :
                               (go_right && paddle_c4 != 8'd144 - paddle_half4) ? paddle_c4 + 1 :
                               paddle_c4;
 
   always_ff @(posedge clk) begin
-    if (!rst_n) paddle_c4 <= PADDLE_START_C4;
-    else if (frame_tick && new_game) paddle_c4 <= PADDLE_START_C4;
+    if (!rst_n || (frame_tick && new_game)) paddle_c4 <= PADDLE_START_C4;
     else if (move_tick) paddle_c4 <= paddle_c4_next;
   end
 
@@ -447,7 +451,7 @@ module tt_um_tiny_breakout (
   // move's paddle step, so it stays centred while the paddle moves. Both the placing and the
   // moving load ball_x_next (above).
   always_ff @(posedge clk) begin
-    if (!rst_n) begin
+    if (!rst_n || (frame_tick && new_game)) begin
       ball_x      <= PADDLE_START_C4 * 4 + SERVE_DX;  // resting on the paddle
       ball_y_half <= SERVE_Y[8:1];
       ball_left   <= 0;
@@ -506,7 +510,7 @@ module tt_um_tiny_breakout (
   // it flies (up to 16); in the pause, 16..31, a step every 4th frame; after game over, +1 per
   // frame up to 31
   always_ff @(posedge clk) begin
-    if (!rst_n) begin
+    if (!rst_n || (frame_tick && new_game)) begin
       speed_level <= 0;
     end else if (frame_tick && paused) begin
       // Set here: with FIRE held the ball launches next frame, skipping the on_paddle branch
