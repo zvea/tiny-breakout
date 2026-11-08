@@ -109,9 +109,10 @@ module tt_um_tiny_breakout (
   wire  [9:0] ball_y = {1'b0, ball_y_half, 1'b0};
 
   // Ball direction and speed, stored as sign and magnitude because that is how the game
-  // changes them: walls set only the horizontal direction, the paddle sets the angle,
-  // bricks flip only the vertical direction. (Two's-complement velocities need
-  // negations and absolute values instead: ~6% more logic.)
+  // changes them: a wall sets one direction (the side walls the horizontal one, the top wall
+  // the vertical one), a brick flips one (by the edge it was hit on), and the paddle sets
+  // both and the angle. (Two's-complement velocities need negations and absolute values
+  // instead: ~6% more logic.)
   logic ball_left;   // moving left (else right)
   logic ball_flat;   // 2 px per move horizontally (else 1): 45 degrees, else about 63
   logic ball_up;     // moving up (else down); 2 px per move vertically
@@ -557,8 +558,8 @@ module tt_um_tiny_breakout (
 
   // Celebration, in the pause after a cleared wall: rainbow bands rise behind the ball and
   // paddle, over the field and the border. The pause is while speed_level counts 17..31 (in
-  // play it stops at 16). The bands are 32 px tall and rise 2 px per frame: the band under the
-  // beam is its line in 2-px units plus a count of the pause's frames, in 32-px units.
+  // play it stops at 16). The bands are 64 px tall and rise 2 px per frame: the band under the
+  // beam is its line in 2-px units plus a count of the pause's frames, in 32s.
   wire       celebrate = !game_over && speed_level[4] && (speed_level[3:0] != 0);
   wire [7:0] band_y    = v_pos[8:1] + 8'({speed_level[3:0], frame_phase});
 
@@ -608,6 +609,6 @@ module tt_um_tiny_breakout (
   assign uio_oe  = 0;
 
   // Unused inputs and signal bits, listed to silence lint warnings
-  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0], band_y[4:0], 1'b0};
+  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[2:0], band_y[4:0], 1'b0};
 
 endmodule
