@@ -17,9 +17,26 @@
  * Bricks keep their order around the ring, so which bit holds which brick at reset does
  * not matter.
  *
- * Refill shifts in 1s with the row turns of the next frame, and the bricks stay hidden
- * until the last turn: for one frame after reset and after each refill, only the bottom
- * row shows. Hiding them also keeps the unreset bits from showing as X in simulation.
+ * Refill shifts a new wall in with the row turns of the next frame, and the bricks stay
+ * hidden until the last turn: for one frame after reset and after each refill, only the
+ * bottom row shows. Hiding them also keeps the unreset bits from showing as X in simulation.
+ *
+ * The first wall of a game is full. Every later wall is a pattern grown from one row, which
+ * suits the ring: each row turn of the fill loads one row, worked out from the row loaded
+ * just before it (still in bricks[ROWS-1]).
+ *   - The first turn loads the seed: 4 bricks from `random`, mirrored into 8 columns. It
+ *     becomes the bottom row, as the fill's first turn loads row 5 (then rows 0 .. 4).
+ *   - Each later turn grows the next row by a one-dimensional cellular automaton: a brick
+ *     goes where an odd number of the three bricks above it (left, centre, right) stand,
+ *     Wolfram's rule 150; with random[4] set, also where both neighbours stand, rule 182.
+ *   - The rows stay mirror-symmetric: column 3's right neighbour is column 4, which mirrors
+ *     column 3, and column 0's left neighbour is column 7 (the ring wraps), which mirrors
+ *     column 0.
+ * The 31 values of `random` give 21 different walls of 20 to 48 bricks. The full wall is
+ * one of them: seed 1111 grows into all 1s under either rule, and full_wall forces it.
+ * Growing from bricks[ROWS-1] needs an empty ring, as after a cleared wall: the fill ORs
+ * the new rows into what is left. A new game can start with bricks left, but it gets the
+ * full wall.
  *
  * Empty is read off the picture: no brick was drawn in the wall's rows. It is valid from
  * the end of the wall (y 160) until the next frame starts.
@@ -32,7 +49,9 @@ module brick_wall (
     input  logic       rst_n,
     input  logic [9:0] h_pos,         // beam position, scanning in order
     input  logic [9:0] v_pos,
-    input  logic       refill,        // put every brick back (new game or level)
+    input  logic       refill,        // build a new wall (new game or level)
+    input  logic       full_wall,     // while filling: build the full wall, not a pattern
+    input  logic [4:0] random,        // while filling: the pattern; never 0, steady in a frame
     input  logic       clear,         // remove the brick under the beam, if any
     output logic       brick_px,      // a standing brick is under the beam
     output logic [2:0] brick_row,     // its row, 0 (top) .. 5: valid while brick_px
@@ -59,11 +78,22 @@ module brick_wall (
   wire row_turn = (h_pos == 0) && (v_pos[3:0] == 0) && in_rows;  // start of each brick row
   wire col_turn = (h_pos[5:0] == 0) && in_cols;                  // start of each brick column
 
+  // The row the fill loads at this row turn (see the top). Ring bit c + 1 is under wall
+  // column c, as the head row has turned once at the start of column 0, so rows are turned
+  // by one bit out of and into column order.
+  wire [3:0] half  = bricks[ROWS-1][4:1];    // columns 0 .. 3; columns 4 .. 7 mirror them
+  wire [3:0] left  = {half[2:0], half[0]};   // each column's left neighbour (column 0's: 7)
+  wire [3:0] right = {half[3], half[3:1]};   // each column's right neighbour (column 3's: 4)
+  wire [3:0] seed  = full_wall ? 4'b1111 : {random[3:1], random[0] | random[4]};  // never 0
+  wire [3:0] grown = (left ^ half ^ right) | (left & right & {4{random[4]}});
+  wire [3:0] next  = (row == FIRST_ROW) ? seed : grown;  // the fill's first turn: the seed
+  wire [COLS-1:0] fill_row = {next[0], next[1], next[2], next[3], next};  // bit c: column c
+
   // No reset: refill (which reset starts) fills the wall
   always_ff @(posedge clk) begin
     if (row_turn) begin
       for (int r = 0; r < ROWS - 1; r++) bricks[r] <= bricks[r+1];
-      bricks[ROWS-1] <= bricks[0] | {COLS{filling}};
+      bricks[ROWS-1] <= bricks[0] | ({fill_row[COLS-2:0], fill_row[COLS-1]} & {COLS{filling}});
     end else if (col_turn) begin
       bricks[0] <= {bricks[0][0], bricks[0][COLS-1:1]};
     end else if (clear && brick_px) begin

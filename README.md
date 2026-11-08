@@ -6,7 +6,7 @@ A complete VGA brick-breaker game in a single [Tiny Tapeout](https://tinytapeout
 
 ![Tiny Breakout, mid-game](docs/img/gameplay.png)
 
-Tiny Breakout consists of some 15,800 transistors in 1,300 standard cells. There is no
+Tiny Breakout consists of some 15,600 transistors in 1,300 standard cells. There is no
 processor or frame buffer; the game keeps its state in 165 flip-flops.
 
 ## The game
@@ -23,6 +23,9 @@ drawn.
 - The bricks are kept in a ring of flip-flops that turns with the beam, so the brick under the
   beam is always in the same flip-flop. This avoids a 48-way multiplexer and halves the wall's
   logic ([brick_wall.sv](src/brick_wall.sv)).
+- The ring also builds the walls after the first. As it fills, one row at a time, each row is
+  worked out from the row before it by a one-line cellular automaton, starting from a random
+  row. That gives 21 different symmetric walls for about half a percent of the tile.
 - Collisions are read off the picture: a ball pixel drawn over a brick or the paddle is a hit.
   The ball's offset within its own 8×8 box at that pixel tells which edge of the brick it came
   through, so it bounces the right way.

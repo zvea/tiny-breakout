@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for brick_wall: 8 x 6 bricks of 64 x 16 px at x 64..575, y 64..159.
+"""Unit tests for brick_wall: 8 x 6 bricks of 64 x 16 px at x 64..575, y 64..159, refilled
+with the full wall or with a pattern grown from a seed row.
 
 The wall only works with a beam that scans the screen in order, so vga_timing drives it
 (brick_wall_tb.sv). The tests jump the beam forward with timers rather than clock by
@@ -29,6 +30,8 @@ def centre(r: int, c: int) -> tuple[int, int]:
 async def start(dut):
     cocotb.start_soon(Clock(dut.clk, PERIOD_NS, unit="ns").start())
     dut.refill.value = 0
+    dut.full_wall.value = 1
+    dut.random.value = 1
     dut.clear.value = 0
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, 3)
@@ -142,6 +145,59 @@ async def empty_below_the_wall_after_the_last_brick_then_refill(dut):
     await pulse(dut, "refill", 0, 480)
     assert await standing(dut) == FILLING, "the wall shows only its bottom row while it fills"
     assert (await probe(dut, 0, 200))["empty"] == 0, "a filling wall is not empty"
+    assert await standing(dut) == set(ALL)
+
+
+def pattern(value: int) -> set[tuple[int, int]]:
+    """The wall grown from `random` = value (see brick_wall.sv), as standing (row, column)."""
+    rule_182 = value >> 4 & 1
+    seed = (value & 0b1110) | (value & 1) | rule_182
+    half = [seed >> c & 1 for c in range(4)]  # columns 0..3; columns 4..7 mirror them
+    rows = {ROWS - 1: half}  # the seed is the bottom row; rows 0..4 grow from it in turn
+    for r in range(ROWS - 1):
+        left, right = [half[0]] + half[:3], half[1:] + [half[3]]
+        half = [(left[c] ^ half[c] ^ right[c]) | (left[c] & right[c] & rule_182) for c in range(4)]
+        rows[r] = half
+    return {(r, c) for r in range(ROWS) for c in range(COLS) if rows[r][min(c, COLS - 1 - c)]}
+
+
+async def refill_with(dut, full_wall: int, value: int):
+    dut.full_wall.value = full_wall
+    dut.random.value = value
+    await pulse(dut, "refill", 0, 480)
+    await next_frame(dut)  # past the filling frame
+
+
+async def clear_all(dut):
+    await next_frame(dut)
+    for r, c in ALL:
+        await pulse(dut, "clear", *centre(r, c))
+
+
+@cocotb.test()
+async def later_walls_grow_from_the_seed_row(dut):
+    """Each value of `random` gives its own symmetric wall: rule 150 (2, 6, 13), rule 182
+    (17, 22), the striped wall both rules make (9), and the full wall from seed 1111 (31)."""
+    assert len({frozenset(pattern(v)) for v in range(1, 32)}) == 21
+    assert pattern(9) == pattern(24) and pattern(31) == set(ALL)
+    await start(dut)
+    await next_frame(dut)
+    for value in (2, 6, 9, 13, 17, 22, 31):
+        await clear_all(dut)
+        await refill_with(dut, 0, value)
+        got = await standing(dut)
+        assert got == pattern(value), f"random {value}: extra {sorted(got - pattern(value))}, missing {sorted(pattern(value) - got)}"
+
+
+@cocotb.test()
+async def the_full_wall_whatever_is_left_or_random(dut):
+    """A new game gets the full wall, whatever `random` is and however many bricks are left."""
+    await start(dut)
+    await next_frame(dut)
+    await next_frame(dut)
+    for r, c in ALL[::5]:
+        await pulse(dut, "clear", *centre(r, c))
+    await refill_with(dut, 1, 6)
     assert await standing(dut) == set(ALL)
 
 

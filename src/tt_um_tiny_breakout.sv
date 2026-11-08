@@ -191,6 +191,16 @@ module tt_um_tiny_breakout (
   wire btn_right = ui.right | gp_right;
   wire btn_fire  = ui.fire  | gp_fire | autoplay;  // autoplay launches the ball itself
 
+  // Chance: an LFSR that steps every frame, for autoplay's aim and the shape of each wall
+  logic [4:0] random;
+
+  lfsr u_lfsr (
+      .clk       (clk),
+      .rst_n     (rst_n),
+      .frame_tick(frame_tick),
+      .value     (random)
+  );
+
   logic auto_left, auto_right;
 
   autoplay u_autoplay (
@@ -198,6 +208,7 @@ module tt_um_tiny_breakout (
       .rst_n      (rst_n),
       .frame_tick (frame_tick),
       .paddle_hit (hit.paddle),
+      .random     (random[1:0]),
       .ball_x     (ball_x),
       .paddle_x   (paddle_x),
       .steer_left (auto_left),
@@ -225,6 +236,8 @@ module tt_um_tiny_breakout (
       .h_pos       (h_pos),
       .v_pos       (v_pos),
       .refill      (refill_bricks),
+      .full_wall   (level == 0),  // the first wall of a game; later ones are patterns
+      .random      (random),
       .clear       (clear_brick),
       .brick_px    (brick_px),
       .brick_row   (brick_row),
