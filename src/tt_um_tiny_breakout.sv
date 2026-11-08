@@ -407,10 +407,11 @@ module tt_um_tiny_breakout (
   // Moves per frame over the 4-frame phase 0, 1, 2, 3: one on even frames; one on odd frames
   // too if speed_level[3] (2x); one more in phase 1 if speed_level[2] (a half step); and
   // from speed_level 16 (and in the pause) 1, 2, 1, 2. Line 480 + k moves if k < moves (line
-  // 480 is frame_tick).
-  wire [1:0] moves = speed_level[4] ? 2'd1 + 2'(odd_frame)
-                   : 2'(!odd_frame) + 2'(speed_level[3] & odd_frame) +
-                     2'(speed_level[2] & (frame_phase == 1));
+  // 480 is frame_tick). Each term is a 1-bit condition, zero-extended by {1'b0, ...}: a cast
+  // such as 2'(a & b) would widen a and b before the AND, which lint rightly flags.
+  wire [1:0] moves = speed_level[4] ? 2'd1 + {1'b0, odd_frame}
+                   : {1'b0, !odd_frame} + {1'b0, speed_level[3] & odd_frame} +
+                     {1'b0, speed_level[2] & (frame_phase == 1)};
   wire move_tick = (h_pos == 0) && (v_pos[9:2] == SCREEN_HEIGHT[9:2]) && (v_pos[1:0] < moves);
 
   // What the frame update does. restart needs game over; otherwise exactly one of on_paddle,
