@@ -145,7 +145,8 @@ module tt_um_tiny_breakout (
     logic brick_top_bottom, brick_side, paddle;
   } hits_t;
   hits_t      hit;
-  logic [1:0] hit_zone;  // paddle zone the ball touched: 0..3 from the left (see paddle_px)
+  logic [1:0] hit_zone;  // paddle zone (0..3 from the left, see paddle_px) under the last ball
+                         // pixel to touch the paddle: the right end of the ball's bottom row
 
   // ---------------------------------------------------------------------------
   // Controls: gamepad, direct buttons and autoplay

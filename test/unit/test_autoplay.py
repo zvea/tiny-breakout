@@ -44,16 +44,18 @@ async def read(dut, name: str) -> int:
 
 
 def zone_middle(zone: int, w16: int) -> int:
-    """Where in a zone autoplay aims the ball's centre, in px from the paddle's centre: the
-    outer zones are the last 16 px at each end, the inner ones the rest of each half."""
+    """The middle of a zone, in px from the paddle's centre: the outer zones are the last 16 px
+    at each end, the inner ones the rest of each half."""
     outer, inner = 8 * w16 - 8, (8 * w16 - 16) // 2
     return [-outer, -inner, inner, outer][zone]
 
 
 @cocotb.test()
 async def steers_ball_onto_the_middle_of_the_zone(dut):
-    """Steer right/left exactly when the ball's centre is right/left of the middle of the
-    chosen zone (to the 4-px unit the paddle moves in), for every width and zone."""
+    """Steer right/left exactly when the ball is right/left of where its last pixel to touch
+    the paddle (ball x + 5, which decides the zone) is over the middle of the chosen zone, to
+    the 4-px unit the paddle moves in; on target, that pixel is inside the zone. For every
+    width and zone."""
     await start(dut)
     tested = set()
     for next_zone in (2, 3, 0, None):  # every zone, starting from 1 after reset
@@ -69,7 +71,13 @@ async def steers_ball_onto_the_middle_of_the_zone(dut):
                     right, left = int(dut.steer_right.value), int(dut.steer_left.value)
                     await RisingEdge(dut.clk)
                     ball4 = ball_x // 4
-                    aim4 = (paddle_c + zone_middle(zone, w16) - 4) // 4  # the ball's left edge there
+                    aim4 = (paddle_c + zone_middle(zone, w16) - 5) // 4  # ball x for that pixel there
+                    if ball4 == aim4:  # on target: the deciding pixel is in the chosen zone
+                        d = ball_x + 5 - paddle_c
+                        lo = [-8 * w16, -(8 * w16 - 16), 0, 8 * w16 - 16][zone]
+                        assert lo <= d < lo + [16, 8 * w16 - 16, 8 * w16 - 16, 16][zone], (
+                            f"zone {zone}, width {16 * w16}: on target, the pixel is at {d}"
+                        )
                     assert (right, left) == (int(ball4 > aim4), int(ball4 < aim4)), (
                         f"zone {zone}, width {16 * w16}, paddle centre {paddle_c}, ball {ball_x}"
                     )

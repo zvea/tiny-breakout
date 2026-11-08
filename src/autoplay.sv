@@ -34,21 +34,23 @@ module autoplay (
     else if (frame_tick && paddle_hit) aim_zone <= random;
   end
 
-  // Ball centre (ball_x + 4) over the middle of the zone. The outer zones are the paddle's
-  // last 16 px, so their middle is 8 px in from the end: half a width (8 x paddle_w16) - 8 from
-  // the centre. The inner ones fill the rest, 8 x paddle_w16 - 16 px each side of the centre,
-  // so their middle is 4 x paddle_w16 - 8 from it. Compared in 4-px units, relative to the
-  // centre: ball_x / 4 = paddle_c / 4 + aim_dx4, where the - 1 is the ball's 4 px to its centre.
-  // The paddle moves one 4-px step at a time and this is re-evaluated before each step, so it
-  // stops on target (to within 4 px).
+  // The zone a bounce takes is the one under the last ball pixel to touch the paddle: the
+  // right end of the ball's bottom row, ball_x + 5. Steer that pixel over the middle of the
+  // zone. The outer zones are the paddle's last 16 px, so their middle is 8 px in from the
+  // end: half a width (8 x paddle_w16) - 8 from the centre. The inner ones fill the rest,
+  // 8 x paddle_w16 - 16 px each side of the centre, so their middle is 4 x paddle_w16 - 8 from
+  // it. Compared in 4-px units, relative to the centre: ball_x / 4 = paddle_c / 4 + aim_dx4,
+  // where the - 2 is that pixel's 5 px, rounded down (aim_x4 covers ball_x up to 3 px further
+  // right, so the pixel lands 0..3 px left of the middle). The paddle moves one 4-px step at
+  // a time and this is re-evaluated before each step, so it stops on target.
   wire [7:0] w16 = {5'b0, paddle_w16};
   logic [7:0] aim_dx4;
   always_comb begin
     case (aim_zone)
-      0:       aim_dx4 = -(2 * w16 - 2) - 1;
-      1:       aim_dx4 = -(w16 - 2) - 1;
-      2:       aim_dx4 = (w16 - 2) - 1;
-      default: aim_dx4 = (2 * w16 - 2) - 1;
+      0:       aim_dx4 = -(2 * w16 - 2) - 2;
+      1:       aim_dx4 = -(w16 - 2) - 2;
+      2:       aim_dx4 = (w16 - 2) - 2;
+      default: aim_dx4 = (2 * w16 - 2) - 2;
     endcase
   end
   wire [7:0] ball_x4 = ball_x[9:2];
