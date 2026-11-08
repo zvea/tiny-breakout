@@ -21,22 +21,12 @@
  * hidden until the last turn: for one frame after reset and after each refill, only the
  * bottom row shows. Hiding them also keeps the unreset bits from showing as X in simulation.
  *
- * The first wall of a game is full. Every later wall is a pattern grown from one row, which
- * suits the ring: each row turn of the fill loads one row, worked out from the row loaded
- * just before it (still in bricks[ROWS-1]).
- *   - The first turn loads the seed: 4 bricks from `random`, mirrored into 8 columns. It
- *     becomes the bottom row, as the fill's first turn loads row 5 (then rows 0 .. 4).
- *   - Each later turn grows the next row by a one-dimensional cellular automaton: a brick
- *     goes where an odd number of the three bricks above it (left, centre, right) stand,
- *     Wolfram's rule 150; with random[4] set, also where both neighbours stand, rule 182.
- *   - The rows stay mirror-symmetric: column 3's right neighbour is column 4, which mirrors
- *     column 3, and column 0's left neighbour is column 7 (the ring wraps), which mirrors
- *     column 0.
- * The 31 values of `random` give 21 different walls of 20 to 48 bricks. The full wall is
- * one of them: seed 1111 grows into all 1s under either rule, and full_wall forces it.
- * Growing from bricks[ROWS-1] needs an empty ring, as after a cleared wall: the fill ORs
- * the new rows into what is left. A new game can start with bricks left, but it gets the
- * full wall.
+ * The first wall of a game is full; every later one comes from wall_pattern, which gives the
+ * wall's rows one at a time: each row turn of the fill loads one row. The fill's first turn
+ * loads row 5 (the bottom one), then rows 0 .. 4, and each time wall_pattern also gets the
+ * row loaded just before, still in bricks[ROWS-1], so a layout can grow each row from the last.
+ * The fill ORs the new rows into what is left in the ring: empty after a cleared wall. A new
+ * game can start with bricks left, so the first wall is forced full, whatever the layout.
  *
  * Empty is read off the picture: no brick was drawn in the wall's rows. It is valid from
  * the end of the wall (y 160) until the next frame starts.
@@ -51,7 +41,8 @@ module brick_wall (
     input  logic [9:0] v_pos,
     input  logic       refill,        // build a new wall (new game or level)
     input  logic       full_wall,     // while filling: build the full wall, not a pattern
-    input  logic [4:0] random,        // while filling: the pattern; never 0, steady in a frame
+    input  logic [1:0] level,         // while filling, for wall_pattern: the level, 1 .. 3
+    input  logic [4:0] random,        // while filling, for wall_pattern: never 0, steady
     input  logic       clear,         // remove the brick under the beam, if any
     output logic       brick_px,      // a standing brick is under the beam
     output logic [2:0] brick_row,     // its row, 0 (top) .. 5: valid while brick_px
@@ -78,16 +69,22 @@ module brick_wall (
   wire row_turn = (h_pos == 0) && (v_pos[3:0] == 0) && in_rows;  // start of each brick row
   wire col_turn = (h_pos[5:0] == 0) && in_cols;                  // start of each brick column
 
-  // The row the fill loads at this row turn (see the top). Ring bit c + 1 is under wall
-  // column c, as the head row has turned once at the start of column 0, so rows are turned
-  // by one bit out of and into column order.
-  wire [3:0] half  = bricks[ROWS-1][4:1];    // columns 0 .. 3; columns 4 .. 7 mirror them
-  wire [3:0] left  = {half[2:0], half[0]};   // each column's left neighbour (column 0's: 7)
-  wire [3:0] right = {half[3], half[3:1]};   // each column's right neighbour (column 3's: 4)
-  wire [3:0] seed  = full_wall ? 4'b1111 : {random[3:1], random[0] | random[4]};  // never 0
-  wire [3:0] grown = (left ^ half ^ right) | (left & right & {4{random[4]}});
-  wire [3:0] next  = (row == FIRST_ROW) ? seed : grown;  // the fill's first turn: the seed
-  wire [COLS-1:0] fill_row = {next[0], next[1], next[2], next[3], next};  // bit c: column c
+  // The row the fill loads at this row turn (see the top). The turn at the start of brick row
+  // k (0..5 from the top) loads row k - 1, the first one row 5. Ring bit c + 1 is under wall
+  // column c, as the head row has turned once at the start of column 0, so rows are turned by
+  // one bit out of and into column order.
+  wire [2:0]      turn     = 3'(row - FIRST_ROW);
+  wire [2:0]      fill_r   = (turn == 0) ? 3'd5 : turn - 3'd1;
+  wire [COLS-1:0] last_row = {bricks[ROWS-1][0], bricks[ROWS-1][COLS-1:1]};  // bit c: column c
+  wire [COLS-1:0] pattern_row;
+  wall_pattern u_wall_pattern (
+      .r     (fill_r),
+      .prev  (last_row),
+      .level (level),
+      .random(random),
+      .row   (pattern_row)
+  );
+  wire [COLS-1:0] fill_row = full_wall ? '1 : pattern_row;  // bit c: column c
 
   // No reset: refill (which reset starts) fills the wall
   always_ff @(posedge clk) begin

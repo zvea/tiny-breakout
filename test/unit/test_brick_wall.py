@@ -16,6 +16,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge, Timer
 
 from cocotb_run import UNIT_DIR, run
+from test_wall_pattern import aliens
 
 COLS, ROWS = 8, 6
 ALL = [(r, c) for r in range(ROWS) for c in range(COLS)]  # in the order the beam meets them
@@ -31,6 +32,7 @@ async def start(dut):
     cocotb.start_soon(Clock(dut.clk, PERIOD_NS, unit="ns").start())
     dut.refill.value = 0
     dut.full_wall.value = 1
+    dut.level.value = 0
     dut.random.value = 1
     dut.clear.value = 0
     dut.rst_n.value = 0
@@ -149,20 +151,15 @@ async def empty_below_the_wall_after_the_last_brick_then_refill(dut):
 
 
 def pattern(value: int) -> set[tuple[int, int]]:
-    """The wall grown from `random` = value (see brick_wall.sv), as standing (row, column)."""
-    rule_182 = value >> 4 & 1
-    seed = (value & 0b1110) | (value & 1) | rule_182
-    half = [seed >> c & 1 for c in range(4)]  # columns 0..3; columns 4..7 mirror them
-    rows = {ROWS - 1: half}  # the seed is the bottom row; rows 0..4 grow from it in turn
-    for r in range(ROWS - 1):
-        left, right = [half[0]] + half[:3], half[1:] + [half[3]]
-        half = [(left[c] ^ half[c] ^ right[c]) | (left[c] & right[c] & rule_182) for c in range(4)]
-        rows[r] = half
-    return {(r, c) for r in range(ROWS) for c in range(COLS) if rows[r][min(c, COLS - 1 - c)]}
+    """The wall the current layout builds from `random` = value (test_wall_pattern has the
+    model), as standing (row, column)."""
+    rows = aliens(value)
+    return {(r, c) for r in range(ROWS) for c in range(COLS) if rows[r] >> c & 1}
 
 
 async def refill_with(dut, full_wall: int, value: int):
     dut.full_wall.value = full_wall
+    dut.level.value = 0 if full_wall else 1
     dut.random.value = value
     await pulse(dut, "refill", 0, 480)
     await next_frame(dut)  # past the filling frame
@@ -175,14 +172,14 @@ async def clear_all(dut):
 
 
 @cocotb.test()
-async def later_walls_grow_from_the_seed_row(dut):
-    """Each value of `random` gives its own symmetric wall: rule 150 (2, 6, 13), rule 182
-    (17, 22), the striped wall both rules make (9), and the full wall from seed 1111 (31)."""
-    assert len({frozenset(pattern(v)) for v in range(1, 32)}) == 21
-    assert pattern(9) == pattern(24) and pattern(31) == set(ALL)
+async def later_walls_come_from_wall_pattern(dut):
+    """The ring puts wall_pattern's rows in place: each in its own row, and its columns in
+    order, which a slip by one column (the ring's bit offset) would break, as these walls are
+    not the same shifted; each row is grown from the one before. Three walls, of both rules;
+    test_wall_pattern checks every wall itself."""
     await start(dut)
     await next_frame(dut)
-    for value in (2, 6, 9, 13, 17, 22, 31):
+    for value in (6, 9, 22):
         await clear_all(dut)
         await refill_with(dut, 0, value)
         got = await standing(dut)
@@ -211,5 +208,6 @@ async def over_columns_spans_the_wall_width(dut):
 
 
 def test_brick_wall():
-    run("brick_wall_tb", ["vga_timing.sv", "brick_wall.sv", str(UNIT_DIR / "brick_wall_tb.sv")],
+    run("brick_wall_tb", ["vga_timing.sv", "wall_pattern.sv", "brick_wall.sv",
+                          str(UNIT_DIR / "brick_wall_tb.sv")],
         "test_brick_wall")

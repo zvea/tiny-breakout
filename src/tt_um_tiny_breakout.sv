@@ -244,6 +244,7 @@ module tt_um_tiny_breakout (
       .v_pos       (v_pos),
       .refill      (refill_bricks),
       .full_wall   (level == 0),  // the first wall of a game; later ones are patterns
+      .level       (level),
       .random      (random),
       .clear       (clear_brick),
       .brick_px    (brick_px),

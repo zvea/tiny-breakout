@@ -23,6 +23,7 @@ project:
     - "vga_timing.sv"
     - "lfsr.sv"
     - "autoplay.sv"
+    - "wall_pattern.sv"
     - "brick_wall.sv"
     - "score.sv"
     - "tiny_vga_out.sv"
