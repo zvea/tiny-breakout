@@ -2,14 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """Builds the black-box scenario tests (scenarios.cpp) with Verilator and runs each one.
 
-    pytest test/system
+    pytest test/system            # one after another
+    pytest test/system -n auto    # in parallel (pytest-xdist): the scenarios are independent
 
 The design's source files are read from info.yaml, so this stays in step with the flow.
 Needs Verilator 4.x: sim/play/sim.h uses its one-eval-per-clock trick.
 """
 
+import fcntl
+import os
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 
 import pytest
@@ -34,8 +38,25 @@ def scenario_names() -> list[str]:
     ]
 
 
+# Identifies this test run: pytest-xdist gives all its workers the same one
+RUN_ID = os.environ.get("PYTEST_XDIST_TESTRUNUID") or uuid.uuid4().hex
+
+
 @pytest.fixture(scope="session")
 def scenarios_binary() -> Path:
+    """Builds once per test run. With pytest-xdist every worker asks: the first builds under a
+    lock, the others wait for it and reuse the build."""
+    BUILD.mkdir(exist_ok=True)
+    with open(BUILD / "build.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        stamp = BUILD / "built-for-run"
+        if not (stamp.exists() and stamp.read_text() == RUN_ID):
+            _build()
+            stamp.write_text(RUN_ID)
+    return BUILD / "Vtt_um_tiny_breakout"
+
+
+def _build() -> None:
     verilator = str(LOCAL_VERILATOR) if LOCAL_VERILATOR.exists() else shutil.which("verilator")
     assert verilator, "Verilator 4.x not found"
     cmd = [
@@ -47,11 +68,10 @@ def scenarios_binary() -> Path:
     ]  # fmt: skip
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
-    return BUILD / "Vtt_um_tiny_breakout"
 
 
 @pytest.mark.parametrize("name", scenario_names())
 def test_scenario(scenarios_binary: Path, name: str):
-    result = subprocess.run([scenarios_binary, name], capture_output=True, text=True, timeout=900)
+    result = subprocess.run([scenarios_binary, name], capture_output=True, text=True, timeout=1800)
     print(result.stdout)
     assert result.returncode == 0, result.stdout + result.stderr

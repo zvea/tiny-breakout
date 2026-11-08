@@ -6,7 +6,7 @@ Three layers, from module to whole game:
 |---|---|---|---|
 | [unit/](unit) | Each module on its own, through its ports (cocotb) | `pytest test/unit` | ~70 s (Verilator), ~5.5 min (`SIM=icarus`) |
 | [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~1.5 min |
-| [system/](system) | 10 gameplay scenarios, judged only from the decoded video output | `pytest test/system` | ~5 min |
+| [system/](system) | 12 gameplay scenarios, judged only from the decoded video output | `pytest test/system -n auto` | ~13 min in parallel, ~40 min one after another |
 
 CI ([.github/workflows/test.yaml](../.github/workflows/test.yaml)) runs `test.py` and the unit
 tests on Icarus. Tiny Tapeout's GDS workflow also runs `test.py` on the gate-level netlist. The
@@ -58,7 +58,8 @@ autoconf && ./configure --prefix="$HOME/opt/verilator-4.228" && make -j8 && make
 ```sh
 .venv/bin/pytest test/unit                 # Verilator 5
 SIM=icarus .venv/bin/pytest test/unit      # Icarus, as in CI
-.venv/bin/pytest test/system               # needs .tools/v4
+.venv/bin/pytest test/system -n auto       # needs .tools/v4; one worker per scenario
+.venv/bin/pytest test/system               # one after another
 .venv/bin/pytest test/system -k launch     # one scenario
 (cd test && PATH=$PWD/../.venv/bin:$PWD/../.tools/env/bin:$PATH make -B)   # full chip
 ```
