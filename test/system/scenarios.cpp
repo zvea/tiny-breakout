@@ -481,9 +481,35 @@ bool launch_at_1_5x(Game &g, View &v, int frames) {
   return ok;
 }
 
+// The walls after the first are grown from a seed row chosen by the LFSR (brick_wall.sv): the
+// bottom row is the seed, 4 bits mirrored into 8 columns, and each row from the top down is
+// grown from the one before it by rule 150, or rule 182 when bit 4 is set. As `standing`.
+uint64_t pattern_wall(int value) {
+  int rule_182 = value >> 4 & 1;
+  int half = (value & 0b1110) | (value & 1) | rule_182;  // bit c: column c, for c = 0..3
+  auto row_bits = [](int h) {
+    uint64_t row = 0;
+    for (int c = 0; c < 8; c++) row |= uint64_t((h >> (c < 4 ? c : 7 - c)) & 1) << c;
+    return row;
+  };
+  uint64_t wall = row_bits(half) << (5 * 8);
+  for (int r = 0; r < 5; r++) {
+    int left = ((half << 1) | (half & 1)) & 0xF, right = (half >> 1) | (half & 8);
+    half = (left ^ half ^ right) | (left & right & -rule_182);
+    wall |= row_bits(half & 0xF) << (r * 8);
+  }
+  return wall;
+}
+
+bool is_pattern_wall(uint64_t standing) {
+  for (int value = 1; value < 32; value++)
+    if (pattern_wall(value) == standing) return true;
+  return false;
+}
+
 // Clearing a level: the empty wall stays for about half a second, a spare ball comes back
-// (one is lost first, as there are at most 2), the next wall comes in, and the next
-// level's balls start at 1.5x, also after a ball is lost.
+// (one is lost first, as there are at most 2), the next wall comes in as one of the patterns,
+// and the next level's balls start at 1.5x, also after a ball is lost.
 void level_cleared() {
   Game g;
   g.reset();
@@ -503,7 +529,8 @@ void level_cleared() {
   printf("frame %5d: level cleared, empty wall for %d frames\n", frame, pause);
   CHECK(pause >= 28 && pause <= 36, "empty wall for %d frames (expected about 32)", pause);
   v = run(g, 1);  // past the filling frame
-  CHECK(v.bricks == 48, "level 2 wall has %d bricks", v.bricks);
+  CHECK(is_pattern_wall(v.standing), "level 2 wall (%d bricks, %016llx) is not a pattern wall",
+        v.bricks, (unsigned long long)v.standing);
   CHECK(v.lives == 2, "%d spare balls after the level (expected one back)", v.lives);
   CHECK(launch_at_1_5x(g, v, 16), "level 2 ball did not start at 1.5x");
   // Lose a ball in level 2: the next one starts at the level's speed again
