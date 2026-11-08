@@ -99,7 +99,9 @@ async def test_gamepad_and_paddle(dut):
     # reports on every change, and at least once a second in Tiny Tapeout's configuration.
     await send_gamepad(dut, 1 << 5)  # LEFT
     await send_gamepad(dut, 1 << 5)
+    # At the base speed the paddle moves every other frame: compare frames two apart
     x1 = await paddle_left_edge(dut)
+    await paddle_left_edge(dut)
     x2 = await paddle_left_edge(dut)
     dut._log.info(f"paddle x: {x1} -> {x2}")
     assert x1 is not None and x2 is not None

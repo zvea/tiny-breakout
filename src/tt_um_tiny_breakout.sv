@@ -115,16 +115,18 @@ module tt_um_tiny_breakout (
   logic ball_flat;   // 2 px per move horizontally (else 1): 45 degrees, else about 63
   logic ball_up;     // moving up (else down); 2 px per move vertically
 
-  // Speed: the ball and paddle make 1, 2 or 3 moves per frame (see move_tick), each by
-  // their usual step. speed_level counts the bricks the current ball clears, starting from
-  // 4 x level, and the speed rises a half step every 4: 1x, 1.5x, 2x, 2.5x, then 3x from
-  // 16. A half step alternates frames (1.5x: 1, 2, 1, 2 ... moves). So each level's balls
-  // start a half step faster, up to 2.5x from the 4th level.
+  // Speed: the ball and paddle make 0, 1 or 2 moves per frame (see move_tick), each by
+  // their usual step, averaging 2, 3, 4, 5 or 6 moves per 4 frames: 1x, 1.5x, 2x, 2.5x, 3x
+  // (1x is a move every other frame: 1 px per frame vertically). speed_level counts the
+  // bricks the current ball clears, starting from 4 x level, and the speed rises a half
+  // step every 4, up to 3x from 16. So each level's balls start a half step faster, up to
+  // 2.5x from the 4th level.
   //
   // In the pause after a cleared wall, speed_level is the timer: 16..31 on odd frames
   // (about half a second). After game over it is the curtain's line: 0..31, one per frame.
   logic [4:0] speed_level;
-  logic       odd_frame;  // alternates every frame, for the half steps
+  logic [1:0] frame_phase;  // counts frames: the pattern of moves over 4 frames
+  wire        odd_frame = frame_phase[0];
 
   logic [1:0] lives;      // spare balls; losing a ball with none left wraps to 3: game over
   logic       serving;    // ball resting on the paddle, waiting to be launched
@@ -366,11 +368,13 @@ module tt_um_tiny_breakout (
   wire [9:0] step_x = next_left ? (next_flat ? -2 : -1) : (next_flat ? 2 : 1);
   wire [7:0] step_y_half = next_up ? -1 : 1;
 
-  // Moves per frame: 3 from speed_level 16 (and in the pause); below that 1 + speed_level[3],
-  // plus 1 on odd frames if speed_level[2] (a half step). Line 480 + k moves if k < moves
-  // (line 480 is frame_tick).
-  wire [1:0] moves = speed_level[4] ? 2'd3
-                                    : 2'd1 + 2'(speed_level[3]) + 2'(speed_level[2] & odd_frame);
+  // Moves per frame over the 4-frame phase 0, 1, 2, 3: one on even frames; one on odd frames
+  // too if speed_level[3] (2x); one more in phase 1 if speed_level[2] (a half step); and
+  // from speed_level 16 (and in the pause) 1, 2, 1, 2. Line 480 + k moves if k < moves (line
+  // 480 is frame_tick).
+  wire [1:0] moves = speed_level[4] ? 2'd1 + 2'(odd_frame)
+                   : 2'(!odd_frame) + 2'(speed_level[3] & odd_frame) +
+                     2'(speed_level[2] & (frame_phase == 1));
   wire move_tick = (h_pos == 0) && (v_pos[9:2] == SCREEN_HEIGHT[9:2]) && (v_pos[1:0] < moves);
 
   // What the frame update does. restart needs game over; otherwise exactly one of on_paddle,
@@ -408,12 +412,17 @@ module tt_um_tiny_breakout (
       ball_left   <= 0;
       ball_flat   <= 0;
       ball_up     <= 1;
-    end else if (move_tick && fly) begin
-      ball_x      <= ball_x + step_x;
-      ball_y_half <= ball_y_half + step_y_half;
-      ball_left   <= next_left;
-      ball_flat   <= next_flat;
-      ball_up     <= next_up;
+    end else if (fly && (frame_tick || move_tick)) begin
+      // The direction takes in the frame's collisions at frame_tick, also in a frame with no
+      // move (at 1x every other frame has none): the flags are cleared then, and a cleared
+      // brick would not be hit again. Later moves keep it, as the flags are clear by then.
+      ball_left <= next_left;
+      ball_flat <= next_flat;
+      ball_up   <= next_up;
+      if (move_tick) begin
+        ball_x      <= ball_x + step_x;
+        ball_y_half <= ball_y_half + step_y_half;
+      end
     end
   end
 
@@ -469,8 +478,8 @@ module tt_um_tiny_breakout (
   end
 
   always_ff @(posedge clk) begin
-    if (!rst_n) odd_frame <= 0;
-    else if (frame_tick) odd_frame <= ~odd_frame;
+    if (!rst_n) frame_phase <= 0;
+    else if (frame_tick) frame_phase <= frame_phase + 1;
   end
 
   // ---------------------------------------------------------------------------

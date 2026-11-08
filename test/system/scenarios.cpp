@@ -133,6 +133,13 @@ View run(Game &g, int frames, bool find_ball = true) {
 // the view once that game's wall is in.
 View start_game(Game &g) { return run(g, 4); }
 
+// A new ball goes onto the paddle at the next move, and at 1x every other frame has none:
+// runs up to 2 more frames for it to come to rest.
+View settle(Game &g, View v) {
+  for (int i = 0; i < 2 && !resting(v); i++) v = run(g, 1);
+  return v;
+}
+
 // ---- Scenarios ---------------------------------------------------------------------------
 
 // A new game shows the full wall, two spare balls and the ball resting on the paddle; it
@@ -149,12 +156,13 @@ void launch() {
   g.buttons = FIRE;
   run(g, 1);
   g.buttons = 0;
-  v = run(g, 10);
+  v = run(g, 20);
   CHECK(v.ball && v.ball_y < 440 - 10, "ball not launched upwards: y %d", v.ball_y);
 }
 
-// The paddle moves 4 px per frame while LEFT or RIGHT is held, from either the direct pins
-// or the gamepad; both together cancel out. The resting ball moves with it.
+// The paddle moves 4 px every other frame (at the base speed) while LEFT or RIGHT is held,
+// from either the direct pins or the gamepad; both together cancel out. The resting ball
+// moves with it.
 void steering() {
   for (int source = 0; source < 2; source++) {
     const char *name = source ? "gamepad" : "direct pins";
@@ -174,10 +182,10 @@ void steering() {
             v.paddle_x);
     }
     int x1 = v.paddle_x;
-    CHECK(x1 >= x0 + 32 && x1 <= x0 + 40, "%s: right moved the paddle %d -> %d", name, x0, x1);
+    CHECK(x1 >= x0 + 16 && x1 <= x0 + 24, "%s: right moved the paddle %d -> %d", name, x0, x1);
     press(g, true, false);
     int x2 = run(g, 10).paddle_x;
-    CHECK(x2 <= x1 - 32 && x2 >= x1 - 40, "%s: left moved the paddle %d -> %d", name, x1, x2);
+    CHECK(x2 <= x1 - 16 && x2 >= x1 - 24, "%s: left moved the paddle %d -> %d", name, x1, x2);
     press(g, true, true);
     int x3 = run(g, 2).paddle_x;
     int x4 = run(g, 10).paddle_x;
@@ -193,10 +201,10 @@ void paddle_limits() {
   g.reset();
   start_game(g);
   g.buttons = LEFT;
-  View v = run(g, 100);
+  View v = run(g, 200);
   CHECK(v.paddle_x == 64, "left limit %d", v.paddle_x);
   g.buttons = RIGHT;
-  v = run(g, 150);
+  v = run(g, 300);
   CHECK(v.paddle_x == 512, "right limit %d", v.paddle_x);
 }
 
@@ -289,7 +297,7 @@ void game_over_curtain() {
   g.buttons = FIRE;
   run(g, 1);
   g.buttons = 0;
-  v = run(g, 2);
+  v = settle(g, run(g, 2));
   CHECK(black_from_top(g) == 24, "after restart: %d black lines from the top", black_from_top(g));
   CHECK(v.bricks == 48 && v.lives == 2 && v.score == 0 && resting(v),
         "after restart: %d bricks, %d markers, score %d, ball at (%d, %d)", v.bricks, v.lives,
@@ -299,7 +307,7 @@ void game_over_curtain() {
 void game_over_and_restart() {
   Game g;
   g.reset();
-  int expected_lives = 2, frame = 0, missing = 0, since_launch = 1000, prev_y = -1;
+  int expected_lives = 2, frame = 0, missing = 0, since_launch = 1000, prev_y = -1, prev_dy = 0;
   View v = start_game(g);
   for (; frame < 20000; frame++) {
     // Keep the paddle against the left wall, and launch whenever the ball is resting.
@@ -307,11 +315,14 @@ void game_over_and_restart() {
     g.buttons = LEFT | (launch ? FIRE : 0);
     since_launch = launch ? 0 : since_launch + 1;
     v = run(g, 1);
-    // Every new ball starts at the base speed, 2 px per frame, however fast the last one was.
-    if (since_launch >= 2 && since_launch < 12)
-      CHECK(v.ball && std::abs(v.ball_y - prev_y) == 2, "frame %d: new ball moved %d px",
-            frame, std::abs(v.ball_y - prev_y));
+    // Every new ball starts at the base speed, a 2-px move every other frame, however fast
+    // the last one was.
+    int dy = std::abs(v.ball_y - prev_y);
+    if (since_launch >= 3 && since_launch < 12)
+      CHECK(v.ball && (dy == 0 || dy == 2) && dy + prev_dy == 2,
+            "frame %d: new ball moved %d then %d px", frame, prev_dy, dy);
     prev_y = v.ball_y;
+    prev_dy = dy;
     if (v.lives != expected_lives) {
       CHECK(v.lives == expected_lives - 1, "frame %d: life markers %d -> %d", frame,
             expected_lives, v.lives);
@@ -333,7 +344,7 @@ void game_over_and_restart() {
   g.buttons = FIRE;
   run(g, 1);
   g.buttons = 0;
-  v = run(g, 2);
+  v = settle(g, run(g, 2));
   CHECK(v.lives == 2, "after restart: life markers %d", v.lives);
   CHECK(v.score == 0, "after restart: score %d", v.score);
   CHECK(v.bricks == 48, "after restart: bricks %d", v.bricks);
@@ -349,7 +360,7 @@ void autoplay_clears_a_level() {
   int fewest = 48, frame = 0, lives_lost = 0, lives = 2, prev_bricks = 48;
   bool cleared = false;
   View v = start_game(g);
-  for (; frame < 40000 && !cleared; frame++) {
+  for (; frame < 80000 && !cleared; frame++) {
     v = run(g, 1, false);
     if (v.lives < lives) lives_lost += lives - v.lives;
     lives = v.lives;
@@ -368,40 +379,36 @@ void autoplay_clears_a_level() {
   CHECK(v.score == 480, "score %d after clearing the level", v.score);
 }
 
-// The ball speeds up a half step every 4 bricks it clears: vertically it moves 2 px per
-// frame at first (1x), then alternately 2 and 4 (1.5x), 4 (2x), alternately 4 and 6
-// (2.5x), and 6 px (3x) once it has cleared 16.
+// The ball speeds up a half step every 4 bricks it clears: vertically it moves 4 px per 4
+// frames at first (1x), then 6 (1.5x), 8 (2x), 10 (2.5x), and 12 px (3x) once it has
+// cleared 16.
 void ball_speeds_up() {
   Game g;
   g.reset();
   g.autoplay = true;
   View v = start_game(g);
   int prev_y = v.ball_y, prev_bricks = v.bricks, frame = 0, checked[5] = {};
-  int prev_dy = 0, prev_step = -1;
-  for (; frame < 10000 && v.lives == 2 && v.bricks > 28; frame++) {
+  int run_step = -1, run_len = 0, window[4] = {};  // vertical moves of the last 4 frames
+  for (; frame < 20000 && v.lives == 2 && v.bricks > 28; frame++) {
     v = run(g, 1);
     int dy = std::abs(v.ball_y - prev_y), cleared = 48 - v.bricks;
     bool steady = v.bricks == prev_bricks;  // the picture's count lags a brick cleared mid-frame
     prev_y = v.ball_y;
     prev_bricks = v.bricks;
-    if (!v.ball || dy == 0 || !steady || resting(v)) {
-      prev_step = -1;  // no alternation check across a gap
+    if (!v.ball || !steady || resting(v)) {
+      run_len = 0;  // no window across a gap
       continue;
     }
     int step = cleared / 4 < 4 ? cleared / 4 : 4;  // 0..4: 1x, 1.5x, 2x, 2.5x, 3x
-    if (step % 2 == 0) {
-      CHECK(dy == 2 + step, "frame %d: %d bricks cleared, moved %d px (expected %d)", frame,
-            cleared, dy, 2 + step);
-    } else {
-      CHECK(dy == 1 + step || dy == 3 + step, "frame %d: %d bricks cleared, moved %d px (expected %d or %d)",
-            frame, cleared, dy, 1 + step, 3 + step);
-      if (prev_step == step)
-        CHECK(dy != prev_dy, "frame %d: %d bricks cleared, moved %d px twice in a row", frame,
-              cleared, dy);
+    if (step != run_step) run_len = 0;
+    run_step = step;
+    window[run_len++ % 4] = dy;
+    if (run_len >= 4) {
+      int sum = window[0] + window[1] + window[2] + window[3];
+      CHECK(sum == 4 + 2 * step, "frame %d: %d bricks cleared, moved %d px in 4 frames (expected %d)",
+            frame, cleared, sum, 4 + 2 * step);
+      checked[step]++;
     }
-    checked[step]++;
-    prev_dy = dy;
-    prev_step = step;
   }
   printf("frame %5d: frames checked at 1x/1.5x/2x/2.5x/3x: %d/%d/%d/%d/%d\n", frame, checked[0],
          checked[1], checked[2], checked[3], checked[4]);
@@ -415,7 +422,7 @@ void brick_bounces() {
   Game g;
   g.reset();
   g.autoplay = true;
-  constexpr int N = 2500;
+  constexpr int N = 15000;
   static View v[N];
   start_game(g);
   for (int t = 0; t < N; t++) v[t] = run(g, 1);
@@ -431,8 +438,13 @@ void brick_bounces() {
              w.ball_y + 8 > by;
     };
     int c = overlaps(v[s - 1]) ? s - 1 : s;
-    const View &p = v[c - 1], &h = v[c], &n = v[c + 1];
-    if (!p.ball || !h.ball || !n.ball || !overlaps(h)) continue;
+    // Some frames have no move: compare with the nearest frames where the ball moved
+    auto moved = [&](int i) { return v[i].ball_x != v[c].ball_x || v[i].ball_y != v[c].ball_y; };
+    int pi = c - 1, ni = c + 1;
+    while (pi > 0 && !moved(pi)) pi--;
+    while (ni + 1 < N && !moved(ni)) ni++;
+    const View &p = v[pi], &h = v[c], &n = v[ni];
+    if (!p.ball || !h.ball || !n.ball || !overlaps(h) || !moved(pi) || !moved(ni)) continue;
     if (h.ball_x < 80 || h.ball_x > 560 || h.ball_y < 48) continue;  // walls could interfere
     bool left = h.ball_x < p.ball_x, up = h.ball_y < p.ball_y;
     int past_side = left ? bx + 62 - h.ball_x : h.ball_x + 8 - bx;
@@ -449,21 +461,22 @@ void brick_bounces() {
   CHECK(checked[0] > 0 && checked[1] > 0, "did not see both kinds of bounce");
 }
 
-// Waits for the launch, then returns whether the ball's vertical steps alternate 2, 4, 2 ...
-// px (1.5x) for `frames` frames.
-bool launch_steps_alternate_2_4(Game &g, View &v, int frames) {
+// Waits for the launch, then returns whether the ball rises at 1.5x for `frames` frames:
+// moves of 2 px, 6 px in every 4 frames.
+bool launch_at_1_5x(Game &g, View &v, int frames) {
   for (int i = 0; i < 2000 && resting(v); i++) v = run(g, 1);  // wait for the launch
-  int prev_y = v.ball_y, prev_dy = 0;
+  int prev_y = v.ball_y, dys[64] = {};
   bool ok = true;
-  for (int i = 0; i < frames; i++) {
+  for (int i = 0; i < frames && i < 64; i++) {
     v = run(g, 1);
-    int dy = prev_y - v.ball_y;
+    dys[i] = prev_y - v.ball_y;
     prev_y = v.ball_y;
-    if ((dy != 2 && dy != 4) || dy == prev_dy) {
-      printf("  launch frame %d: moved %d px up (previous %d)\n", i, dy, prev_dy);
-      ok = false;
+    if (dys[i] != 0 && dys[i] != 2) ok = false;
+    if (i >= 3 && dys[i] + dys[i - 1] + dys[i - 2] + dys[i - 3] != 6) ok = false;
+    if (!ok) {
+      printf("  launch frame %d: moved %d px up\n", i, dys[i]);
+      return false;
     }
-    prev_dy = dy;
   }
   return ok;
 }
@@ -483,7 +496,7 @@ void level_cleared() {
   CHECK(v.lives == 1, "frame %d: still %d spare balls", frame, v.lives);
   g.buttons = 0;
   g.autoplay = true;
-  for (; frame < 30000 && v.bricks > 0; frame++) v = run(g, 1, false);
+  for (; frame < 60000 && v.bricks > 0; frame++) v = run(g, 1, false);
   CHECK(v.bricks == 0, "frame %d: level not cleared (%d bricks)", frame, v.bricks);
   int pause = 0;
   for (; pause < 100 && v.bricks == 0; pause++) v = run(g, 1, false);
@@ -492,10 +505,10 @@ void level_cleared() {
   v = run(g, 1);  // past the filling frame
   CHECK(v.bricks == 48, "level 2 wall has %d bricks", v.bricks);
   CHECK(v.lives == 2, "%d spare balls after the level (expected one back)", v.lives);
-  CHECK(launch_steps_alternate_2_4(g, v, 12), "level 2 ball did not start at 1.5x");
+  CHECK(launch_at_1_5x(g, v, 16), "level 2 ball did not start at 1.5x");
   // Lose a ball in level 2: the next one starts at the level's speed again
   g.autoplay = false;
-  for (int i = 0; i < 5000 && v.lives == 2; i++) {
+  for (int i = 0; i < 10000 && v.lives == 2; i++) {
     g.buttons = LEFT;
     v = run(g, 1);
   }
@@ -504,7 +517,7 @@ void level_cleared() {
   g.buttons = FIRE;
   v = run(g, 1);
   g.buttons = 0;
-  CHECK(launch_steps_alternate_2_4(g, v, 12), "level 2 ball after a loss did not start at 1.5x");
+  CHECK(launch_at_1_5x(g, v, 16), "level 2 ball after a loss did not start at 1.5x");
 }
 
 // With no controller connected the game plays itself (demo): with no Gamepad PMOD at all,
@@ -520,17 +533,17 @@ void demo_until_a_controller_or_button() {
     else g.pmod_plugged = false;
     View v = run(g, 4);
     int bricks0 = v.bricks;
-    v = run(g, 600);
-    CHECK(v.bricks < bricks0, "%s: demo cleared no bricks in 600 frames (%d left)", name, v.bricks);
+    v = run(g, 900);
+    CHECK(v.bricks < bricks0, "%s: demo cleared no bricks in 900 frames (%d left)", name, v.bricks);
     CHECK(!resting(v), "%s: in the demo the ball is resting on the paddle", name);
     if (how) {
       g.pad_bits = 0;  // a controller is connected, nothing pressed
-      v = run(g, 3);
+      v = settle(g, run(g, 3));
     } else {
       g.buttons = LEFT;
       run(g, 1);
       g.buttons = 0;
-      v = run(g, 3);  // the new game starts at the next frame update, then its wall fills
+      v = settle(g, run(g, 3));  // the new game starts at the next frame update, then its wall fills
     }
     CHECK(v.bricks == 48 && v.lives == 2, "%s: then %d bricks, %d spare balls", name, v.bricks,
           v.lives);

@@ -6,8 +6,8 @@ A complete VGA brick-breaker game in a single [Tiny Tapeout](https://tinytapeout
 
 ![Tiny Breakout, mid-game](docs/img/gameplay.png)
 
-Tiny Breakout consists of some 15,600 transistors in 1,300 standard cells. There is no
-processor or frame buffer; the game keeps its state in 164 flip-flops.
+Tiny Breakout consists of some 15,800 transistors in 1,300 standard cells. There is no
+processor or frame buffer; the game keeps its state in 165 flip-flops.
 
 ## The game
 
@@ -26,8 +26,8 @@ drawn.
 - Collisions are read off the picture: a ball pixel drawn over a brick or the paddle is a hit.
   The ball's offset within its own 8×8 box at that pixel tells which edge of the brick it came
   through, so it bounces the right way.
-- A faster ball doesn't take bigger steps: it moves up to three times per frame, during
-  vertical blanking.
+- A faster ball doesn't take bigger steps: it moves more often, from every other frame up to
+  twice a frame, during vertical blanking.
 
 [![The hardened tile](docs/img/layout.png)](https://gds-explorer.tinytapeout.com/viewer?file=https://zvea.github.io/tiny-breakout/tinytapeout.oas&pdk=sky130A)
 
