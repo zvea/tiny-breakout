@@ -585,18 +585,23 @@ void level_cleared() {
 // when a direct button is pressed or a controller is connected; after that nothing moves
 // without input.
 void demo_until_a_controller_or_button() {
-  for (int how = 0; how < 2; how++) {
-    const char *name = how ? "PMOD without controller, then one connected" : "no PMOD, then a button";
+  const char *names[] = {"no PMOD, then a button", "PMOD without controller, then one connected",
+                         "PMOD without controller, reports across the frame update, then a button"};
+  for (int how = 0; how < 3; how++) {
+    const char *name = names[how];
     Game g;
     g.reset();
     if (how) g.pad_bits = 0x0fff;  // the PMOD reports no controller
     else g.pmod_plugged = false;
+    // A report with no controller is all ones, so the receiver sees SELECT (bit 14) pressed
+    // until LEFT (bit 18) comes in. Here the frame update (clock 480 x 800) falls in between.
+    if (how == 2) g.pmod_start = 480 * 800 - 16 * 40;
     View v = run(g, 4);
     int bricks0 = v.bricks;
     v = run(g, 900);
     CHECK(v.bricks < bricks0, "%s: demo cleared no bricks in 900 frames (%d left)", name, v.bricks);
     CHECK(!resting(v), "%s: in the demo the ball is resting on the paddle", name);
-    if (how) {
+    if (how == 1) {
       g.pad_bits = 0;  // a controller is connected, nothing pressed
       v = settle(g, run(g, 3));
     } else {

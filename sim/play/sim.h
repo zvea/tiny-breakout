@@ -13,6 +13,7 @@ struct Game {
   Vtt_um_tiny_breakout top;
   uint16_t pad_bits = 0;  // {b,y,sel,start,up,down,left,right,a,x,l,r}
   bool pmod_plugged = true;  // Gamepad PMOD plugged in (false: its pins stay low, no reports)
+  int pmod_start = 0;  // clock within the frame at which each report starts (0 .. 418960)
   bool autoplay = false;
   uint8_t buttons = 0;  // direct button pins ui_in[2:0]: bit 0 LEFT, 1 RIGHT, 2 FIRE
   std::vector<uint8_t> fb = std::vector<uint8_t>(640 * 480);  // raw uo_out per pixel
@@ -33,7 +34,7 @@ struct Game {
   // Simulates exactly one frame (800 x 525 clocks), starting at h_pos = v_pos = 0.
   void frame() {
     const uint8_t base = (buttons & 7) | (autoplay << 3);
-    // Gamepad PMOD report once per frame, in its first 1040 clocks:
+    // Gamepad PMOD report once per frame, in the 1040 clocks from pmod_start:
     // 24 bits (2nd controller first, all zeros), 40-cycle clock (data stable while clk high),
     // then a latch pulse.
     uint8_t pmod[24 * 40 + 80];
@@ -48,7 +49,8 @@ struct Game {
     int cyc = 0;
     for (int y = 0; y < 525; y++)
       for (int x = 0; x < 800; x++, cyc++) {
-        tick(cyc < (int)sizeof pmod ? pmod[cyc] : base);
+        int r = cyc - pmod_start;
+        tick(r >= 0 && r < (int)sizeof pmod ? pmod[r] : base);
         if (y < 480 && x < 640) *p++ = top.uo_out;
       }
   }

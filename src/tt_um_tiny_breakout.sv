@@ -153,7 +153,7 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   logic gp_connected;                             // a controller is connected (last report)
   logic gp_left_raw, gp_right_raw, gp_fire_raw;  // pressed in the last report, unmasked
-  logic gp_autoplay;                              // switched on with SELECT
+  logic gp_autoplay_raw;                          // switched on with SELECT, unmasked
 
   gamepad_rx u_gamepad_rx (
       .clk            (clk),
@@ -165,12 +165,13 @@ module tt_um_tiny_breakout (
       .left           (gp_left_raw),
       .right          (gp_right_raw),
       .fire           (gp_fire_raw),
-      .select_autoplay(gp_autoplay)
+      .select_autoplay(gp_autoplay_raw)
   );
 
   wire gp_left  = gp_left_raw  & gp_connected;
   wire gp_right = gp_right_raw & gp_connected;
   wire gp_fire  = gp_fire_raw  & gp_connected;
+  wire gp_autoplay = gp_autoplay_raw & gp_connected;
 
   // Demo: autoplay while no controller is connected, until a direct button is pressed
   // (held at a frame update; for simulators that only toggle pins). Ending the demo starts

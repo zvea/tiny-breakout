@@ -13,7 +13,8 @@
  * report already under way at reset is ignored.
  *
  * A controller that is not connected reports all ones: up and down together (a d-pad
- * can't) is the test. left, right and fire are not masked: use them with connected.
+ * can't) is the test. The button outputs are not masked: use them with connected, including
+ * select_autoplay, which such a report sets at SELECT and clears again at LEFT.
  */
 
 `default_nettype none
