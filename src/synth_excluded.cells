@@ -1,0 +1,100 @@
+# Cells synthesis may not use (SYNTH_EXCLUDED_CELL_FILE in config.json).
+#
+# This is the PDK's list (sky130A/libs.tech/openlane/sky130_fd_sc_hd/no_synth.cells, in the
+# version LibreLane 3.0.14 pins) without its 116 plain drive-strength-1 cells: the logic gates,
+# flip-flops, latches, adders and inverters such as nand2_1, a21o_1 and dfxtp_1. Synthesis may
+# use those here; the clock, delay, scan, low-power and other special _1 cells stay excluded.
+#
+# The PDK left them out because their small pins can be hard for the router to reach
+# (OpenLane discussion #2179), not because of a fault in the cells; cells with layout problems
+# are in its separate drc_exclude.cells (PNR_EXCLUDED_CELL_FILE), which synthesis also
+# honours. Upstream open_pdks has since stopped excluding the _1 cells (commit 2347071, May
+# 2026). Without them every gate was a _2 cell; with them this design measured 22% less cell
+# area (TT utilisation 80.5% -> 61%), with better timing, fewer slew warnings and a clean route.
+#
+# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-License-Identifier: Apache-2.0
+
+sky130_fd_sc_hd__clkbuf_1
+sky130_fd_sc_hd__clkbuf_16
+sky130_fd_sc_hd__clkbuf_2
+sky130_fd_sc_hd__clkbuf_4
+sky130_fd_sc_hd__clkbuf_8
+sky130_fd_sc_hd__clkdlybuf4s15_1
+sky130_fd_sc_hd__clkdlybuf4s15_2
+sky130_fd_sc_hd__clkdlybuf4s18_1
+sky130_fd_sc_hd__clkdlybuf4s18_2
+sky130_fd_sc_hd__clkdlybuf4s25_1
+sky130_fd_sc_hd__clkdlybuf4s25_2
+sky130_fd_sc_hd__clkdlybuf4s50_1
+sky130_fd_sc_hd__clkdlybuf4s50_2
+sky130_fd_sc_hd__clkinv_1
+sky130_fd_sc_hd__clkinv_16
+sky130_fd_sc_hd__clkinv_2
+sky130_fd_sc_hd__clkinv_4
+sky130_fd_sc_hd__clkinv_8
+sky130_fd_sc_hd__clkinvlp_2
+sky130_fd_sc_hd__clkinvlp_4
+sky130_fd_sc_hd__decap_12
+sky130_fd_sc_hd__decap_3
+sky130_fd_sc_hd__decap_4
+sky130_fd_sc_hd__decap_6
+sky130_fd_sc_hd__decap_8
+sky130_fd_sc_hd__diode_2
+sky130_fd_sc_hd__dlclkp_1
+sky130_fd_sc_hd__dlclkp_2
+sky130_fd_sc_hd__dlclkp_4
+sky130_fd_sc_hd__dlrbn_2
+sky130_fd_sc_hd__dlrbp_2
+sky130_fd_sc_hd__dlrtn_2
+sky130_fd_sc_hd__dlrtn_4
+sky130_fd_sc_hd__dlrtp_2
+sky130_fd_sc_hd__dlrtp_4
+sky130_fd_sc_hd__dlxbn_2
+sky130_fd_sc_hd__dlygate4sd1_1
+sky130_fd_sc_hd__dlygate4sd2_1
+sky130_fd_sc_hd__dlygate4sd3_1
+sky130_fd_sc_hd__dlymetal6s2s_1
+sky130_fd_sc_hd__dlymetal6s4s_1
+sky130_fd_sc_hd__dlymetal6s6s_1
+sky130_fd_sc_hd__einvn_0
+sky130_fd_sc_hd__einvn_2
+sky130_fd_sc_hd__einvn_4
+sky130_fd_sc_hd__einvn_8
+sky130_fd_sc_hd__einvp_2
+sky130_fd_sc_hd__einvp_4
+sky130_fd_sc_hd__einvp_8
+sky130_fd_sc_hd__ha_2
+sky130_fd_sc_hd__ha_4
+sky130_fd_sc_hd__macro_sparecell
+sky130_fd_sc_hd__maj3_2
+sky130_fd_sc_hd__maj3_4
+sky130_fd_sc_hd__mux2i_2
+sky130_fd_sc_hd__mux2i_4
+sky130_fd_sc_hd__sdfbbn_1
+sky130_fd_sc_hd__sdfbbn_2
+sky130_fd_sc_hd__sdfbbp_1
+sky130_fd_sc_hd__sdfrbp_1
+sky130_fd_sc_hd__sdfrbp_2
+sky130_fd_sc_hd__sdfrtn_1
+sky130_fd_sc_hd__sdfrtp_1
+sky130_fd_sc_hd__sdfrtp_2
+sky130_fd_sc_hd__sdfrtp_4
+sky130_fd_sc_hd__sdfsbp_1
+sky130_fd_sc_hd__sdfsbp_2
+sky130_fd_sc_hd__sdfstp_1
+sky130_fd_sc_hd__sdfstp_2
+sky130_fd_sc_hd__sdfstp_4
+sky130_fd_sc_hd__sdfxbp_1
+sky130_fd_sc_hd__sdfxbp_2
+sky130_fd_sc_hd__sdfxtp_1
+sky130_fd_sc_hd__sdfxtp_2
+sky130_fd_sc_hd__sdfxtp_4
+sky130_fd_sc_hd__sdlclkp_1
+sky130_fd_sc_hd__sdlclkp_2
+sky130_fd_sc_hd__sdlclkp_4
+sky130_fd_sc_hd__sedfxbp_1
+sky130_fd_sc_hd__sedfxbp_2
+sky130_fd_sc_hd__sedfxtp_1
+sky130_fd_sc_hd__sedfxtp_2
+sky130_fd_sc_hd__sedfxtp_4

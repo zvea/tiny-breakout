@@ -25,7 +25,9 @@ source .venv/bin/activate
 D=runs/exp_$TAG; C=.exp_src_$TAG
 rm -rf "./$D" "./$C"; mkdir -p "$D" "$C"
 trap 'rm -rf -- "./$C"' EXIT  # the source copy goes even if interrupted
-cp "$SRC"/*.sv "$C/"
+# The sources, and the cell list config.json gives synthesis (dir::): SRC_DIR's, else src's
+CELLS="$SRC/synth_excluded.cells"; [ -f "$CELLS" ] || CELLS="$ROOT/src/synth_excluded.cells"
+cp "$SRC"/*.sv "$CELLS" "$C/"
 python - "$C" <<'PY'
 import json, os, sys
 c = sys.argv[1]

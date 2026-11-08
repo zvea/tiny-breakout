@@ -34,6 +34,12 @@
   "//": "Harden locally after any RTL change; another edit may need another strategy.",
   "SYNTH_STRATEGY": "AREA 2",
 
+  "//": "Tiny Breakout: let synthesis use sky130's drive-strength-1 cells (nand2_1, dfxtp_1, ...).",
+  "//": "The PDK's default list excludes them for routability, so every gate was a _2 cell. This",
+  "//": "list, without them, gave 22% less cell area (80.5% -> 61% utilisation), better timing and",
+  "//": "a clean route; synthesis still honours the PDK's list of cells with layout problems.",
+  "SYNTH_EXCLUDED_CELL_FILE": "dir::synth_excluded.cells",
+
   "//": "Tiny Breakout: keep the resizer from using sky130's clock delay cells as ordinary buffers.",
   "//": "Only two of them are excluded by default, and it picked clkdlybuf4s25_1 (10 um2, slow by",
   "//": "design) for 51 fanout and input buffers; with these excluded it uses buf_1 (3.75 um2),",
