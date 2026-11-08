@@ -122,8 +122,8 @@ module tt_um_tiny_breakout (
   // step every 4, up to 3x from 16. So each level's balls start a half step faster, up to
   // 2.5x from the 4th level.
   //
-  // In the pause after a cleared wall, speed_level is the timer: 16..31 on odd frames
-  // (about half a second). After game over it is the curtain's line: 0..31, one per frame.
+  // In the pause after a cleared wall, speed_level is the timer: 16..31, one step every 4
+  // frames (about a second). After game over it is the curtain's line: 0..31, one per frame.
   logic [4:0] speed_level;
   logic [1:0] frame_phase;  // counts frames: the pattern of moves over 4 frames
   wire        odd_frame = frame_phase[0];
@@ -485,8 +485,9 @@ module tt_um_tiny_breakout (
   assign refill_bricks = frame_tick && (new_game || level_done);
 
   // speed_level: 4 x level while the ball is on the paddle, +1 per brick while it flies (up
-  // to 16); in the pause, 16..31 on odd frames; from a lost ball, 0 (the next frame sets it
-  // from the level, unless that was the last ball); after game over, +1 per frame up to 31
+  // to 16); in the pause, 16..31, a step every 4th frame; from a lost ball, 0 (the next frame
+  // sets it from the level, unless that was the last ball); after game over, +1 per frame up
+  // to 31
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       speed_level <= 0;
@@ -494,7 +495,7 @@ module tt_um_tiny_breakout (
       // Set here: with FIRE held the ball launches next frame, skipping the on_paddle branch
       if (level_done) speed_level <= {1'b0, level_next, 2'b00};
       else if (!speed_level[4]) speed_level <= 16;
-      else if (odd_frame) speed_level <= speed_level + 1;
+      else if (frame_phase == 3) speed_level <= speed_level + 1;
     end else if (frame_tick && on_paddle) begin
       speed_level <= {1'b0, level, 2'b00};
     end else if (frame_tick && lose_ball) begin
@@ -534,16 +535,27 @@ module tt_um_tiny_breakout (
   colour_pkg::rgb_t lost_rgb;
   assign lost_rgb = {ball_y[4:3], 4'b0000};  // {r, g, b}
 
-  // Brick colour by row, top to bottom
+  // Celebration, in the pause after a cleared wall: rainbow bands rise behind the ball and
+  // paddle, over the field and the border. The pause is while speed_level counts 17..31 (in
+  // play it stops at 16). The bands are 32 px tall and rise 2 px per frame: the band under the
+  // beam is its line in 2-px units plus a count of the pause's frames, in 32-px units.
+  wire       celebrate = !game_over && speed_level[4] && (speed_level[3:0] != 0);
+  wire [7:0] band_y    = v_pos[8:1] + 8'({speed_level[3:0], frame_phase});
+
+  // Brick colour by row, top to bottom; in the celebration, the colour of the band, which
+  // goes on past violet through magenta and rose, back to red
+  wire [2:0] colour_row = celebrate ? band_y[7:5] : brick_row;
   colour_pkg::rgb_t brick_rgb;
   always_comb begin
-    case (brick_row)
+    case (colour_row)
       0:       brick_rgb = colour_pkg::RED;
       1:       brick_rgb = colour_pkg::ORANGE;
       2:       brick_rgb = colour_pkg::YELLOW;
       3:       brick_rgb = colour_pkg::GREEN;
       4:       brick_rgb = colour_pkg::AZURE;
-      default: brick_rgb = colour_pkg::VIOLET;
+      5:       brick_rgb = colour_pkg::VIOLET;
+      6:       brick_rgb = colour_pkg::MAGENTA;
+      default: brick_rgb = colour_pkg::ROSE;
     endcase
   end
 
@@ -556,6 +568,7 @@ module tt_um_tiny_breakout (
     else if (paddle_px)                    rgb = PADDLE_COLOUR;
     else if (brick_px)                     rgb = brick_rgb;
     else if (wall_px)                      rgb = WALL_COLOUR;
+    else if (celebrate)                    rgb = brick_rgb;  // the band's colour
     else if (field_px)                     rgb = FIELD_COLOUR;
     else if (ball_doomed)                  rgb = lost_rgb;
     else                                   rgb = colour_pkg::BLACK;
@@ -575,6 +588,6 @@ module tt_um_tiny_breakout (
   assign uio_oe  = 0;
 
   // Unused inputs and signal bits, listed to silence lint warnings
-  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0], 1'b0};
+  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[3:0], band_y[4:0], 1'b0};
 
 endmodule

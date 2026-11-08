@@ -39,7 +39,7 @@ int colour(uint8_t o) {
   return r << 4 | g << 2 | b;
 }
 
-constexpr int BLACK = 0x00, WHITE = 0x3f, PADDLE = 0x2f, FIELD = 0x01;
+constexpr int BLACK = 0x00, WHITE = 0x3f, PADDLE = 0x2f;
 
 struct View {
   int lives = 0;        // spare-life markers shown
@@ -88,13 +88,15 @@ View look(const Game &g, bool find_ball = true) {
     v.score = digit < 0 ? -1 : v.score * 10 + digit;
   }
   // Bricks: 8 x 6 bricks of 64 x 16 px from (64, 64). A brick counts as standing if either
-  // of two pixels inside it has a brick colour (two, in case the ball covers one).
+  // of two pixels inside it differs from the 2-px gap at the brick's left edge on the same
+  // line (two, in case the ball covers one). Comparing with the gap, not with the field's
+  // colour, also holds while rainbow bands fill the field after a cleared wall.
   for (int r = 0; r < 6; r++)
     for (int c = 0; c < 8; c++) {
       int x0 = 64 * (c + 1), y0 = 16 * (r + 4);
       auto is_brick = [&](int x, int y) {
-        int k = at(x, y);
-        return k != FIELD && k != WHITE && k != BLACK;
+        int k = at(x, y), gap = at(x0, y);
+        return k != gap && gap != WHITE && k != WHITE && k != BLACK;
       };
       if (is_brick(x0 + 4, y0 + 4) || is_brick(x0 + 60, y0 + 13)) {
         v.bricks++;
@@ -507,9 +509,10 @@ bool is_pattern_wall(uint64_t standing) {
   return false;
 }
 
-// Clearing a level: the empty wall stays for about half a second, a spare ball comes back
-// (one is lost first, as there are at most 2), the next wall comes in as one of the patterns,
-// and the next level's balls start at 1.5x, also after a ball is lost.
+// Clearing a level: the empty wall stays for about a second, with rainbow bands over the
+// field and the border, a spare ball comes back (one is lost first, as there are at most 2),
+// the next wall comes in as one of the patterns, and the next level's balls start at 1.5x,
+// also after a ball is lost.
 void level_cleared() {
   Game g;
   g.reset();
@@ -524,10 +527,23 @@ void level_cleared() {
   g.autoplay = true;
   for (; frame < 60000 && v.bricks > 0; frame++) v = run(g, 1, false);
   CHECK(v.bricks == 0, "frame %d: level not cleared (%d bricks)", frame, v.bricks);
-  int pause = 0;
-  for (; pause < 100 && v.bricks == 0; pause++) v = run(g, 1, false);
-  printf("frame %5d: level cleared, empty wall for %d frames\n", frame, pause);
-  CHECK(pause >= 28 && pause <= 36, "empty wall for %d frames (expected about 32)", pause);
+  // The rainbow: the field and the border show the same band colour on a line
+  auto rainbow = [&] {
+    int field = colour(g.fb[300 * 640 + 300]), border = colour(g.fb[300 * 640 + 20]);
+    for (int k : {0x30, 0x38, 0x3c, 0x0c, 0x0b, 0x23, 0x33, 0x31})  // red .. violet, magenta, rose
+      if (field == k && border == k) return true;
+    return false;
+  };
+  int pause = 0, celebrated = 0;
+  for (; pause < 100 && v.bricks == 0; pause++) {
+    v = run(g, 1, false);
+    celebrated += rainbow();
+  }
+  printf("frame %5d: level cleared, empty wall for %d frames, rainbow in %d\n", frame, pause,
+         celebrated);
+  CHECK(pause >= 60 && pause <= 68, "empty wall for %d frames (expected about 64)", pause);
+  CHECK(celebrated >= pause - 8, "rainbow in only %d of the pause's %d frames", celebrated, pause);
+  CHECK(!rainbow(), "the rainbow stays after the pause");
   v = run(g, 1);  // past the filling frame
   CHECK(is_pattern_wall(v.standing), "level 2 wall (%d bricks, %016llx) is not a pattern wall",
         v.bricks, (unsigned long long)v.standing);

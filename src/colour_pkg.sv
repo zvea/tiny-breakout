@@ -26,5 +26,7 @@ package colour_pkg;
   localparam rgb_t GREEN     = 6'b00_11_00;
   localparam rgb_t AZURE     = 6'b00_10_11;
   localparam rgb_t VIOLET    = 6'b10_00_11;
+  localparam rgb_t MAGENTA   = 6'b11_00_11;
+  localparam rgb_t ROSE      = 6'b11_00_01;
 
 endpackage

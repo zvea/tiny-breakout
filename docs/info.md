@@ -15,9 +15,9 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   10 per brick, up to 9990. Losing the last ball ends the game: a black curtain comes down over
   everything but the score. Once a ball has fallen past the paddle the border glows red,
   brightening as the ball drops off the screen.
-- **Levels:** when the wall is cleared, the game pauses for half a second, gives back a spare
-  ball (up to 2) and builds a new wall. Each level's balls start half a step faster, up to
-  2.5x from the 4th level.
+- **Levels:** when the wall is cleared, the game pauses for about a second while rainbow
+  bands rise up the screen, gives back a spare ball (up to 2) and builds a new wall. Each
+  level's balls start half a step faster, up to 2.5x from the 4th level.
 - **Autoplay:** the paddle steers itself. After each paddle hit it aims the ball at a
   pseudo-randomly chosen quarter of the paddle, so the ball keeps reaching new bricks.
 - **Demo:** when no controller is connected, the game plays itself.
