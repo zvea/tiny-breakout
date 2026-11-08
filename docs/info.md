@@ -10,7 +10,7 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 - **Speed:** rises by half a step for every 4 bricks the current ball clears, from 1x up to
   3x.
 - **Lives and score:** you have 2 spare balls, shown top left; the score, top right, counts
-  10 per brick. Losing the last ball ends the game: a black curtain comes down over
+  10 per brick, up to 9990. Losing the last ball ends the game: a black curtain comes down over
   everything but the score. Once a ball has fallen past the paddle the border glows red,
   brightening as the ball drops off the screen.
 - **Levels:** when the wall is cleared, the game pauses for half a second, gives back a spare

@@ -4,9 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * The score: a 3-digit BCD counter and its display. A fixed 0 follows the count, so a point
- * reads as 10 and the display runs 0000 .. 9990, wrapping after 999 points. Seven-segment
- * digits, 8 x 14 px with 2-px strokes, in 16 x 16-px cells at x 512..575, y 0..15 (digit at
- * x 4..11, y 2..15). BCD costs a little more than binary but needs no division to draw.
+ * reads as 10 and the display runs 0000 .. 9990, where it stops, so a player sees it maxed out
+ * rather than reset. Seven-segment digits, 8 x 14 px with 2-px strokes, in 16 x 16-px cells at
+ * x 512..575, y 0..15 (digit at x 4..11, y 2..15). BCD costs a little more than binary but
+ * needs no division to draw.
  */
 
 `default_nettype none
@@ -24,11 +25,12 @@ module score (
   localparam logic [5:0] FIRST_SLOT = 32;  // x 512: 16-px slots, hundreds first
 
   logic [2:0][3:0] digits;  // BCD: [2] hundreds, [1] tens, [0] ones
+  wire full = (digits[2] == 9) && (digits[1] == 9) && (digits[0] == 9);  // 999: stays there
 
   always_ff @(posedge clk) begin
     if (!rst_n || clear) begin
       digits <= '0;
-    end else if (add) begin
+    end else if (add && !full) begin
       // Ripple carry: a digit at 9 goes back to 0 and carries into the next one
       digits[0] <= (digits[0] == 9) ? 0 : digits[0] + 1;
       if (digits[0] == 9) begin

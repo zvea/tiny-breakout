@@ -74,9 +74,9 @@ async def zero_after_reset(dut):
 async def counts_in_tens_with_carries(dut):
     await start(dut)
     total = 0
-    for step in [1, 8, 1, 1, 89, 1, 9, 790, 99, 1]:  # through 9->10, 99->100, 999->000
+    for step in [1, 8, 1, 1, 89, 1, 9, 790, 99, 1]:  # through 9->10, 99->100, up to 999
         await add(dut, step)
-        total = (total + step) % 1000
+        total = min(total + step, 999)
         assert await shown(dut) == total * 10, f"after {total} points"
 
 
@@ -103,6 +103,21 @@ async def clear_goes_back_to_zero(dut):
     dut.clear.value = 0
     await RisingEdge(dut.clk)
     assert await shown(dut) == 0
+
+
+@cocotb.test()
+async def stops_at_9990_until_cleared(dut):
+    await start(dut)
+    await add(dut, 999)
+    assert await shown(dut) == 9990
+    await add(dut, 250)
+    assert await shown(dut) == 9990, "went past 9990"
+    dut.clear.value = 1
+    await RisingEdge(dut.clk)
+    dut.clear.value = 0
+    await RisingEdge(dut.clk)
+    await add(dut, 5)
+    assert await shown(dut) == 50, "did not count again after clear"
 
 
 @cocotb.test()
