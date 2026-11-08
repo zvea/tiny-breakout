@@ -89,15 +89,16 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   localparam logic [9:0] SCREEN_HEIGHT = 480;  // visible lines in vga_timing's 640x480 mode
 
-  // The paddle position is stored in 4-px units: paddle_x4 = paddle x / 4.
-  localparam logic [7:0] PADDLE_MIN_X4   = 16;   // x = 64, against the left wall
-  localparam logic [7:0] PADDLE_MAX_X4   = 128;  // x = 512, against the right wall
-  localparam logic [7:0] PADDLE_START_X4 = 72;   // x = 288, centred
+  // The paddle is stored by its centre, in 4-px units: paddle_c4 = centre x / 4. Its width
+  // depends on the level (paddle_w16, below), and keeping the centre lets it narrow evenly
+  // from both ends, with the resting ball and the angle zones fixed relative to the centre.
+  localparam logic [7:0] PADDLE_START_C4 = 80;  // x = 320, the middle of the field
 
-  logic [7:0] paddle_x4;
-  wire  [9:0] paddle_x = paddle_x4 * 4;  // left edge of the 64-px paddle
+  logic [7:0] paddle_c4;
+  wire  [9:0] paddle_c = paddle_c4 * 4;  // the paddle's centre
 
-  localparam logic [9:0] SERVE_DX    = 28;   // ball x relative to paddle x when resting on it (centred)
+  // Ball x relative to the paddle's centre when resting on it: the ball's 8-px box, centred
+  localparam logic [9:0] SERVE_DX    = -10'd4;
   localparam logic [9:0] SERVE_Y     = 440;  // ball y when resting on the paddle (paddle top is 448)
   localparam logic [1:0] SPARE_LIVES = 2;
 
@@ -118,9 +119,8 @@ module tt_um_tiny_breakout (
   // Speed: the ball and paddle make 0, 1 or 2 moves per frame (see move_tick), each by
   // their usual step, averaging 2, 3, 4, 5 or 6 moves per 4 frames: 1x, 1.5x, 2x, 2.5x, 3x
   // (1x is a move every other frame: 1 px per frame vertically). speed_level counts the
-  // bricks the current ball clears, starting from 4 x level, and the speed rises a half
-  // step every 4, up to 3x from 16. So each level's balls start a half step faster, up to
-  // 2.5x from the 4th level.
+  // bricks the current ball clears, and the speed rises a half step every 4, up to 3x from
+  // 16. Every ball starts at 1x; the levels get harder through a narrower paddle instead.
   //
   // In the pause after a cleared wall, speed_level is the timer: 16..31, one step every 4
   // frames (about a second). After game over it is the curtain's line: 0..31, one per frame.
@@ -133,6 +133,9 @@ module tt_um_tiny_breakout (
   wire        game_over = (lives == 3);
   logic [1:0] level;      // 0 .. 3: from the 4th level on it stays at 3
   wire  [1:0] level_next = (level == 3) ? 2'd3 : level + 1;
+  // The paddle's width in 16 px, by level: 96, 80, 64, then 48 px from the 4th level. It is
+  // also the paddle's half-width in 8 px, which is how the drawing and the angle zones use it.
+  wire  [2:0] paddle_w16 = 3'd6 - 3'(level);
   logic       new_game;   // decided in the frame update below
 
   // Collision flags, gathered during each frame and consumed at frame_tick
@@ -142,7 +145,7 @@ module tt_um_tiny_breakout (
     logic brick_top_bottom, brick_side, paddle;
   } hits_t;
   hits_t      hit;
-  logic [1:0] hit_quarter;  // paddle quarter the ball touched (0 = leftmost)
+  logic [1:0] hit_zone;  // paddle zone the ball touched: 0..3 from the left (see paddle_px)
 
   // ---------------------------------------------------------------------------
   // Controls: gamepad, direct buttons and autoplay
@@ -210,7 +213,8 @@ module tt_um_tiny_breakout (
       .paddle_hit (hit.paddle),
       .random     (random[1:0]),
       .ball_x     (ball_x),
-      .paddle_x   (paddle_x),
+      .paddle_c   (paddle_c),
+      .paddle_w16 (paddle_w16),
       .steer_left (auto_left),
       .steer_right(auto_right)
   );
@@ -278,9 +282,18 @@ module tt_um_tiny_breakout (
   // Playfield interior (dark background): the wall's columns, below the top wall (y >= 32)
   wire field_px = over_columns && (v_pos[9:5] != 0);
 
-  // Paddle: 64 x 8, one cell row high
-  wire [9:0] paddle_dx = h_pos - paddle_x;  // beam offset from the paddle's left edge
-  wire paddle_px = (cell_y == PADDLE_CELL_Y) && (paddle_dx[9:6] == 0);
+  // Paddle: 8 px high, one cell row, and 16 x paddle_w16 px wide around its centre: the beam
+  // offset from the centre, paddle_dx, runs from -8 x paddle_w16 to 8 x paddle_w16 - 1. Folded
+  // to a distance in 8-px units (inverting the negative side, as ~d = -d - 1), both halves
+  // are 0 .. paddle_w16 - 1 exactly.
+  wire [9:0] paddle_dx = h_pos - paddle_c;
+  wire [6:0] paddle_d8 = paddle_dx[9:3] ^ {7{paddle_dx[9]}};
+  wire       paddle_px = (cell_y == PADDLE_CELL_Y) && (paddle_d8 < 7'(paddle_w16));
+  // Angle zones, 0..3 from the left: the outer 16 px at each end (0 and 3) send the ball off
+  // at the flatter angle, the rest (1 and 2) at the steeper one; the half sets the direction.
+  wire       paddle_right = !paddle_dx[9];
+  wire       paddle_outer = paddle_d8 >= 7'(paddle_w16) - 2;
+  wire [1:0] paddle_zone  = {paddle_right, paddle_right ^ !paddle_outer};
 
   // True for pixels inside an 8-px circle, given the offset (0..7, 0..7) within its 8x8 box.
   // Folds each offset to its distance from the nearest edge (0..3), then cuts the corners,
@@ -343,7 +356,7 @@ module tt_um_tiny_breakout (
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       hit         <= '0;
-      hit_quarter <= 0;
+      hit_zone    <= 0;
     end else if (frame_tick) begin
       hit <= '0;
     end else if (touch) begin
@@ -351,7 +364,7 @@ module tt_um_tiny_breakout (
       if (brick_px && side_hit)  hit.brick_side       <= 1;
       if (paddle_px) begin
         hit.paddle  <= 1;
-        hit_quarter <= paddle_dx[5:4];
+        hit_zone    <= paddle_zone;
       end
     end
   end
@@ -373,11 +386,11 @@ module tt_um_tiny_breakout (
 
   // Next ball direction from this frame's collisions. A paddle hit sends the ball up, left
   // from the left half and right from the right half, at a flatter angle from the outer
-  // quarters. A brick turns it back vertically or horizontally, by the edge it hit.
+  // zones. A brick turns it back vertically or horizontally, by the edge it hit.
   wire next_up           = hit.paddle ? 1 : touch_wall_t ? 0 : (ball_up ^ hit.brick_top_bottom);
-  wire left_after_bounce = hit.paddle ? ~hit_quarter[1] : (ball_left ^ hit.brick_side);
+  wire left_after_bounce = hit.paddle ? ~hit_zone[1] : (ball_left ^ hit.brick_side);
   wire next_left         = touch_wall_l ? 0 : touch_wall_r ? 1 : left_after_bounce;
-  wire next_flat         = hit.paddle ? (hit_quarter[1] ~^ hit_quarter[0]) : ball_flat;
+  wire next_flat         = hit.paddle ? (hit_zone[1] ~^ hit_zone[0]) : ball_flat;
   // One move's step: x by -2, -1, 1 or 2 (left or right, flat or steep); y by 2 px up or down,
   // which is -1 or 1 in ball_y_half.
   wire [9:0] step_x = next_left ? (next_flat ? -2 : -1) : (next_flat ? 2 : 1);
@@ -407,22 +420,26 @@ module tt_um_tiny_breakout (
   wire paused     = on_paddle & bricks_empty;              // the wall was cleared ...
   wire level_done = paused & (speed_level == 31);          // ... and the pause is over
 
-  // Paddle: one 4-px step per move, stopping at the walls
-  wire [7:0] paddle_x4_next = (go_left  && paddle_x4 != PADDLE_MIN_X4) ? paddle_x4 - 1 :
-                              (go_right && paddle_x4 != PADDLE_MAX_X4) ? paddle_x4 + 1 :
-                              paddle_x4;
+  // Paddle: one 4-px step per move, stopping at the walls, where its centre is half a width
+  // from x 64 or x 576: centre / 4 = 16 + 2 x paddle_w16 or 144 - 2 x paddle_w16. A narrower
+  // paddle only moves its stops outwards; a new game widens it again, so it starts centred.
+  wire [7:0] paddle_half4   = {4'b0, paddle_w16, 1'b0};  // half the width, in 4 px
+  wire [7:0] paddle_c4_next = (go_left  && paddle_c4 != 8'd16 + paddle_half4)  ? paddle_c4 - 1 :
+                              (go_right && paddle_c4 != 8'd144 - paddle_half4) ? paddle_c4 + 1 :
+                              paddle_c4;
 
   always_ff @(posedge clk) begin
-    if (!rst_n) paddle_x4 <= PADDLE_START_X4;
-    else if (move_tick) paddle_x4 <= paddle_x4_next;
+    if (!rst_n) paddle_c4 <= PADDLE_START_C4;
+    else if (frame_tick && new_game) paddle_c4 <= PADDLE_START_C4;
+    else if (move_tick) paddle_c4 <= paddle_c4_next;
   end
 
   // The ball's next x. Both ways it moves are a base plus an offset: resting on the paddle it
-  // is placed at the paddle's x + SERVE_DX, and in flight it steps from its own x by step_x.
+  // is placed at the paddle's centre + SERVE_DX, and in flight it steps from its own x by step_x.
   // Choosing the operands and adding once, instead of writing the two sums in their branches
   // below, leaves a single 10-bit adder and a plain load in front of ball_x; yosys does not
   // merge the two sums by itself, and the separate adders cost noticeably more area.
-  wire [9:0] ball_x_next = (on_paddle ? 10'(paddle_x4_next) * 4 : ball_x) +
+  wire [9:0] ball_x_next = (on_paddle ? 10'(paddle_c4_next) * 4 : ball_x) +
                            (on_paddle ? SERVE_DX : step_x);
 
   // Ball position and direction. On the paddle it is placed at every move, after that
@@ -430,7 +447,7 @@ module tt_um_tiny_breakout (
   // moving load ball_x_next (above).
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      ball_x      <= PADDLE_START_X4 * 4 + SERVE_DX;  // resting on the paddle
+      ball_x      <= PADDLE_START_C4 * 4 + SERVE_DX;  // resting on the paddle
       ball_y_half <= SERVE_Y[8:1];
       ball_left   <= 0;
       ball_flat   <= 0;
@@ -484,21 +501,18 @@ module tt_um_tiny_breakout (
   // Bricks come back for a new game, or after the pause for the next level
   assign refill_bricks = frame_tick && (new_game || level_done);
 
-  // speed_level: 4 x level while the ball is on the paddle, +1 per brick while it flies (up
-  // to 16); in the pause, 16..31, a step every 4th frame; from a lost ball, 0 (the next frame
-  // sets it from the level, unless that was the last ball); after game over, +1 per frame up
-  // to 31
+  // speed_level: 0 while the ball is on the paddle and from a lost ball, +1 per brick while
+  // it flies (up to 16); in the pause, 16..31, a step every 4th frame; after game over, +1 per
+  // frame up to 31
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       speed_level <= 0;
     end else if (frame_tick && paused) begin
       // Set here: with FIRE held the ball launches next frame, skipping the on_paddle branch
-      if (level_done) speed_level <= {1'b0, level_next, 2'b00};
+      if (level_done) speed_level <= 0;
       else if (!speed_level[4]) speed_level <= 16;
       else if (frame_phase == 3) speed_level <= speed_level + 1;
-    end else if (frame_tick && on_paddle) begin
-      speed_level <= {1'b0, level, 2'b00};
-    end else if (frame_tick && lose_ball) begin
+    end else if (frame_tick && (on_paddle || lose_ball)) begin
       speed_level <= 0;
     end else if (frame_tick && game_over && speed_level != 31) begin
       speed_level <= speed_level + 1;

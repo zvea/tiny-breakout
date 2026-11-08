@@ -47,6 +47,7 @@ struct View {
   int ball_x = -1;      // top-left of the ball's bounding box
   int ball_y = -1;
   int paddle_x = -1;    // left edge of the paddle
+  int paddle_w = 0;     // its width
   int bricks = 0;       // standing bricks
   uint64_t standing = 0;   // bit r * 8 + c: brick in row r (0 = top), column c
   int score = -1;       // as displayed (-1: not readable as digits)
@@ -74,6 +75,9 @@ View look(const Game &g, bool find_ball = true) {
   // Paddle: first paddle-coloured pixel on its row
   for (int x = 0; x < 640 && v.paddle_x < 0; x++)
     if (at(x, 450) == PADDLE) v.paddle_x = x;
+  while (v.paddle_x >= 0 && v.paddle_x + v.paddle_w < 640 &&
+         at(v.paddle_x + v.paddle_w, 450) == PADDLE)
+    v.paddle_w++;
   // Score: 4 seven-segment digits in 16-px slots from x 512, read from the middle of each
   // segment (a..g)
   static const int seg_x[7] = {7, 10, 10, 7, 4, 4, 7}, seg_y[7] = {2, 5, 12, 14, 12, 5, 8};
@@ -108,7 +112,8 @@ View look(const Game &g, bool find_ball = true) {
 
 // A ball resting on the paddle sits at y 440, centred on it.
 bool resting(const View &v) {
-  return v.ball && v.ball_y == 440 && v.paddle_x >= 0 && v.ball_x == v.paddle_x + 28;
+  return v.ball && v.ball_y == 440 && v.paddle_x >= 0 &&
+         v.ball_x == v.paddle_x + v.paddle_w / 2 - 4;
 }
 
 // ---- Checks ------------------------------------------------------------------------------
@@ -197,17 +202,20 @@ void steering() {
   }
 }
 
-// The paddle stops at the walls: x 64 on the left, 512 on the right.
+// A new game's paddle is 96 px wide and stops at the walls: its left end at x 64, its
+// right end at x 575 (left end at x 480).
 void paddle_limits() {
   Game g;
   g.reset();
-  start_game(g);
+  View v = start_game(g);
+  CHECK(v.paddle_w == 96, "the first level's paddle is %d px wide", v.paddle_w);
   g.buttons = LEFT;
-  View v = run(g, 200);
+  v = run(g, 200);
   CHECK(v.paddle_x == 64, "left limit %d", v.paddle_x);
   g.buttons = RIGHT;
   v = run(g, 300);
-  CHECK(v.paddle_x == 512, "right limit %d", v.paddle_x);
+  CHECK(v.paddle_x == 480 && v.paddle_w == 96, "right limit %d (%d px wide)", v.paddle_x,
+        v.paddle_w);
 }
 
 // Letting the ball fall uses up the spare balls one by one, then the game is over: no
@@ -463,9 +471,9 @@ void brick_bounces() {
   CHECK(checked[0] > 0 && checked[1] > 0, "did not see both kinds of bounce");
 }
 
-// Waits for the launch, then returns whether the ball rises at 1.5x for `frames` frames:
-// moves of 2 px, 6 px in every 4 frames.
-bool launch_at_1_5x(Game &g, View &v, int frames) {
+// Waits for the launch, then returns whether the ball rises at 1x for `frames` frames:
+// moves of 2 px, 4 px in every 4 frames.
+bool launch_at_1x(Game &g, View &v, int frames) {
   for (int i = 0; i < 2000 && resting(v); i++) v = run(g, 1);  // wait for the launch
   int prev_y = v.ball_y, dys[64] = {};
   bool ok = true;
@@ -474,7 +482,7 @@ bool launch_at_1_5x(Game &g, View &v, int frames) {
     dys[i] = prev_y - v.ball_y;
     prev_y = v.ball_y;
     if (dys[i] != 0 && dys[i] != 2) ok = false;
-    if (i >= 3 && dys[i] + dys[i - 1] + dys[i - 2] + dys[i - 3] != 6) ok = false;
+    if (i >= 3 && dys[i] + dys[i - 1] + dys[i - 2] + dys[i - 3] != 4) ok = false;
     if (!ok) {
       printf("  launch frame %d: moved %d px up\n", i, dys[i]);
       return false;
@@ -511,12 +519,13 @@ bool is_pattern_wall(uint64_t standing) {
 
 // Clearing a level: the empty wall stays for about a second, with rainbow bands over the
 // field and the border, a spare ball comes back (one is lost first, as there are at most 2),
-// the next wall comes in as one of the patterns, and the next level's balls start at 1.5x,
-// also after a ball is lost.
+// the next wall comes in as one of the patterns with a narrower paddle (96 px, then 80), and
+// the next level's balls start at 1x, as every ball does, also after a ball is lost.
 void level_cleared() {
   Game g;
   g.reset();
   View v = start_game(g);
+  CHECK(v.paddle_w == 96, "level 1 paddle is %d px wide", v.paddle_w);
   int frame = 0;
   for (; frame < 5000 && v.lives == 2; frame++) {  // lose a ball: paddle against the left wall
     g.buttons = LEFT | (resting(v) ? FIRE : 0);
@@ -548,8 +557,9 @@ void level_cleared() {
   CHECK(is_pattern_wall(v.standing), "level 2 wall (%d bricks, %016llx) is not a pattern wall",
         v.bricks, (unsigned long long)v.standing);
   CHECK(v.lives == 2, "%d spare balls after the level (expected one back)", v.lives);
-  CHECK(launch_at_1_5x(g, v, 16), "level 2 ball did not start at 1.5x");
-  // Lose a ball in level 2: the next one starts at the level's speed again
+  CHECK(v.paddle_w == 80, "level 2 paddle is %d px wide (expected 80)", v.paddle_w);
+  CHECK(launch_at_1x(g, v, 16), "level 2 ball did not start at 1x");
+  // Lose a ball in level 2: the next one starts at 1x again
   g.autoplay = false;
   for (int i = 0; i < 10000 && v.lives == 2; i++) {
     g.buttons = LEFT;
@@ -560,7 +570,7 @@ void level_cleared() {
   g.buttons = FIRE;
   v = run(g, 1);
   g.buttons = 0;
-  CHECK(launch_at_1_5x(g, v, 16), "level 2 ball after a loss did not start at 1.5x");
+  CHECK(launch_at_1x(g, v, 16), "level 2 ball after a loss did not start at 1x");
 }
 
 // With no controller connected the game plays itself (demo): with no Gamepad PMOD at all,

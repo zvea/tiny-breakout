@@ -7,19 +7,19 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   first wall of a game is full; each later one is a symmetric pattern of 20 to 48 bricks, one
   of 21, picked at random.
 - **Ball:** bounces off the walls, the paddle and the bricks. Where it lands on the paddle
-  sets its angle (flatter towards the ends). A brick hit on its side sends the ball back
-  sideways; a hit on its top or bottom sends it back vertically.
-- **Speed:** rises by half a step for every 4 bricks the current ball clears, from 1x up to
-  3x.
+  sets its angle (flatter on the last 16 px at each end). A brick hit on its side sends the
+  ball back sideways; a hit on its top or bottom sends it back vertically.
+- **Speed:** every ball starts at 1x and speeds up by half a step for every 4 bricks it
+  clears, up to 3x.
 - **Lives and score:** you have 2 spare balls, shown top left; the score, top right, counts
   10 per brick, up to 9990. Losing the last ball ends the game: a black curtain comes down over
   everything but the score. Once a ball has fallen past the paddle the border glows red,
   brightening as the ball drops off the screen.
 - **Levels:** when the wall is cleared, the game pauses for about a second while rainbow
   bands rise up the screen, gives back a spare ball (up to 2) and builds a new wall. Each
-  level's balls start half a step faster, up to 2.5x from the 4th level.
+  level's paddle is narrower: 96 px, 80, 64, then 48 from the 4th level.
 - **Autoplay:** the paddle steers itself. After each paddle hit it aims the ball at a
-  pseudo-randomly chosen quarter of the paddle, so the ball keeps reaching new bricks.
+  pseudo-randomly chosen part of the paddle, so the ball keeps reaching new bricks.
 - **Demo:** when no controller is connected, the game plays itself.
 
 ## How to test
