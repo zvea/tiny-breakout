@@ -433,10 +433,17 @@ module tt_um_tiny_breakout (
   // centred, the ball resting on it, 1x. Doing it in the same clock for all three keeps the
   // ball on the paddle, and no state from the last game (such as speed_level at 31, after the
   // curtain) carries into the first frame of the new one.
+  //
+  // Autoplay leaves the paddle where it is while the ball rests on it: there is nothing to
+  // aim at yet, and as the resting ball moves with the paddle, steering it over an outer zone
+  // would never arrive, so in the second's pause after a cleared wall the paddle raced across
+  // to a wall. (It launches the ball as soon as it may, and steers once the ball flies.)
+  wire       hold_paddle    = autoplay & on_paddle;
   wire [7:0] paddle_half4   = {4'b0, paddle_w16, 1'b0};  // half the width, in 4 px
-  wire [7:0] paddle_c4_next = (go_left  && paddle_c4 != 8'd16 + paddle_half4)  ? paddle_c4 - 1 :
-                              (go_right && paddle_c4 != 8'd144 - paddle_half4) ? paddle_c4 + 1 :
-                              paddle_c4;
+  wire [7:0] paddle_c4_next =
+      (go_left  && !hold_paddle && paddle_c4 != 8'd16 + paddle_half4)  ? paddle_c4 - 1 :
+      (go_right && !hold_paddle && paddle_c4 != 8'd144 - paddle_half4) ? paddle_c4 + 1 :
+      paddle_c4;
 
   always_ff @(posedge clk) begin
     if (!rst_n || (frame_tick && new_game)) paddle_c4 <= PADDLE_START_C4;

@@ -598,8 +598,17 @@ void level_cleared() {
       if (field == k && border == k) return true;
     return false;
   };
-  int pause = 0, celebrated = 0;
+  // Autoplay leaves the paddle where it is while the ball waits on it. To see that wherever
+  // the paddle is (autoplay often has it at a wall by now), steer it away by hand for the
+  // first frames of the pause, then hand it back to autoplay.
+  int pause = 0, celebrated = 0, held_x = -1;
   for (; pause < 100 && v.bricks == 0; pause++) {
+    g.autoplay = pause >= 8;
+    g.buttons = pause < 8 ? LEFT : 0;
+    if (pause == 10) held_x = v.paddle_x;
+    if (pause > 10)
+      CHECK(v.paddle_x == held_x, "pause frame %d: with autoplay, the paddle moved from %d to %d",
+            pause, held_x, v.paddle_x);
     v = run(g, 1, false);
     celebrated += rainbow();
   }
