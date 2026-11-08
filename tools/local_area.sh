@@ -14,10 +14,11 @@ W="$ROOT/build/local_area"; rm -rf "$W"; mkdir -p "$W"
 LIB=$(liberty); [ -n "$LIB" ] || { echo "sky130 library not found (set PDK_ROOT)"; exit 1; }
 cp "$LIB" "$W/hd.lib"  # yowasp's yosys only sees files under its working directory
 for side in rev tree; do
-  for f in $(sources); do
+  if [ $side = rev ]; then SRCS=$(sources "$REV"); else SRCS=$(sources); fi  # each side's own list
+  for f in $SRCS; do
     if [ $side = rev ]; then git -C "$ROOT" show "$REV:src/$f" > "$W/$side.$f"; else cp "$ROOT/src/$f" "$W/$side.$f"; fi
   done
-  for f in $(sources | grep -v tt_um_tiny_breakout.sv); do cat "$W/$side.$f"; done > "$W/$side.subs.v"
+  for f in $(echo "$SRCS" | grep -v tt_um_tiny_breakout.sv); do cat "$W/$side.$f"; done > "$W/$side.subs.v"
   orderings "$W/$side.tt_um_tiny_breakout.sv" 5 "$W/$side.top"
 done
 for side in rev tree; do for i in 0 1 2 3 4; do echo "$side $i"; done; done |

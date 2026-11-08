@@ -7,7 +7,11 @@
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 YOSYS="$ROOT/.venv/bin/yowasp-yosys"
 
-sources() { sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p' "$ROOT/info.yaml"; }
+# sources [REV]: those of git revision REV (its own info.yaml), or of the working tree
+sources() {
+  if [ -n "${1:-}" ]; then git -C "$ROOT" show "$1:info.yaml"; else cat "$ROOT/info.yaml"; fi |
+    sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p'
+}
 
 # The typical-corner library of sky130's high-density cells, from $PDK_ROOT or ciel's default
 liberty() {
@@ -27,7 +31,7 @@ pairs = [None,
          (r"  logic ball_left;[^\n]*\n", r"  logic ball_up;[^\n]*\n"),
          (r"  logic       serving;[^\n]*\n", r"  logic \[1:0\] lives;[^\n]*\n"),
          (r"  logic \[4:0\] speed_level;[^\n]*\n", r"  logic \[1:0\] lives;[^\n]*\n"),
-         (r"  logic \[7:0\] paddle_x4;\n", r"  logic \[9:0\] ball_x;[^\n]*\n")]
+         (r"  logic \[7:0\] paddle_[xc]4;\n", r"  logic \[9:0\] ball_x;[^\n]*\n")]  # x4 before ef9f82d
 for i in range(n):
     t = s
     if pairs[i % len(pairs)]:

@@ -14,7 +14,7 @@ REV=${1:-HEAD}
 W="$ROOT/build/equiv"; rm -rf "$W"; mkdir -p "$W"
 LIB=$(liberty); [ -n "$LIB" ] || { echo "sky130 library not found (set PDK_ROOT)"; exit 1; }
 cp "$LIB" "$W/hd.lib"
-for f in $(sources); do git -C "$ROOT" show "$REV:src/$f"; done > "$W/gold.v"
+for f in $(sources "$REV"); do git -C "$ROOT" show "$REV:src/$f"; done > "$W/gold.v"
 for f in $(sources); do cat "$ROOT/src/$f"; done > "$W/new.v"
 cd "$W"
 for f in gold new; do
