@@ -36,8 +36,9 @@ The layout can also be [explored in 3D](https://gds-explorer.tinytapeout.com/vie
 ## Trying it without hardware
 
 The interactive player runs the design's RTL in Verilator and streams the picture to a browser.
-Every clock is simulated, so on most machines the game plays slower than on the chip. It needs
-Verilator 4 (see [test/README.md](test/README.md#setting-up)):
+Every clock is simulated, so the game's speed depends on the processor. A fast one, such as an
+Apple M4, can simulate the chip in real time. It needs Verilator 4 (see
+[test/README.md](test/README.md#setting-up)):
 
 ```sh
 cd sim/play

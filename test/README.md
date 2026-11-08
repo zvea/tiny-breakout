@@ -37,6 +37,22 @@ micromamba create -p .tools/env -c conda-forge verilator=5.054 iverilog=13.0 gxx
 micromamba create -p .tools/v4 -c conda-forge verilator=4.228 gxx_impl_linux-64 make
 ```
 
+**On macOS (Apple Silicon)** conda-forge has no Verilator 4, so build 4.228 from source and put
+it on `PATH`; `sim/play/build.sh` picks clang-friendly flags there (tested with the player on an
+M4, where it runs in real time). macOS's `bison` is too old, and its `FlexLexer.h` does not match
+Homebrew's `flex`, hence the extra paths:
+
+```sh
+brew install autoconf bison flex
+git clone https://github.com/verilator/verilator ~/github/verilator
+cd ~/github/verilator && git checkout v4.228
+export PATH="$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$PATH"
+export CPPFLAGS="-I$(brew --prefix flex)/include" CXXFLAGS="-I$(brew --prefix flex)/include"
+export LDFLAGS="-L$(brew --prefix flex)/lib"
+autoconf && ./configure --prefix="$HOME/opt/verilator-4.228" && make -j8 && make install
+# then, in the project: cd sim/play && PATH="$HOME/opt/verilator-4.228/bin:$PATH" ./build.sh
+```
+
 ## Running
 
 ```sh
