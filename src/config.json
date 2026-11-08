@@ -23,12 +23,6 @@
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
   "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.05,
 
-  "//": "Tiny Breakout: synthesise with ABC's AREA 2 script instead of the default AREA 0. At ~80%",
-  "//": "utilisation, whether detailed routing converges depends on the exact netlist: AREA 0's",
-  "//": "netlist of the current RTL got stuck, AREA 2's routed with 0 DRC, LVS and antenna errors.",
-  "//": "Harden locally after any RTL change; another edit may need another strategy.",
-  "SYNTH_STRATEGY": "AREA 2",
-
   "//": "Tiny Breakout: let synthesis use sky130's drive-strength-1 cells (nand2_1, dfxtp_1, ...).",
   "//": "The PDK's default list excludes them for routability, so every gate was a _2 cell. This",
   "//": "list, without them, gave 22% less cell area (80.5% -> 61% utilisation), better timing and",
