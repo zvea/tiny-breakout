@@ -3,7 +3,8 @@
 # Runs the Tiny Tapeout flow (LibreLane, dockerized) with src/config.json on the sources in
 # SRC_DIR (default src), into runs/exp_TAG, and prints the results:
 #   place:  up to global placement; TT's utilisation figure (GPL-0019). About 4 minutes.
-#   harden: the whole flow; also DRC, LVS, antenna, timing and tools/lec.sh. About 15 minutes.
+#   harden: the whole flow; also DRC, LVS, antenna, timing, tools/warnings.sh and tools/lec.sh.
+#           About 15 minutes.
 # EXTRA_CFG='{"KEY": value}' overrides config values, for experiments.
 # Needs src/user_config.json: ./tt/tt_tool.py --create-user-config
 #
@@ -11,12 +12,12 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
-[ $# -ge 2 ] || { sed -n '2,8p' "$0"; exit 2; }
+[ $# -ge 2 ] || { sed -n '2,9p' "$0"; exit 2; }
 MODE=$1; TAG=$2; SRC=$(cd "${3:-$ROOT/src}" && pwd)
 case $MODE in
   place)  TO=(--to OpenROAD.GlobalPlacement) ;;
   harden) TO=() ;;
-  *)      sed -n '2,8p' "$0"; exit 2 ;;
+  *)      sed -n '2,9p' "$0"; exit 2 ;;
 esac
 cd "$ROOT"
 [ -f src/user_config.json ] || { echo "missing src/user_config.json: run ./tt/tt_tool.py --create-user-config"; exit 1; }
@@ -47,6 +48,10 @@ for k in ["route__drc_errors", "magic__drc_error__count", "design__lvs_error__co
     print(f"  {k}: {m.get(k, 'n/a')}")
 PY
   echo "  GDS: $D/final/gds/tt_um_tiny_breakout.gds"
-  # The netlist must implement the RTL: LVS only checks the layout against the netlist
-  if LEC=$("$ROOT/tools/lec.sh" "$D" "$C"); then echo "  LEC: $LEC"; else echo "  LEC: $LEC"; exit 1; fi
+  # Warnings the flow reports but does not fail on; then the netlist must implement the RTL
+  # (LVS only checks the layout against the netlist). Both run before either can fail.
+  FAIL=0
+  "$ROOT/tools/warnings.sh" "$D" | sed 's/^/  /' || FAIL=1
+  if LEC=$("$ROOT/tools/lec.sh" "$D" "$C"); then echo "  LEC: $LEC"; else echo "  LEC: $LEC"; FAIL=1; fi
+  exit $FAIL
 fi

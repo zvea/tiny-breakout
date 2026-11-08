@@ -7,11 +7,12 @@ use the project's `.venv` (for LibreLane and yowasp-yosys), and keep their worki
 | Script | What it does | Time |
 |---|---|---|
 | `flow.sh place TAG [SRC_DIR]` | Tiny Tapeout flow up to global placement: TT's utilisation figure | ~4 min |
-| `flow.sh harden TAG [SRC_DIR]` | The whole flow: also DRC, LVS, antenna, timing, `lec.sh` and the GDS | ~15 min |
+| `flow.sh harden TAG [SRC_DIR]` | The whole flow: also DRC, LVS, antenna, timing, `warnings.sh`, `lec.sh` and the GDS | ~15 min |
 | `flow_avg.sh NAME [SRC_DIR]` | `flow.sh place` for 3 register orderings, and their mean | ~12 min |
 | `local_area.sh [REV]` | Local synthesis area of the working tree vs a git revision (5 orderings each) | ~1 min |
 | `equiv.sh [REV]` | Formal equivalence of the working tree vs a git revision, for refactors | ~1 min |
 | `lec.sh RUN_DIR [SRC_DIR]` | Formal equivalence of the RTL vs a hardened run's final netlist | ~1 min |
+| `warnings.sh RUN_DIR [--update]` | A hardened run's warnings: counts, hard failures, kinds of message not in `warnings.ref` | seconds |
 
 Notes:
 
@@ -20,6 +21,9 @@ Notes:
 - **Noise:** synthesis results shift with the order of register declarations alone (about a
   point of utilisation, or 50-100 µm² locally), so compare means over orderings.
 - **Routability:** the only real test is `flow.sh harden` (0 DRC, LVS and antenna errors).
+- **Warnings:** the flow passes runs with warnings. `warnings.sh` (run by `flow.sh harden`) fails
+  on an inferred latch, a critical disconnected pin or a clock pin over its slew limit, and lists
+  any kind of message missing from `warnings.ref`; after checking them, `--update` adds them.
 - **RTL vs netlist:** LVS only checks the layout against the netlist. `lec.sh` checks that
   netlist against the RTL, so changes to synthesis or other flow settings can't quietly change
   the logic; `flow.sh harden` runs it and fails if it fails.
