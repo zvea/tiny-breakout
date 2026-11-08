@@ -17,6 +17,7 @@
  *     returns (a new game can start with bricks left, which only the full wall covers), so a
  *     layout here only has to work for level 1 and up.
  *   - A layout must never be empty for any input: the level would never end.
+ * tools/walls.sh shows every wall a version of this module produces, with counts.
  *
  * The current layout ("Aliens") grows each wall from one row: row 5 is a seed of 4 bricks
  * from `random`, mirrored into 8 columns, and each later row is grown from the one before by
