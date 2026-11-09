@@ -23,8 +23,8 @@
  *            clear       a fanfare in the pause after a cleared wall: C, E, G, a held high C,
  *                        timed by the pause timer, over the bass: the loudest sound
  *            lost        a minor sigh: E-flat, D, then a long C (a ball lost, spares left)
- *            over        a sad trombone: G4, F#4, F4, then a long wobbling E4 (the last ball,
- *                        instead of the lost-ball sound)
+ *            over        a sad trombone: G4, F#4, F4, then a long E4 wobbling flat and back
+ *                        (48, 49, 50, 49 lines), for the last ball instead of the lost-ball sound
  *   voice B  bass        voice A's start and fanfare, an octave below (from voice A's square
  *                        wave, so voice B needs no tone counter of its own)
  *            thump       noise stepped every line, under the paddle's thock
