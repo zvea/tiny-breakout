@@ -6,7 +6,7 @@ Three layers, from module to whole game:
 |---|---|---|---|
 | [unit/](unit) | Each module on its own, through its ports (cocotb) | `pytest test/unit` | ~70 s (Verilator), ~5.5 min (`SIM=icarus`) |
 | [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~1.5 min |
-| [system/](system) | 12 gameplay scenarios, judged only from the decoded video output | `pytest test/system -n auto` | ~13 min in parallel, ~40 min one after another |
+| [system/](system) | 14 gameplay scenarios, judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~13 min in parallel, ~40 min one after another |
 
 CI ([.github/workflows/test.yaml](../.github/workflows/test.yaml)) lints the design with
 Verilator 5 and runs `test.py` and the unit tests on Icarus, both from Ubuntu 24.04's packages
@@ -28,9 +28,9 @@ python3 -m venv .venv
 
 **Simulators**: two [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html)
 environments from conda-forge, under `.tools/` (git-ignored). The unit tests use `.tools/env`
-when the simulator isn't on `PATH`; the system tests and the player always use `.tools/v4`; the
-full-chip `make` needs `PATH` set, as shown below. conda-forge's Verilator builds with conda's
-own C++ compiler, so it is listed too.
+when the simulator isn't on `PATH`; the system tests and the player use `.tools/v4` when it is
+there, else the Verilator on `PATH`; the full-chip `make` needs `PATH` set, as shown below.
+conda-forge's Verilator builds with conda's own C++ compiler, so it is listed too.
 
 ```sh
 # Verilator 5 and Icarus Verilog: unit tests and lint
@@ -60,23 +60,27 @@ autoconf && ./configure --prefix="$HOME/opt/verilator-4.228" && make -j8 && make
 ```sh
 .venv/bin/pytest test/unit                 # Verilator 5
 SIM=icarus .venv/bin/pytest test/unit      # Icarus, as in CI (which has version 12)
-.venv/bin/pytest test/system -n auto       # needs .tools/v4; one worker per scenario
+.venv/bin/pytest test/system -n auto       # needs Verilator 4; one worker per scenario
 .venv/bin/pytest test/system               # one after another
 .venv/bin/pytest test/system -k launch     # one scenario
 (cd test && PATH=$PWD/../.venv/bin:$PWD/../.tools/env/bin:$PATH make -B)   # full chip
 ```
 
 `test.py`'s Makefile lists the sources in `PROJECT_SOURCES`, read from
-[info.yaml](../info.yaml). The pytest suites build their own sources.
+[info.yaml](../info.yaml), and the system tests read the same list. Each unit test names the
+sources its module needs.
 
 ### Gate-level simulation
 
 Harden the design (`tools/flow.sh harden TAG`, see [tools/README.md](../tools/README.md)), then
-copy the netlist from the run and run `test.py` against it:
+copy the netlist from the run and run `test.py` against it. The Makefile takes the cell models
+from `$PDK_ROOT/sky130A`, so `PDK_ROOT` must be the directory that holds `sky130A`; under ciel that is
+`~/.ciel/ciel/sky130/versions/HASH`, not `~/.ciel` itself.
 
 ```sh
 cp runs/exp_TAG/final/pnl/tt_um_tiny_breakout.pnl.v test/gate_level_netlist.v
-(cd test && make -B GATES=yes)
+export PDK_ROOT=$HOME/.ciel/ciel/sky130/versions/HASH
+(cd test && PATH=$PWD/../.venv/bin:$PWD/../.tools/env/bin:$PATH make -B GATES=yes)
 ```
 
 ## Waveforms
