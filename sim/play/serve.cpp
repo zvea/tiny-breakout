@@ -144,7 +144,9 @@ static void streamer() {
     ratio += 0.1 * (std::min(16.0, std::max(1.0, dt * 60)) - ratio);
     long owed = std::lround(48000 * std::chrono::duration<double>(t - audio_start).count()) - sent;
     if (owed > 24000) {  // half a second behind (a stall): don't try to catch up
-      audio_start = t - std::chrono::nanoseconds(sent * 1000000000L / 48000);
+      // In seconds, as a double: sent * 1e9 ns would overflow a long after 53 h of streaming
+      audio_start = t - std::chrono::duration_cast<clk::duration>(
+                            std::chrono::duration<double>(sent / 48000.0));
       owed = 0;
     }
     stretcher.push(g.audio.data(), Game::AUDIO_PER_FRAME);
