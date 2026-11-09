@@ -38,7 +38,9 @@ json.dump(cfg, open(os.path.join(c, "config_merged.json"), "w"), indent=2)
 PY
 python -m librelane --docker-no-tty --dockerized --run-tag "exp_$TAG" --force-run-dir "$D" \
   "${TO[@]}" "$C/config_merged.json" > "$D.log" 2>&1 || { echo "$TAG: FLOW FAILED (see $D.log)"; tail -5 "$D.log"; exit 1; }
-UTIL=$(grep -hE '^\[INFO GPL-0019\] (Util|Utilization):' "$D"/*-openroad-globalplacement/openroad-globalplacement.log | head -1 | sed -E 's/.*: *//')
+# n/a if the log lacks the line, so the rest of the report still prints
+UTIL=$(grep -hE '^\[INFO GPL-0019\] (Util|Utilization):' "$D"/*-openroad-globalplacement/openroad-globalplacement.log | head -1 | sed -E 's/.*: *//' || true)
+UTIL=${UTIL:-n/a}
 echo "$TAG: TT utilisation $UTIL"
 if [ "$MODE" = harden ]; then
   python3 - "$D/final/metrics.json" <<'PY'

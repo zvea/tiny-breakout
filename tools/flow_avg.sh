@@ -15,6 +15,12 @@ orderings "$SRC/tt_um_tiny_breakout.sv" 3 "$W/top"
 vals=()
 for i in 0 1 2; do
   mkdir -p "$W/$i"; cp "$SRC"/*.sv "$W/$i/"; cp "$W/top$i.sv" "$W/$i/tt_um_tiny_breakout.sv"
-  vals+=("$("$ROOT/tools/flow.sh" place "${NAME}_o$i" "$W/$i" | grep -oE 'utilisation [0-9.]+' | grep -oE '[0-9.]+')")
+  # flow.sh says what failed and where its log is: show that, rather than end here silently
+  if ! out=$("$ROOT/tools/flow.sh" place "${NAME}_o$i" "$W/$i"); then
+    echo "$NAME: ordering $i failed:"; echo "$out"; exit 1
+  fi
+  v=$(grep -oE 'utilisation [0-9.]+' <<<"$out" | grep -oE '[0-9.]+' || true)
+  [ -n "$v" ] || { echo "$NAME: ordering $i gave no utilisation:"; echo "$out"; exit 1; }
+  vals+=("$v")
 done
 python3 -c 'import sys; v=[float(x) for x in sys.argv[2:]]; print(f"{sys.argv[1]}: " + "  ".join(f"{x:.2f}" for x in v) + f"   mean {sum(v)/len(v):.2f}")' "$NAME" "${vals[@]}"
