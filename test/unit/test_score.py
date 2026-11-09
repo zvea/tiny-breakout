@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for score: a 3-digit counter shown as 4 seven-segment digits (the last a
-fixed 0) in 16-px slots at x 512..575, y 0..15.
+fixed 0) in 16-px slots at x 512..575, y 3..18.
 
 The number is read off the pixels: the middle of each segment of each digit is probed and
 the lit segments are decoded, so these tests check the drawing as well as the counting.
