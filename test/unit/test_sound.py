@@ -212,6 +212,44 @@ async def a_wall_rumbles_under_a_brick_and_the_paddle_takes_both_voices(dut):
 
 
 @cocotb.test()
+async def the_thump_fades_from_4_and_the_rumble_from_3_then_voice_b_stops(dut):
+    """Each steps down one a frame, silent from its fifth frame (the rumble from its fourth),
+    and voice B is free the frame after."""
+    await start(dut)
+    for event, kind, vols in (("paddle", B_THUMP, [4, 3, 2, 1, 0]),
+                              ("wall", B_RUMBLE, [3, 2, 1, 0, 0])):
+        await frame(dut, event)
+        heard = []
+        for f in range(5):
+            b_kind, b_vol = await read(dut, "b_kind", "b_vol")
+            assert b_kind == kind, f"{event}, frame {f}: kind {b_kind}"
+            heard.append(b_vol)
+            await frame(dut)
+        assert heard == vols, f"{event}: volumes {heard}"
+        heard = await read(dut, "b_kind")
+        assert heard == [B_NONE], f"{event}, frame 5: kind {heard}"
+
+
+@cocotb.test()
+async def the_bass_stops_when_voice_a_s_call_is_replaced(dut):
+    """A brick or a lost ball replacing the new game's call on voice A silences the bass at
+    once (b_vol follows only the call or the fanfare), and voice B is free the frame after."""
+    await start(dut)
+    for event, kind in (("brick", A_BRICK), ("lost", A_LOST)):
+        await frame(dut, "new_game")
+        for _ in range(5):
+            await frame(dut)
+        heard = await read(dut, "b_kind", "b_vol")
+        assert heard == [B_BASS, 6], f"before the {event}: bass kind, volume {heard}"
+        await frame(dut, event)
+        heard = await read(dut, "a_kind", "b_kind", "b_vol")
+        assert heard == [kind, B_BASS, 0], f"the {event}'s frame: kinds, bass volume {heard}"
+        await frame(dut)
+        heard = await read(dut, "b_kind")
+        assert heard == [B_NONE], f"the frame after the {event}: bass kind {heard}"
+
+
+@cocotb.test()
 async def the_cleared_wall_fanfare_follows_the_pause_timer(dut):
     """C, E, G for two pause steps each, then a held high C, over voice B's bass at the same
     volume; both end with the pause."""
