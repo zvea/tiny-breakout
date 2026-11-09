@@ -55,20 +55,22 @@ async def read(dut, *names: str) -> list[int]:
     return values
 
 
-async def toggles(dut, signal: str, lines: int) -> int:
-    """How often `signal` flips over this many lines."""
-    count, prev = 0, None
-    for _ in range(lines):
+async def half_periods(dut, signal: str, lines: int) -> list[int]:
+    """The lines from each flip of `signal` to the next, over this many lines: only whole
+    half-periods, as the lines before the first flip may be the end of one."""
+    flips, prev = [], None
+    for line in range(lines):
         dut.h_pos.value = 0
         await RisingEdge(dut.clk)
         dut.h_pos.value = 1
         await RisingEdge(dut.clk)
         await ReadOnly()
         v = int(getattr(dut, signal).value)
-        count += prev is not None and v != prev
+        if prev is not None and v != prev:
+            flips.append(line)
         prev = v
         await RisingEdge(dut.clk)
-    return count
+    return [b - a for a, b in zip(flips, flips[1:])]
 
 
 @cocotb.test()
@@ -100,26 +102,27 @@ async def a_brick_plays_its_rows_note_an_octave_down_fading_over_5_frames(dut):
 
 @cocotb.test()
 async def the_tone_has_the_pitch_of_its_note(dut):
-    """A note of N flips the square wave every N lines. Not N = 30, the note when nothing
-    plays, so that a counter ignoring the note would fail."""
+    """A note of N flips the square wave every N lines, exactly. Not N = 30, the note when
+    nothing plays, so that a counter ignoring the note would fail."""
     await start(dut)
     await frame(dut, "brick", row=5, fast=True)  # scale step 2: E5, an octave down E4, N = 48
-    flips = await toggles(dut, "a_square", 480)
-    assert flips in (9, 10, 11), f"{flips} flips in 480 lines (expected 10 for N = 48)"
+    periods = await half_periods(dut, "a_square", 480)
+    assert len(periods) >= 8 and set(periods) == {48}, f"half-periods {periods} (expected 48)"
 
 
 @cocotb.test()
 async def the_bass_is_voice_a_an_octave_down(dut):
-    """Voice B's square wave in the new game's call: G3 (80 lines a half-period) under voice
-    A's G4 (N = 40) for the first 8 frames, and C5 (30 lines) under C6 (N = 15) from frame 24."""
+    """Voice B's square wave in the new game's call has exactly twice voice A's half-period:
+    G3 (80 lines) under G4 (N = 40) for the first 8 frames, and C5 (30 lines) under C6 (N = 15)
+    from frame 24."""
     await start(dut)
     await frame(dut, "new_game")
-    flips = await toggles(dut, "a_sub", 400)
-    assert flips in (4, 5, 6), f"G3: {flips} flips in 400 lines (expected 5 for 80 lines)"
+    periods = await half_periods(dut, "a_sub", 400)
+    assert len(periods) >= 3 and set(periods) == {80}, f"G3: half-periods {periods} (expected 80)"
     for _ in range(24):
         await frame(dut)
-    flips = await toggles(dut, "a_sub", 360)
-    assert flips in (11, 12, 13), f"C5: {flips} flips in 360 lines (expected 12 for 30 lines)"
+    periods = await half_periods(dut, "a_sub", 360)
+    assert len(periods) >= 10 and set(periods) == {30}, f"C5: half-periods {periods} (expected 30)"
 
 
 @cocotb.test()
