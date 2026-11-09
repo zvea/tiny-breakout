@@ -37,10 +37,11 @@ There is no frame buffer. Each pixel is computed from the game's state as the be
   from 1x to 3x.
 - The sound effects are square waves timed by the video's line clock, so a 7-bit counter is
   enough for a note's pitch. Each of the two voices keeps only which sound it is playing and
-  for how many frames, and works out the note and volume from those. Volume is pulse-width
-  modulation, and the voices share the one audio pin by taking turns every clock. The bass is a
-  single flip-flop that divides the tune's square wave by two, an octave down
-  ([sound.sv](src/sound.sv)).
+  for how many frames, and works out the note and volume from those. The noise for the thumps
+  is a hash of the line number and the frame's random number, so it needs no generator of its
+  own. The voices share the one audio pin by taking turns every clock, each setting its volume
+  by pulse width. The bass is a single flip-flop that divides the tune's square wave by two, an
+  octave down ([sound.sv](src/sound.sv)).
 
 [![The hardened tile](docs/img/layout.png)](https://gds-explorer.tinytapeout.com/viewer?file=https://zvea.github.io/tiny-breakout/tinytapeout.oas&pdk=sky130A)
 
