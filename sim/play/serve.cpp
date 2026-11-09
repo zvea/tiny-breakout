@@ -40,6 +40,7 @@
 #include <sstream>
 #include <string>
 #include <sys/socket.h>
+#include <system_error>
 #include <sys/time.h>
 #include <thread>
 #include <unistd.h>
@@ -208,6 +209,65 @@ static void streamer() {
   }
 }
 
+static std::string html_path;  // the page (set before the first request)
+
+// Answers one request, on its own thread (see main).
+static void serve(int c) {
+  timeval tv{0, 200000};
+  setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+  char buf[4096];
+  size_t n = 0;
+  while (n < sizeof buf - 1) {  // read until end of request headers (or timeout)
+    ssize_t r = read(c, buf + n, sizeof buf - 1 - n);
+    if (r <= 0) break;
+    n += r;
+    buf[n] = 0;
+    if (strstr(buf, "\r\n\r\n")) break;
+  }
+  buf[n] = 0;
+  if (n == 0 || strncmp(buf, "GET ", 4)) {
+    close(c);
+    return;
+  }
+  if (!strncmp(buf, "GET /keys?k=", 12)) {
+    int k = atoi(buf + 12);
+    if (k & 16) reset_req = true;
+    keys = k & 15;
+    reply(c, "200 OK", "text/plain", "ok");
+    close(c);
+  } else if (!strncmp(buf, "GET /stream", 11)) {
+    const char *hdr = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
+                      "Cache-Control: no-store\r\nConnection: close\r\n\r\n";
+    timeval tv0{2, 0};  // a stalled viewer is dropped after 2 s
+    setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &tv0, sizeof tv0);
+    const int one = 1;
+    setsockopt(c, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+    if (!send_all(c, hdr, strlen(hdr))) {
+      close(c);
+      return;
+    }
+    int stale;
+    {
+      std::lock_guard<std::mutex> lk(mu);
+      stale = pending_fd;  // never handed over: this thread may end it
+      pending_fd = c;
+      cv.notify_one();
+    }
+    if (stale >= 0) end_taken_over(stale);
+  } else {
+    timeval tv1{0, 500000};
+    setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &tv1, sizeof tv1);
+    std::string page;
+    if (read_file(html_path, page)) {
+      reply(c, "200 OK", "text/html", page);
+    } else {
+      fprintf(stderr, "Can't read the page %s\n", html_path.c_str());
+      reply(c, "500 Internal Server Error", "text/plain", "Can't read " + html_path + "\n");
+    }
+    close(c);
+  }
+}
+
 int main(int argc, char **argv) {
   int port = 8765;
   char *end = nullptr;
@@ -217,7 +277,8 @@ int main(int argc, char **argv) {
     return 1;
   }
   port = (int)p;
-  std::string html_path = "index.html", page;
+  std::string page;
+  html_path = "index.html";
   if (argc > 2) {
     html_path = argv[2];
   } else if (const char *slash = strrchr(argv[0], '/')) {  // obj_serve/.. holds the page
@@ -255,56 +316,11 @@ int main(int argc, char **argv) {
   for (;;) {
     int c = accept(s, nullptr, nullptr);
     if (c < 0) continue;
-    // Browsers / port forwarders open idle speculative connections: never block on them.
-    timeval tv{0, 200000};
-    setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-    char buf[4096];
-    size_t n = 0;
-    while (n < sizeof buf - 1) {  // read until end of request headers (or timeout)
-      ssize_t r = read(c, buf + n, sizeof buf - 1 - n);
-      if (r <= 0) break;
-      n += r;
-      buf[n] = 0;
-      if (strstr(buf, "\r\n\r\n")) break;
-    }
-    buf[n] = 0;
-    if (n == 0 || strncmp(buf, "GET ", 4)) {
-      close(c);
-      continue;
-    }
-    if (!strncmp(buf, "GET /keys?k=", 12)) {
-      int k = atoi(buf + 12);
-      if (k & 16) reset_req = true;
-      keys = k & 15;
-      reply(c, "200 OK", "text/plain", "ok");
-      close(c);
-    } else if (!strncmp(buf, "GET /stream", 11)) {
-      const char *hdr = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
-                        "Cache-Control: no-store\r\nConnection: close\r\n\r\n";
-      timeval tv0{2, 0};  // a stalled viewer is dropped after 2 s
-      setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &tv0, sizeof tv0);
-      setsockopt(c, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
-      if (!send_all(c, hdr, strlen(hdr))) {
-        close(c);
-        continue;
-      }
-      int stale;
-      {
-        std::lock_guard<std::mutex> lk(mu);
-        stale = pending_fd;  // never handed over: this thread may end it
-        pending_fd = c;
-        cv.notify_one();
-      }
-      if (stale >= 0) end_taken_over(stale);
-    } else {
-      timeval tv1{0, 500000};
-      setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &tv1, sizeof tv1);
-      if (read_file(html_path, page)) {
-        reply(c, "200 OK", "text/html", page);
-      } else {
-        fprintf(stderr, "Can't read the page %s\n", html_path.c_str());
-        reply(c, "500 Internal Server Error", "text/plain", "Can't read " + html_path + "\n");
-      }
+    // A thread per connection: browsers and port forwarders open idle speculative ones, and
+    // the read timeout on one must not hold up a key change
+    try {
+      std::thread(serve, c).detach();
+    } catch (const std::system_error &) {
       close(c);
     }
   }
