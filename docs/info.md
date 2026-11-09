@@ -15,7 +15,7 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   The paddle moves 4 px each time the ball moves, so it speeds up with the ball.
 - **Lives and score:** you have 2 spare balls, shown top left; the score, top right, counts
   10 per brick, up to 9990. Losing the last ball ends the game: a black curtain comes down over
-  everything but the score. Once a ball has fallen past the paddle, the black
+  everything but the score, and once it is down (about half a second) fire starts a new game. Once a ball has fallen past the paddle, the black
   margin around the playfield turns red, brightening as the ball drops off the screen.
 - **Levels:** when the last brick is cleared, the game pauses for about a second while
   rainbow bands rise up the screen, gives back a spare ball (up to 2) and builds a new brick

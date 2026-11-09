@@ -426,13 +426,17 @@ module tt_um_tiny_breakout (
 
   // What the frame update does. restart needs game over; otherwise exactly one of on_paddle,
   // lose_ball and fly holds. new_game (end_demo) can coincide with any of them and wins.
-  wire restart    = game_over & btn_fire;                  // new game after game over
+  // speed_level reaching 31 ends both the pause after a cleared wall and the game-over
+  // curtain's descent. A restart waits for the curtain, so FIRE held as the last ball falls
+  // (or autoplay, which always holds it) doesn't skip the curtain and cut the trombone at once.
+  wire timer_done = (speed_level == 31);
+  wire restart    = game_over & btn_fire & timer_done;     // new game once the curtain is down
   assign new_game = restart | end_demo;                    // ... or when the demo ends
   wire on_paddle  = ~game_over & (serving | bricks_empty); // ball waits on the paddle
   wire lose_ball  = ~game_over & ~on_paddle & ball_lost;   // ball fell off the bottom
   wire fly        = ~game_over & ~on_paddle & ~ball_lost;  // ball in flight
   wire paused     = on_paddle & bricks_empty;              // the wall was cleared ...
-  wire level_done = paused & (speed_level == 31);          // ... and the pause is over
+  wire level_done = paused & timer_done;                   // ... and the pause is over
 
   // Paddle: one 4-px step per move, stopping at the walls, where its centre is half a width
   // from x 64 or x 576: centre / 4 = 16 + 2 x paddle_w16 or 144 - 2 x paddle_w16. A narrower

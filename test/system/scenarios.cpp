@@ -514,8 +514,9 @@ void controls() {
 //   dark red, red), and black again once the ball has left the screen; black at every other
 //   time. Each lost ball sighs (E-flat, 25 lines), the last one plays the sad trombone (G4, 40).
 // - game over: no ball and no markers, and the score is 10 per brick cleared. A black curtain
-//   comes down from the top, 16 px a frame, until only the score is left, unchanged; no ball
-//   comes without FIRE, and once the trombone has ended, all is quiet.
+//   comes down from the top, 16 px a frame, until only the score is left, unchanged; FIRE
+//   held while it comes down starts nothing, no ball comes without FIRE, and once the trombone
+//   has ended, all is quiet.
 // - restart: fire (A on the gamepad here) starts a new game. From its first frame nothing of the
 //   old one shows: the border is black (it once flashed the level-clear rainbow, as the
 //   curtain's count carried over), and the picture is back with a full wall, two spare balls,
@@ -593,15 +594,16 @@ void losing_every_ball() {
          before.score);
 
   // The first frame that shows it has it 32 lines down (game over, then 16, then 32: the first
-  // 16 are the black status line anyway), then 16 more each frame until it reaches the bottom
+  // 16 are the black status line anyway), then 16 more each frame until it reaches the bottom.
+  // FIRE held for the first 20 of those frames doesn't start a new game: only once it is down.
   part = "curtain";
-  g.buttons = 0;
   for (int line = 32; line <= 480 + 32; line += 16) {
+    g.buttons = line < 32 + 16 * 20 ? FIRE : 0;
     int expected = line < 480 ? line : 480;
     CHECK(black_from_top(g) == expected, "curtain at %d lines, expected %d", black_from_top(g),
           expected);
     CHECK(border_colour(g) == BLACK, "border %#x", border_colour(g));
-    CHECK(!v.ball, "a ball at (%d, %d) without FIRE", v.ball_x, v.ball_y);
+    CHECK(!v.ball, "a ball at (%d, %d) before the curtain is down", v.ball_x, v.ball_y);
     v = run(g, 1);
     listen_for_losses();
   }
