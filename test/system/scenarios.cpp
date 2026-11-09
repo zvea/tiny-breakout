@@ -4,10 +4,11 @@
 // Black-box scenario tests for Tiny Breakout.
 //
 // Each scenario drives only the chip's input pins (direct buttons, autoplay, the emulated
-// Gamepad PMOD) and judges only from its video output: every frame is decoded and the game
-// state is read off the picture (life markers, ball, paddle, bricks). Nothing here depends
-// on the design's internal signal names, so refactoring the RTL cannot break these tests;
-// the per-module unit tests cover the internals.
+// Gamepad PMOD) and judges only from its outputs: every frame is decoded and the game state
+// is read off the picture (life markers, ball, paddle, bricks), and the sound off the audio
+// pin (each voice's volume and note). Nothing here depends on the design's internal signal
+// names, so refactoring the RTL cannot break these tests; the per-module unit tests cover
+// the internals.
 //
 // Usage: scenarios <name>   (exit status 0 = pass)
 //        scenarios list
@@ -15,9 +16,11 @@
 
 #include "sim.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 namespace {
 
@@ -146,6 +149,43 @@ View settle(Game &g, View v) {
   for (int i = 0; i < 2 && !resting(v); i++) v = run(g, 1);
   return v;
 }
+
+// ---- Listening ---------------------------------------------------------------------------
+
+struct Voice {
+  int vol = 0;          // 0..7
+  int half = 0;         // its square wave's half-period in lines (the median run); 0 if silent
+  bool coarse = false;  // every run a multiple of 8 lines: the rumble's noise
+};
+struct Sound {
+  Voice a, b;
+};
+
+// One voice of the audio pin (1: A, 0: B), in the lines before the frame's update at line
+// 480: they play the sound as the previous frame's update left it. A line counts as high if
+// the voice was high for over a quarter of its loudest line's clocks (the pin is registered,
+// so a line can start with one clock of the line before).
+Voice hear(const Game &g, int voice) {
+  const uint16_t *h = g.audio_high[voice];
+  Voice v;
+  int peak = 0;
+  for (int y = 0; y < 480; y++) peak = std::max(peak, int(h[y]));
+  v.vol = (peak + 25) / 50;
+  if (!v.vol) return v;
+  std::vector<int> runs;  // the runs of high lines and of low lines, but the first and last
+  for (int y = 1, start = 0; y < 480; y++)
+    if ((h[y] > peak / 4) != (h[y - 1] > peak / 4)) {
+      if (start > 0) runs.push_back(y - start);
+      start = y;
+    }
+  if (runs.empty()) return v;
+  v.coarse = std::all_of(runs.begin(), runs.end(), [](int r) { return r % 8 == 0; });
+  std::sort(runs.begin(), runs.end());
+  v.half = runs[runs.size() / 2];
+  return v;
+}
+
+Sound listen(const Game &g) { return {hear(g, 1), hear(g, 0)}; }
 
 // ---- Scenarios ---------------------------------------------------------------------------
 
@@ -714,6 +754,105 @@ void select_turns_autoplay_on() {
   CHECK(v.paddle_x == x0, "paddle moved with autoplay off: %d -> %d", x0, v.paddle_x);
 }
 
+// The sound, from the audio pin: a new game's two chords on both voices (C5 with G5 for 8
+// frames, C6 with E6 for 24), then quiet; at each paddle bounce the thock (a low C dropping
+// over 3 frames) over the thump; a rumble at the walls; at each brick its row's note an
+// octave down (red highest); a sigh for each lost ball and the sad trombone for the last.
+void sound() {
+  Game g;
+  g.reset();
+  Sound s;
+  int frame = 0;
+  for (; frame < 10 && !(s.a.half == 30 && s.b.half == 20); frame++) {  // the demo ends
+    run(g, 1, false);
+    s = listen(g);
+  }
+  int low = 0, high = 0;
+  for (; s.a.half == 30 && s.b.half == 20 && s.a.vol && s.b.vol; low++, frame++) {
+    run(g, 1, false);
+    s = listen(g);
+  }
+  for (; s.a.half == 15 && s.b.half == 12 && s.a.vol && s.b.vol; high++, frame++) {
+    run(g, 1, false);
+    s = listen(g);
+  }
+  CHECK(low == 8 && high == 24, "new game: %d frames of C5 + G5 and %d of C6 + E6 (expected 8, 24)",
+        low, high);
+  for (int i = 0; i < 30; i++, frame++) {  // the ball waits on the paddle: quiet
+    CHECK(s.a.vol == 0 && s.b.vol == 0,
+          "frame %d, %d after the chords: volumes %d, %d (notes %d, %d)", frame, i, s.a.vol,
+          s.b.vol, s.a.half, s.b.half);
+    run(g, 1, false);
+    s = listen(g);
+  }
+
+  // Autoplay: paddle bounces, walls and the first 4 bricks (the ball reaches 2x at 8)
+  static const int scale[8] = {30, 27, 24, 20, 18, 15, 13, 12};  // C5 D5 E5 G5 A5 C6 D6 E6
+  g.autoplay = true;
+  View v = run(g, 1);
+  std::vector<Sound> heard;
+  std::vector<int> brick_rows, brick_frames;
+  for (int i = 0; i < 3000 && brick_rows.size() < 4; i++) {
+    View before = v;
+    v = run(g, 1);
+    heard.push_back(listen(g));
+    uint64_t gone = before.standing & ~v.standing;
+    if (gone && v.bricks == before.bricks - 1) {
+      brick_rows.push_back(__builtin_ctzll(gone) / 8);
+      brick_frames.push_back(heard.size() - 1);
+    }
+  }
+  CHECK(brick_rows.size() == 4, "only %zu single bricks hit", brick_rows.size());
+  int thocks = 0, rumbles = 0;
+  for (size_t f = 0; f + 3 < heard.size(); f++) {
+    const Sound &h = heard[f];
+    if (h.a.half == 60 && h.a.vol == 5 && h.b.vol == 4 && !h.b.coarse) {  // a thock over a thump
+      thocks++;
+      size_t k = f + 1;
+      while (k < f + 3 && heard[k].a.half == 60) k++;  // a bounce at 1x can count twice
+      CHECK(heard[k].a.half == 66 && heard[k].a.vol == 3 && heard[k + 1].a.half == 72 &&
+                heard[k + 1].a.vol == 1,
+            "thock at frame %zu: then %d (volume %d), %d (volume %d)", f, heard[k].a.half,
+            heard[k].a.vol, heard[k + 1].a.half, heard[k + 1].a.vol);
+    }
+    if (h.b.coarse && h.b.vol == 3 && !(f && heard[f - 1].b.coarse)) rumbles++;
+    if (h.b.coarse) CHECK(h.b.vol <= 3, "frame %zu: the rumble at volume %d", f, h.b.vol);
+  }
+  for (size_t i = 0; i < brick_rows.size(); i++) {
+    int n = 2 * scale[5 - brick_rows[i]];
+    bool ok = false;  // the brick leaves the picture as its note starts, give or take a frame
+    for (int f = brick_frames[i] - 1; f <= brick_frames[i] + 1; f++)
+      ok |= f >= 0 && f < (int)heard.size() && heard[f].a.half == n && heard[f].a.vol == 5;
+    CHECK(ok, "brick in row %d at frame %d: no note of %d lines", brick_rows[i], brick_frames[i],
+          n);
+  }
+  printf("%zu frames of autoplay: %d thocks, %d rumbles, %zu bricks\n", heard.size(), thocks,
+         rumbles, brick_rows.size());
+  CHECK(thocks >= 2 && rumbles >= 1, "%d thocks and %d rumbles", thocks, rumbles);
+
+  // Lose every ball: a sigh (E-flat, 25 lines) for each spare, the trombone (G4, 40) for the last
+  g.autoplay = false;
+  std::vector<int> starts;  // the first note of each new sound on voice A
+  int prev = 0;
+  for (int i = 0; i < 20000; i++) {
+    g.buttons = LEFT | (resting(v) ? FIRE : 0);  // paddle against the left wall
+    v = run(g, 1);
+    s = listen(g);
+    int note = s.a.vol == 6 ? s.a.half : 0;  // bricks play at 5 at most
+    if ((note == 25 || note == 40) && note != prev) starts.push_back(note);
+    prev = note;
+    if (starts.size() == 3 && s.a.vol == 0) break;
+  }
+  CHECK(starts == std::vector<int>({25, 25, 40}), "lost balls: %zu sounds, the first %d",
+        starts.size(), starts.empty() ? 0 : starts[0]);
+  g.buttons = 0;
+  for (int i = 0; i < 30; i++) {  // game over, once the trombone has ended: quiet
+    run(g, 1, false);
+    s = listen(g);
+    CHECK(s.a.vol == 0 && s.b.vol == 0, "game over, frame %d: volumes %d, %d", i, s.a.vol, s.b.vol);
+  }
+}
+
 struct Scenario {
   const char *name;
   void (*run)();
@@ -733,6 +872,7 @@ const Scenario scenarios[] = {
     {"paddle_zones_set_the_angle", paddle_zones_set_the_angle},
     {"level_cleared", level_cleared},
     {"autoplay_clears_a_level", autoplay_clears_a_level},
+    {"sound", sound},
 };
 
 }  // namespace

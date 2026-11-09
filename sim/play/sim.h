@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Verilator model wrapper: runs one VGA frame at a time, emulating the Gamepad PMOD and
-// listening to the Audio Pmod.
+// listening to the Audio Pmod (as audio for the player, and as pin counts for the tests).
 // Needs Verilator 4.x: tick() relies on its internals (__Vclklast); 5.x is also ~2x slower here.
 #pragma once
 #include "Vtt_um_tiny_breakout.h"
@@ -53,6 +53,12 @@ struct Game {
     *out++ = hp_y;
   }
 
+  // The Audio Pmod pin, as the tests read it: for each line of the last frame, the clocks it
+  // was high at odd and at even h. The two voices take turns clock by clock (sound.sv), and
+  // the pin is registered, so after the clock at h it holds the voice that h chose: [1] is
+  // voice A, [0] voice B. A sounding voice is high for 50 x its volume clocks of a line.
+  uint16_t audio_high[2][525] = {};
+
   // One eval per clock: present a rising edge by resetting Verilator's last-seen clock.
   inline void tick(uint8_t ui) {
     top.ui_in = ui;
@@ -83,12 +89,17 @@ struct Game {
     uint8_t *p = fb.data();
     float *a = audio.data();
     int cyc = 0;
-    for (int y = 0; y < 525; y++)
+    for (int y = 0; y < 525; y++) {
+      uint16_t high[2] = {};
       for (int x = 0; x < 800; x++, cyc++) {
         int r = cyc - pmod_start;
         tick(r >= 0 && r < (int)sizeof pmod ? pmod[r] : base);
         if (y < 480 && x < 640) *p++ = top.uo_out;
+        high[x & 1] += (top.uio_oe & top.uio_out) >> 7 & 1;
         if (capture_audio) audio_clock(a);
       }
+      audio_high[0][y] = high[0];
+      audio_high[1][y] = high[1];
+    }
   }
 };
