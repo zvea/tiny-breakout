@@ -558,7 +558,8 @@ void losing_every_ball() {
     v = run(g, 1);
     listen_for_losses();
     // Red channel = the ball's 8-px band below the paddle; black while it is higher, and once
-    // it has left the screen (then it is not visible)
+    // it has left the screen (then it is not visible). This restates the RTL's own rule
+    // (lost_rgb from ball_y[4:3]): it catches a broken implementation, not a wrong rule.
     int expected = v.ball && v.ball_y >= 456 ? ((v.ball_y >> 3) & 3) << 4 : BLACK;
     CHECK(border_colour(g) == expected, "ball at y %d, border %#x, expected %#x",
           v.ball ? v.ball_y : -1, border_colour(g), expected);
@@ -752,6 +753,9 @@ struct BrickBounces {
     if (!p.ball || !h.ball || !n.ball || !overlaps(h) || !moved(pi) || !moved(ni)) return;
     if (h.ball_x < 80 || h.ball_x > 560 || h.ball_y < 48) return;  // walls could interfere
     bool left = h.ball_x < p.ball_x, up = h.ball_y < p.ball_y;
+    // The edge it came through, by the RTL's own rule (side_hit: whichever of the two edges its
+    // direction allows the box is less far past), so this catches a broken implementation of
+    // the rule, not a wrong rule; the ball's actual turn is what's observed
     int past_side = left ? bx + 62 - h.ball_x : h.ball_x + 8 - bx;
     int past_flat = up ? by + 14 - h.ball_y : h.ball_y + 8 - by;
     bool side = past_side < past_flat;

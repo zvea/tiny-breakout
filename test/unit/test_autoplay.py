@@ -48,7 +48,9 @@ async def read(dut, name: str) -> int:
 def beam(h: int, paddle_c: int, w16: int) -> tuple[int, int]:
     """The paddle zone under beam position h, and whether h is over the paddle, as the top
     module works them out: from the beam's offset from the centre, folded to a distance in
-    8-px cells."""
+    8-px cells. This copies the top module's formula (autoplay reads these signals from it), so
+    the tests check autoplay's use of them, not the zones themselves: the system scenarios check
+    those against the bounces."""
     dx = (h - paddle_c) % 1024
     right = dx < 512
     d8 = (dx >> 3) if right else (~dx & 1023) >> 3
