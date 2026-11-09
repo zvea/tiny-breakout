@@ -44,22 +44,25 @@ addEventListener('blur',()=>{keys=0;sendKeys()});
 
 // --- Sound: the frames' samples (48 kHz, from the server) go into an AudioWorklet ring buffer.
 // The worklet plays the 48 kHz stream at whatever rate the browser's audio runs (often 44.1
-// kHz on a Mac), resampling with linear interpolation, and holds its buffer near 60 ms: it
-// plays up to 1% faster or slower (too little to hear) as the buffer runs over or under, so
-// the delay can't creep up with clock drift. Playback starts once 60 ms is in; a far
-// overfull buffer (a stall), or a burst that would overrun it, jumps to the target, and a dry
-// one pauses until refilled.
+// kHz on a Mac), resampling with linear interpolation. It holds the buffer's low point (what is
+// left when the next frame's samples arrive) near 60 ms: it plays up to 1% faster or slower
+// (too little to hear) as that runs over or under, so the delay can't creep up with clock
+// drift. The low point, not the fill at any moment, because a slow machine sends each frame's
+// stretched samples at once (a fifth of a second of them at 5 fps), and the buffer must last
+// until the next frame's arrive.
+// Playback starts once 60 ms is in; a buffer still far overfull when samples arrive (a
+// stall), or a burst that would overrun it, jumps to the target, and a dry one pauses until
+// refilled.
 const worklet=`const T=2880;class Feed extends AudioWorkletProcessor{
- constructor(){super();this.buf=new Float32Array(48000);this.r=0;this.w=0;this.playing=false;
+ constructor(){super();this.buf=new Float32Array(48000);this.r=0;this.w=0;this.lo=0;this.playing=false;
   this.base=48000/sampleRate;
-  this.port.onmessage=e=>{const s=e.data,N=this.buf.length,over=this.fill()+s.length>=N-1;
+  this.port.onmessage=e=>{const s=e.data,N=this.buf.length,f=this.fill();this.lo=f;
    for(let i=0;i<s.length;i++){this.buf[this.w]=s[i];this.w=(this.w+1)%N}
-   if(over)this.r=(this.w-T+N)%N}}
+   if(f>4*T||f+s.length>=N-1){this.r=(this.w-T+N)%N;this.lo=T}}}
  fill(){const N=this.buf.length;return (this.w-Math.floor(this.r)+N)%N}
- process(_,outs){const o=outs[0][0],N=this.buf.length;let f=this.fill();
-  if(f>4*T){this.r=(this.w-T+N)%N;f=T}
-  if(!this.playing&&f>=T)this.playing=true;
-  const step=this.base*(1+0.01*Math.max(-1,Math.min(1,(f-T)/T)));
+ process(_,outs){const o=outs[0][0],N=this.buf.length;
+  if(!this.playing&&this.fill()>=T)this.playing=true;
+  const step=this.base*(1+0.01*Math.max(-1,Math.min(1,(this.lo-T)/T)));
   for(let i=0;i<o.length;i++){
    if(this.playing&&this.fill()>2){const i0=Math.floor(this.r),a=this.buf[i0],b=this.buf[(i0+1)%N];
     o[i]=a+(b-a)*(this.r-i0);this.r+=step;if(this.r>=N)this.r-=N}
