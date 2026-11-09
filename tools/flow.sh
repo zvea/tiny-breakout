@@ -27,12 +27,14 @@ trap 'rm -rf -- "./$C"' EXIT  # the source copy goes even if interrupted
 # The sources, and the cell list config.json gives synthesis (dir::): SRC_DIR's, else src's
 CELLS="$SRC/synth_excluded.cells"; [ -f "$CELLS" ] || CELLS="$ROOT/src/synth_excluded.cells"
 cp "$SRC"/*.sv "$CELLS" "$C/"
-"$PY" - "$C" <<'PY'
+# VERILOG_FILES: info.yaml's sources, in its order, that SRC_DIR has (user_config.json's list
+# is a copy of info.yaml's from when it was made)
+"$PY" - "$C" $(sources) <<'PY'
 import json, os, sys
-c = sys.argv[1]
+c, sources = sys.argv[1], sys.argv[2:]
 cfg = json.load(open("src/config.json")); cfg.update(json.load(open("src/user_config.json")))
+cfg["VERILOG_FILES"] = [f"dir::{f}" for f in sources if os.path.exists(os.path.join(c, f))]
 cfg.update(json.loads(os.environ.get("EXTRA_CFG", "{}")))
-cfg["VERILOG_FILES"] = [f for f in cfg["VERILOG_FILES"] if os.path.exists(os.path.join(c, f.replace("dir::", "")))]
 json.dump(cfg, open(os.path.join(c, "config_merged.json"), "w"), indent=2)
 PY
 "$PY" -m librelane --docker-no-tty --dockerized --run-tag "exp_$TAG" --force-run-dir "$D" \
