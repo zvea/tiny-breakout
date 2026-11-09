@@ -88,7 +88,8 @@ View look(const Game &g, bool find_ball = true) {
   // Score: 4 seven-segment digits in 16-px slots from x 512, read from the middle of each
   // segment (a..g)
   static const int seg_x[7] = {7, 10, 10, 7, 4, 4, 7}, seg_y[7] = {5, 8, 15, 17, 15, 8, 11};
-  static const int digit_segments[10] = {0x7e, 0x30, 0x6d, 0x79, 0x33, 0x5b, 0x5f, 0x70, 0x7f, 0x7b};
+  static const int digit_segments[10] = {0x7e, 0x30, 0x6d, 0x79, 0x33,
+                                         0x5b, 0x5f, 0x70, 0x7f, 0x7b};
   v.score = 0;
   for (int slot = 0; slot < 4 && v.score >= 0; slot++) {
     int segments = 0, digit = -1;
@@ -761,7 +762,7 @@ void demo() {
       g.buttons = LEFT;
       run(g, 1);
       g.buttons = 0;
-      v = settle(g, run(g, 3));  // the new game starts at the next frame update, then its wall fills
+      v = settle(g, run(g, 3));  // a new game at the next frame update, then its wall fills
     }
     CHECK(v.bricks == 48 && v.lives == 2, "then %d bricks, %d spare balls", v.bricks, v.lives);
     CHECK(resting(v), "then the ball is at (%d, %d), paddle %d", v.ball_x, v.ball_y, v.paddle_x);
@@ -932,7 +933,8 @@ void check_colours(const Game &g, const View &v) {
   for (int r = 0; r < 6; r++)
     for (int c = 0; c < 8; c++) {
       int k = at(64 * (c + 1) + 32, 16 * (r + 4) + 8);
-      CHECK(k == ROW_COLOURS[r], "brick %d in row %d is %#x, expected %#x", c, r, k, ROW_COLOURS[r]);
+      CHECK(k == ROW_COLOURS[r], "brick %d in row %d is %#x, expected %#x", c, r, k,
+            ROW_COLOURS[r]);
     }
   for (auto [x, y] : {std::pair{60, 300}, {580, 300}, {300, 28}})
     CHECK(at(x, y) == GREY, "the wall at (%d, %d) is %#x", x, y, at(x, y));
@@ -1182,9 +1184,472 @@ void losing_every_ball() {
   CHECK(resting(v), "ball at (%d, %d)", v.ball_x, v.ball_y);
 }
 
+// ---- Following play frame by frame -------------------------------------------------------
+
+// A brick turns the ball back through the edge it came in by: hit on a side, the ball
+// reverses horizontally; on the top or bottom, vertically. Of the two edges its direction
+// allows, it came in by the one its 8x8 box is less far past (ties: top or bottom). Checked
+// for every brick that goes alone, AHEAD frames later, once the ball has moved on.
+struct BrickBounces {
+  static constexpr int KEEP = 32, AHEAD = 12;  // frames kept, and frames looked ahead
+  View v[KEEP];
+  long t = 0;           // frames seen
+  int checked[2] = {};  // side, top/bottom
+  const View &at(long i) const { return v[i % KEEP]; }
+  void feed(const View &w) {
+    v[t++ % KEEP] = w;
+    if (t - 1 - AHEAD >= 2) check(t - 1 - AHEAD);
+  }
+  void check(long s) {
+    uint64_t gone = at(s - 1).standing & ~at(s).standing;
+    if (gone == 0 || (gone & (gone - 1)) != 0 || at(s).bricks == 48) return;  // one brick
+    int b = __builtin_ctzll(gone), bx = 64 * (b % 8 + 1) + 2, by = 16 * (b / 8 + 4) + 2;
+    // The brick (at bx..bx+61, by..by+13) vanished while frame s or s - 1 was drawn: the
+    // first of them in which the ball's box overlaps it.
+    auto overlaps = [&](const View &w) {
+      return w.ball && w.ball_x < bx + 62 && w.ball_x + 8 > bx && w.ball_y < by + 14 &&
+             w.ball_y + 8 > by;
+    };
+    long c = overlaps(at(s - 1)) ? s - 1 : s;
+    // Some frames have no move: compare with the nearest frames where the ball moved
+    auto moved = [&](long i) {
+      return at(i).ball_x != at(c).ball_x || at(i).ball_y != at(c).ball_y;
+    };
+    long pi = c - 1, ni = c + 1, first = std::max(0L, t - KEEP), last = t - 1;
+    while (pi > first && !moved(pi)) pi--;
+    while (ni < last && !moved(ni)) ni++;
+    const View &p = at(pi), &h = at(c), &n = at(ni);
+    if (!p.ball || !h.ball || !n.ball || !overlaps(h) || !moved(pi) || !moved(ni)) return;
+    if (h.ball_x < 80 || h.ball_x > 560 || h.ball_y < 48) return;  // walls could interfere
+    bool left = h.ball_x < p.ball_x, up = h.ball_y < p.ball_y;
+    int past_side = left ? bx + 62 - h.ball_x : h.ball_x + 8 - bx;
+    int past_flat = up ? by + 14 - h.ball_y : h.ball_y + 8 - by;
+    bool side = past_side < past_flat;
+    bool turned_x = (n.ball_x < h.ball_x) != left, turned_y = (n.ball_y < h.ball_y) != up;
+    CHECK(turned_x == side && turned_y == !side,
+          "brick %d hit from (%d, %d) moving %s-%s at frame %ld: expected a %s bounce, got "
+          "x %s, y %s", b, h.ball_x, h.ball_y, left ? "left" : "right", up ? "up" : "down",
+          frame_no - (last - c), side ? "side" : "top/bottom", turned_x ? "turned" : "kept",
+          turned_y ? "turned" : "kept");
+    checked[side ? 0 : 1]++;
+  }
+};
+
+// The ball speeds up a half step every 4 bricks it clears: vertically it moves 4 px per 4
+// frames at first (1x), then 6 (1.5x), 8 (2x), 10 (2.5x), and 12 px (3x) once it has cleared
+// 16. Every ball starts at 1x, so the count starts again with each ball (and each wall).
+struct SpeedSteps {
+  int prev_y = -1, prev_bricks = -1, base = 48;  // base: the bricks when this ball was launched
+  bool prev_known = false;  // whether prev_y is where the ball was
+  int run_step = -1, run_len = 0, window[4] = {};  // vertical moves of the last 4 frames
+  int checked[5] = {};  // windows checked at 1x, 1.5x, 2x, 2.5x, 3x
+  int cleared(const View &v) const { return base - v.bricks; }
+  void feed(const View &v) {
+    if (resting(v) || v.bricks > prev_bricks) base = v.bricks;  // a new ball, or a new wall
+    // A ball in the top wall (y 28 or 30, at most two moves in) is read as at y 32, where the
+    // search for it starts: its move is known only if it is seen below that in both frames
+    bool known = v.ball && v.ball_y > 32, moved_known = known && prev_known;
+    int dy = std::abs(v.ball_y - prev_y);
+    bool steady = v.bricks == prev_bricks;  // the picture's count lags a brick cleared mid-frame
+    prev_y = v.ball_y;
+    prev_known = known;
+    prev_bricks = v.bricks;
+    if (!moved_known || !steady || resting(v)) {
+      run_len = 0;  // no window across a gap
+      return;
+    }
+    int step = std::min(cleared(v) / 4, 4);  // 0..4: 1x, 1.5x, 2x, 2.5x, 3x
+    if (step != run_step) run_len = 0;
+    run_step = step;
+    window[run_len++ % 4] = dy;
+    if (run_len >= 4) {
+      int sum = window[0] + window[1] + window[2] + window[3];
+      CHECK(sum == 4 + 2 * step, "%d bricks cleared by this ball, moved %d px in 4 frames "
+            "(expected %d)", cleared(v), sum, 4 + 2 * step);
+      checked[step]++;
+    }
+  }
+};
+
+// Where the ball lands on the paddle sets its bounce: left from the left half, right from the
+// right half, at the flatter angle (2 px across per 2 px up) from the last 16 px at each end,
+// else the steeper one (1 px across). The zone is the one under the last ball pixel to touch
+// the paddle, the right end of the ball's bottom row (ball x + 5), in the last frame it
+// touches. Autoplay aims at all four zones in turn.
+struct PaddleZones {
+  View touch, from;
+  int tracking = -1;    // frames since the ball left the paddle
+  int checked[4] = {};  // bounces checked by zone, from the left
+  bool all_seen() const { return checked[0] && checked[1] && checked[2] && checked[3]; }
+  int total() const { return checked[0] + checked[1] + checked[2] + checked[3]; }
+  static bool on_paddle_row(const View &w) {
+    return w.ball && w.ball_y + 7 >= 448 && w.ball_y <= 455;
+  }
+  void feed(const View &prev, const View &v) {
+    bool left_paddle = on_paddle_row(prev) && !on_paddle_row(v) && v.ball && v.ball_y < prev.ball_y;
+    if (tracking < 0 && left_paddle) {
+      touch = prev;  // the last frame the ball touched the paddle: it decided the bounce
+      from = v;
+      tracking = 0;  // follow the ball up for 8 frames
+    } else if (tracking >= 0 && ++tracking == 8) {
+      tracking = -1;
+      int dx = v.ball_x - from.ball_x, dy = from.ball_y - v.ball_y;
+      // Only bounces with the ball's bottom row wholly over the paddle, clear of the walls
+      bool clean = v.ball && dy > 0 && touch.paddle_x <= touch.ball_x + 2 &&
+                   touch.ball_x + 5 < touch.paddle_x + touch.paddle_w && from.ball_x >= 80 &&
+                   from.ball_x <= 552 && v.ball_x >= 80 && v.ball_x <= 552;
+      if (!clean) return;
+      int half = touch.paddle_w / 2, d = touch.ball_x + 5 - (touch.paddle_x + half);
+      bool right = d >= 0, outer = d < 16 - half || d >= half - 16;
+      int zone = right ? (outer ? 3 : 2) : (outer ? 0 : 1);
+      CHECK((dx > 0) == right && std::abs(dx) * (outer ? 1 : 2) == dy,
+            "zone %d (pixel %+d px from the centre of a %d-px paddle): then %+d px across for %d "
+            "up", zone, d, touch.paddle_w, dx, dy);
+      checked[zone]++;
+    }
+  }
+};
+
+// Each brick that goes alone plays its row's note an octave down (red highest), two scale steps
+// higher once the ball is fast (2x, from 8 bricks cleared by this ball), at volume 5. The brick
+// leaves the picture as its note starts, give or take a frame. Also keeps every frame's sound.
+struct BrickNotes {
+  struct Hit {
+    int row, frame, cleared;  // cleared: by this ball, as the picture shows it
+  };
+  std::vector<Sound> heard;
+  std::vector<Hit> pending;
+  int checked[2] = {};  // slow, fast
+  void feed(const View &before, const View &v, const Sound &s, int cleared) {
+    heard.push_back(s);
+    uint64_t gone = before.standing & ~v.standing;
+    if (gone && v.bricks == before.bricks - 1)
+      pending.push_back({__builtin_ctzll(gone) / 8, int(heard.size()) - 1, cleared});
+    while (!pending.empty() && pending.front().frame + 1 < int(heard.size())) {
+      check(pending.front());
+      pending.erase(pending.begin());
+    }
+  }
+  void check(const Hit &h) {
+    static const int scale[8] = {30, 27, 24, 20, 18, 15, 13, 12};  // C5 D5 E5 G5 A5 C6 D6 E6
+    // The picture can lag the game by a brick cleared after the beam passed it: with 7 shown
+    // cleared, this may be the 8th, and either note is right
+    if (h.cleared == 7) return;
+    bool fast = h.cleared >= 8;
+    int n = 2 * scale[std::min(7, 5 - h.row + (fast ? 2 : 0))];
+    bool ok = false;
+    for (int f = h.frame - 1; f <= h.frame + 1; f++)
+      ok |= f >= 0 && f < int(heard.size()) && heard[f].a.half == n && heard[f].a.vol == 5;
+    CHECK(ok, "brick in row %d, %d cleared by this ball: no note of %d lines", h.row, h.cleared,
+          n);
+    checked[fast]++;
+  }
+};
+
+// Plays a game frame by frame, with the checks above following it
+struct Follow {
+  Game &g;
+  View v;
+  BrickBounces bounces;
+  SpeedSteps speeds;
+  PaddleZones zones;
+  BrickNotes notes;
+  int paddle_bounces = 0, dir = 0;  // in the picture: the ball turning up near the paddle
+  View step() {
+    View before = v;
+    v = run(g, 1);
+    bounces.feed(v);
+    speeds.feed(v);
+    zones.feed(before, v);
+    notes.feed(before, v, listen(g), speeds.cleared(v));
+    if (v.ball && before.ball && v.ball_y != before.ball_y) {
+      int d = v.ball_y > before.ball_y ? 1 : -1;
+      paddle_bounces += dir == 1 && d == -1 && before.ball_y >= 400;
+      dir = d;
+    }
+    return v;
+  }
+};
+
+// At each paddle bounce, the thock (a low C dropping over 3 frames: 60, 66, 72 lines) over the
+// thump, once per bounce; at the walls a rumble that fades and does not start over. `heard`
+// holds the frames up to the current one.
+void check_paddle_and_wall_sounds(const std::vector<Sound> &heard, int bounces) {
+  int thocks = 0, rumbles = 0;
+  auto frame_of = [&](size_t f) { return frame_no - int(heard.size() - 1 - f); };
+  for (size_t f = 0; f + 3 < heard.size(); f++) {
+    const Sound &h = heard[f];
+    if (h.a.half == 60 && h.a.vol == 5 && h.b.vol == 4 && !h.b.coarse) {  // a thock over a thump
+      thocks++;
+      size_t k = f + 1;  // once per bounce: straight on to the next notes
+      CHECK(heard[k].a.half == 66 && heard[k].a.vol == 3 && heard[k + 1].a.half == 72 &&
+                heard[k + 1].a.vol == 1,
+            "thock at frame %d: then %d (volume %d), %d (volume %d)", frame_of(f),
+            heard[k].a.half, heard[k].a.vol, heard[k + 1].a.half, heard[k + 1].a.vol);
+    }
+    if (h.b.coarse && h.b.vol == 3) {  // a rumble, once per bounce: it fades
+      rumbles++;
+      CHECK(!(heard[f + 1].b.coarse && heard[f + 1].b.vol == 3),
+            "the rumble at frame %d restarts", frame_of(f));
+    }
+    if (h.b.coarse)
+      CHECK(h.b.vol <= 3, "the rumble at frame %d at volume %d", frame_of(f), h.b.vol);
+  }
+  printf("%zu frames: %d paddle bounces, %d thocks, %d rumbles\n", heard.size(), bounces, thocks,
+         rumbles);
+  CHECK(thocks >= 2 && rumbles >= 1, "%d thocks and %d rumbles", thocks, rumbles);
+  // One thock per bounce (one in the last 3 frames isn't counted as a thock)
+  CHECK(thocks == bounces || thocks == bounces - 1, "%d thocks for %d paddle bounces", thocks,
+        bounces);
+}
+
+// Waits for the launch, then returns whether the ball rises at 1x for `frames` frames:
+// moves of 2 px, 4 px in every 4 frames.
+bool rises_at_1x(Follow &f, int frames) {
+  for (int i = 0; i < 2000 && resting(f.v); i++) f.step();  // wait for the launch
+  int prev_y = f.v.ball_y, dys[64] = {};
+  for (int i = 0; i < frames && i < 64; i++) {
+    f.step();
+    dys[i] = prev_y - f.v.ball_y;
+    prev_y = f.v.ball_y;
+    if ((dys[i] != 0 && dys[i] != 2) ||
+        (i >= 3 && dys[i] + dys[i - 1] + dys[i - 2] + dys[i - 3] != 4)) {
+      printf("  launch frame %d: moved %d px up\n", i, dys[i]);
+      return false;
+    }
+  }
+  return true;
+}
+
+// The opening of a game that autoplay plays from a new game: the start of the long game
+// (below), up to where every check has seen what it needs, all as the game is played:
+// - bounces: each brick hit alone turns the ball by the edge it came in by; at least 1 side
+//   and 5 top/bottom bounces seen (side bounces are rare this early: about 3 in 4000 frames)
+// - speeds: the ball moves at 1x, then 1.5x after 4 bricks
+// - zones: each of the paddle's four zones sets the bounce it should; each zone seen
+// - sound: each brick's note (at least 4 at 1x), the thock over the thump at each paddle
+//   bounce and the rumble at the walls
+// It stops once all of them have (about frame 2400), or at frame 4000.
+void opening() {
+  Game g;
+  power_up(g);
+  g.autoplay = true;
+  part = "opening";
+  Follow f{g};
+  f.v = start_game(g);
+  constexpr int SIDE = 1, FLAT = 5, CAP = 4000;
+  auto enough = [&] {
+    return f.zones.all_seen() && f.speeds.checked[1] > 0 && f.notes.checked[0] >= 4 &&
+           f.bounces.checked[0] >= SIDE && f.bounces.checked[1] >= FLAT;
+  };
+  while (frame_no < CAP && !enough()) f.step();
+  printf("frame %5d: bounces %d side, %d top/bottom; zones %d %d %d %d; 1x/1.5x windows %d/%d; "
+         "%d brick notes\n", frame_no, f.bounces.checked[0], f.bounces.checked[1],
+         f.zones.checked[0], f.zones.checked[1], f.zones.checked[2], f.zones.checked[3],
+         f.speeds.checked[0], f.speeds.checked[1], f.notes.checked[0]);
+  CHECK(f.bounces.checked[0] >= SIDE && f.bounces.checked[1] >= FLAT,
+        "bounces checked: %d side, %d top/bottom (wanted %d and %d)", f.bounces.checked[0],
+        f.bounces.checked[1], SIDE, FLAT);
+  CHECK(f.zones.all_seen(), "bounces by zone: %d %d %d %d", f.zones.checked[0],
+        f.zones.checked[1], f.zones.checked[2], f.zones.checked[3]);
+  CHECK(f.speeds.checked[0] > 0 && f.speeds.checked[1] > 0, "windows checked at 1x/1.5x: %d/%d",
+        f.speeds.checked[0], f.speeds.checked[1]);
+  CHECK(f.notes.checked[0] >= 4, "only %d bricks' notes checked", f.notes.checked[0]);
+  check_paddle_and_wall_sounds(f.notes.heard, f.paddle_bounces);
+}
+
+// The pause after a cleared wall, from its first frame with no bricks: the empty wall stays for
+// about a second, with rainbow bands over the field and the border, and the fanfare (C, E, G,
+// then a held high C), which has ended by the time the next wall comes in. Autoplay leaves the
+// paddle where it is while the ball waits on it: to see that wherever the paddle is (autoplay
+// often has it at a wall by now), it is steered away by hand for the first frames of the pause,
+// then handed back to autoplay. Returns the first frame of the next wall.
+View pause_after_clear(Follow &f) {
+  Game &g = f.g;
+  // The rainbow: the field and the border show the same band colour on a line
+  auto rainbow = [&] {
+    int field = colour(g.fb[300 * 640 + 300]), border = colour(g.fb[300 * 640 + 20]);
+    for (int k : {0x30, 0x38, 0x3c, 0x0c, 0x0b, 0x23, 0x33, 0x31})  // red .. violet, magenta, rose
+      if (field == k && border == k) return true;
+    return false;
+  };
+  int pause = 0, celebrated = 0, held_x = -1;
+  std::vector<int> fanfare;  // voice A's notes in the pause, in order
+  View v = f.v;
+  for (; pause < 100 && v.bricks == 0; pause++) {
+    g.autoplay = pause >= 8;
+    g.buttons = pause < 8 ? LEFT : 0;
+    if (pause == 10) held_x = v.paddle_x;
+    // Only while the rainbow shows: the frame the next wall fills in has no bricks either, but
+    // play has resumed (autoplay launches the ball and steers)
+    if (pause > 10 && rainbow())
+      CHECK(v.paddle_x == held_x, "pause frame %d: with autoplay, the paddle moved from %d to %d",
+            pause, held_x, v.paddle_x);
+    v = f.step();
+    celebrated += rainbow();
+    Voice a = hear(g, 1);
+    if (a.vol && (fanfare.empty() || fanfare.back() != a.half)) fanfare.push_back(a.half);
+  }
+  printf("frame %5d: empty wall for %d frames, rainbow in %d\n", frame_no, pause, celebrated);
+  CHECK(pause >= 60 && pause <= 68, "empty wall for %d frames (expected about 64)", pause);
+  CHECK(celebrated >= pause - 8, "rainbow in only %d of the pause's %d frames", celebrated, pause);
+  CHECK(!rainbow(), "the rainbow stays after the pause");
+  CHECK(fanfare == std::vector<int>({30, 24, 20, 15}), "fanfare of %zu notes, the last %d",
+        fanfare.size(), fanfare.empty() ? 0 : fanfare.back());
+  Voice after = hear(g, 1);
+  CHECK(after.vol == 0, "the new wall comes in with a note of %d lines at volume %d", after.half,
+        after.vol);
+  return v;
+}
+
+// Plays until the wall is cleared, at most `frames` frames; returns whether it was
+void clear_the_wall(Follow &f, int frames) {
+  for (int end = frame_no + frames; frame_no < end && f.v.bricks > 0;) f.step();
+  CHECK(f.v.bricks == 0, "wall not cleared (%d bricks left)", f.v.bricks);
+}
+
+// Holds `buttons` (and FIRE whenever the ball rests on the paddle, if `fire`) until a ball is
+// lost, at most `frames` frames
+void lose_a_ball(Follow &f, uint8_t buttons, bool fire, int frames) {
+  int lives = f.v.lives;
+  for (int i = 0; i < frames && f.v.lives == lives; i++) {
+    f.g.buttons = buttons | (fire && resting(f.v) ? FIRE : 0);
+    f.step();
+  }
+  f.g.buttons = 0;
+  CHECK(f.v.lives == lives - 1, "no ball lost in %d frames (%d spare balls)", frames, f.v.lives);
+}
+
+// A long game, from a new game to the third wall and back to a new game:
+// - level 1: autoplay plays the opening (above) on, and clears the wall without losing a ball;
+//   the score (10 per brick) is right at every brick, the ball takes all five speed steps, and
+//   each zone of the paddle is seen, 16 bounces in all. Bounces, speeds, zones and brick notes
+//   (two steps higher once the ball is fast) are checked on every frame to the end of the game.
+// - the pause after the wall (see pause_after_clear)
+// - level 2: one of the pattern walls, with an 80-px paddle; no third spare ball, as autoplay
+//   lost none; the ball starts at 1x after the 3x it had. A ball lost with the paddle held at
+//   the left wall: the next one starts at 1x again, and the paddle stops at both walls. Then
+//   autoplay clears this wall too.
+// - the pause, and level 3: another pattern wall, a spare ball back for the one lost, and a
+//   64-px paddle that stops at both walls
+// - game over and a new game from it: the paddle is 96 px again, centred, the ball resting on it
+void long_game() {
+  Game g;
+  power_up(g);
+  g.autoplay = true;
+  Follow f{g};
+  part = "level 1";
+  View v = f.v = start_game(g);
+  int prev_bricks = 48, lives = 2;
+  while (frame_no < 60000 && v.bricks > 0) {
+    v = f.step();
+    CHECK(v.lives == lives, "autoplay lost a ball: %d spare balls left", v.lives);
+    lives = v.lives;
+    // The score is drawn above the wall: compare once the count is steady
+    if (v.bricks == prev_bricks && v.bricks > 0)
+      CHECK(v.score == 10 * (48 - v.bricks), "score %d with %d bricks cleared", v.score,
+            48 - v.bricks);
+    prev_bricks = v.bricks;
+    if (frame_no % 2000 == 0) printf("frame %5d: %2d bricks\n", frame_no, v.bricks);
+  }
+  printf("frame %5d: level 1 cleared\n", frame_no);
+  CHECK(v.bricks == 0, "level not cleared (%d bricks left)", v.bricks);
+  CHECK(f.zones.all_seen() && f.zones.total() >= 16, "bounces by zone: %d %d %d %d",
+        f.zones.checked[0], f.zones.checked[1], f.zones.checked[2], f.zones.checked[3]);
+  const int *sc = f.speeds.checked;
+  printf("frames checked at 1x/1.5x/2x/2.5x/3x: %d/%d/%d/%d/%d\n", sc[0], sc[1], sc[2], sc[3],
+         sc[4]);
+  for (int i = 0; i < 5; i++) CHECK(sc[i] > 0, "speed step %d was never reached", i);
+
+  part = "pause after level 1";
+  v = pause_after_clear(f);
+  part = "level 2";
+  CHECK(is_pattern_wall(v.standing), "the wall (%d bricks, %016llx) is not a pattern wall",
+        v.bricks, (unsigned long long)v.standing);
+  CHECK(v.lives == 2, "%d spare balls (expected no more than 2)", v.lives);
+  CHECK(v.paddle_w == 80, "paddle %d px wide (expected 80)", v.paddle_w);
+  CHECK(v.score == 480, "score %d after clearing level 1", v.score);
+  CHECK(rises_at_1x(f, 16), "the ball did not start at 1x");
+  g.autoplay = false;
+  lose_a_ball(f, LEFT, false, 10000);
+  CHECK(f.v.paddle_x == 64 && f.v.paddle_w == 80, "left stop at x %d (%d px wide)", f.v.paddle_x,
+        f.v.paddle_w);
+  for (int i = 0; i < 100 && !resting(f.v); i++) f.step();
+  g.buttons = FIRE;
+  f.step();
+  g.buttons = 0;
+  CHECK(rises_at_1x(f, 16), "the ball after a loss did not start at 1x");
+  g.buttons = RIGHT;  // from x 64, 2 px a frame takes 216 frames to x 496; the ball is high
+  for (int i = 0; i < 240; i++) f.step();
+  g.buttons = 0;
+  CHECK(f.v.paddle_x == 496 && f.v.paddle_w == 80, "right stop at x %d (%d px wide)",
+        f.v.paddle_x, f.v.paddle_w);
+  g.autoplay = true;
+  clear_the_wall(f, 60000);
+  printf("frame %5d: level 2 cleared\n", frame_no);
+  int lives_at_clear = f.v.lives;
+
+  part = "pause after level 2";
+  v = pause_after_clear(f);
+  part = "level 3";
+  CHECK(is_pattern_wall(v.standing), "the wall (%d bricks, %016llx) is not a pattern wall",
+        v.bricks, (unsigned long long)v.standing);
+  CHECK(v.lives == lives_at_clear + 1, "%d spare balls after the level (expected one back)",
+        v.lives);
+  CHECK(v.paddle_w == 64, "paddle %d px wide (expected 64)", v.paddle_w);
+  CHECK(rises_at_1x(f, 16), "the ball did not start at 1x");
+  g.autoplay = false;
+  lose_a_ball(f, LEFT, false, 10000);
+  CHECK(f.v.paddle_x == 64 && f.v.paddle_w == 64, "left stop at x %d (%d px wide)", f.v.paddle_x,
+        f.v.paddle_w);
+  for (int i = 0; i < 100 && !resting(f.v); i++) f.step();
+  g.buttons = FIRE;
+  f.step();
+  g.buttons = RIGHT;  // from x 64, 2 px a frame takes 224 frames to x 512
+  for (int i = 0; i < 250; i++) f.step();
+  g.buttons = 0;
+  CHECK(f.v.paddle_x == 512 && f.v.paddle_w == 64, "right stop at x %d (%d px wide)",
+        f.v.paddle_x, f.v.paddle_w);
+
+  // Lose the remaining balls, then restart: the new game's paddle is 96 px again, centred
+  part = "game over";
+  int missing = 0;  // game over: no spare balls, and the ball gone for more than a frame
+  for (int i = 0; i < 20000 && !(f.v.lives == 0 && missing == 3); i++) {
+    g.buttons = LEFT | (resting(f.v) ? FIRE : 0);
+    f.step();
+    missing = f.v.ball ? 0 : missing + 1;
+  }
+  CHECK(f.v.lives == 0 && missing == 3, "no game over (%d spare balls)", f.v.lives);
+  g.buttons = 0;
+  for (int i = 0; i < 40; i++) f.step();  // the curtain
+  part = "restart";
+  g.buttons = FIRE;
+  f.step();
+  g.buttons = 0;
+  f.step();
+  f.step();
+  v = settle(g, f.v);
+  CHECK(v.paddle_w == 96 && v.paddle_x == 272 && resting(v),
+        "paddle %d px at x %d, ball at (%d, %d)", v.paddle_w, v.paddle_x, v.ball_x, v.ball_y);
+
+  part = "whole game";
+  printf("bounces checked: %d side, %d top/bottom; brick notes: %d slow, %d fast; bounces by "
+         "zone: %d %d %d %d\n", f.bounces.checked[0], f.bounces.checked[1], f.notes.checked[0],
+         f.notes.checked[1], f.zones.checked[0], f.zones.checked[1], f.zones.checked[2],
+         f.zones.checked[3]);
+  CHECK(f.bounces.checked[0] > 0 && f.bounces.checked[1] > 0, "did not see both kinds of bounce");
+  CHECK(f.notes.checked[0] > 0 && f.notes.checked[1] > 0, "brick notes checked: %d slow, %d fast",
+        f.notes.checked[0], f.notes.checked[1]);
+}
+
+// Two tiers: the cheap one runs all the time, the milestone one (the long game) only at
+// milestones. test_scenarios.py reads each scenario's tier from this table.
+constexpr bool CHEAP = false, MILESTONE = true;
+
 struct Scenario {
   const char *name;
   void (*run)();
+  bool milestone = CHEAP;
 };
 
 const Scenario scenarios[] = {
@@ -1204,11 +1669,14 @@ const Scenario scenarios[] = {
     {"sound", sound},
     {"controls", controls},
     {"losing_every_ball", losing_every_ball},
+    {"opening", opening},
+    {"long_game", long_game, MILESTONE},
 };
 
 }  // namespace
 
 int main(int argc, char **argv) {
+  setvbuf(stdout, nullptr, _IOLBF, 0);  // line by line, to follow a long scenario in a log
   if (argc != 2) {
     fprintf(stderr, "usage: %s <scenario> | list\n", argv[0]);
     return 2;
