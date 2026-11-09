@@ -160,13 +160,17 @@ requestAnimationFrame(paint);
 
 async function stream(){
  for(;;){
+  // A stream silent for 5 s (a half-open SSH forward, say) is dropped and retried
+  const abort=new AbortController();let heard=performance.now();
+  const watchdog=setInterval(()=>{if(performance.now()-heard>5000)abort.abort()},1000);
   try{
    sendKeys();
-   const r=await fetch('/stream',{cache:'no-store'});
+   const r=await fetch('/stream',{cache:'no-store',signal:abort.signal});
    const rd=r.body.getReader();
-   let buf=new Uint8Array(0);
+   let buf=new Uint8Array(0);n=0;t0=performance.now();  // fps from this connection on
    read: for(;;){
     const {value,done}=await rd.read();if(done)break;
+    heard=performance.now();
     const nb=new Uint8Array(buf.length+value.length);nb.set(buf);nb.set(value,buf.length);buf=nb;
     while(buf.length>=8){
      const len=(buf[0]|buf[1]<<8|buf[2]<<16|buf[3]<<24)>>>0,ns=(buf[4]|buf[5]<<8|buf[6]<<16|buf[7]<<24)>>>0;
@@ -182,6 +186,7 @@ async function stream(){
     if(t-t0>1000){const fps=n*1000/(t-t0);line=`${fps.toFixed(1)} fps · running at ${Math.round(fps/60*100)}% of real speed${auto?' · AUTOPLAY':''}${soundOn?` · sound buffer ${Math.round(buffered/48)} ms`:''}`;showStatus();n=0;t0=t}
    }
   }catch(e){}
+  clearInterval(watchdog);
   if(taken){line='taken over by another tab – reload to watch here';showStatus();return}
   line='disconnected – retrying…';showStatus();
   await new Promise(r=>setTimeout(r,1000));
