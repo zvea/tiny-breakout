@@ -12,7 +12,7 @@ set -euo pipefail
 . "$(dirname "$0")/common.sh"
 [ $# -ge 1 ] || { sed -n '2,8p' "$0"; exit 2; }
 RUN=$(cd "$1" && pwd)
-python3 - "$RUN" "$ROOT/tools/warnings.ref" "${2:-}" <<'PY'
+"$PY" - "$RUN" "$ROOT/tools/warnings.ref" "${2:-}" <<'PY'
 import glob, json, re, sys
 
 run, ref_path, mode = sys.argv[1], sys.argv[2], sys.argv[3]

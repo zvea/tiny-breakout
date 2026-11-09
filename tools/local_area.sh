@@ -23,7 +23,7 @@ for side in rev tree; do
 done
 for side in rev tree; do for i in 0 1 2 3 4; do echo "$side $i"; done; done |
   xargs -P 4 -n 2 bash -c 'cd "$0" && "$1" -q -p "read_verilog -sv $2.subs.v $2.top$3.sv; synth -top tt_um_tiny_breakout -flatten; dfflibmap -liberty hd.lib; abc -liberty hd.lib; opt_clean; tee -q -o $2.stat$3.txt stat -liberty hd.lib" > /dev/null 2>&1 || echo "synthesis failed: $2 $3" >&2' "$W" "$YOSYS"
-python3 - "$W" "$REV" <<'PY'
+"$PY" - "$W" "$REV" <<'PY'
 import re, sys, glob
 w, rev = sys.argv[1], sys.argv[2]
 def areas(side):

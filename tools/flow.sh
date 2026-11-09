@@ -21,14 +21,13 @@ case $MODE in
 esac
 cd "$ROOT"
 [ -f src/user_config.json ] || { echo "missing src/user_config.json: run ./tt/tt_tool.py --create-user-config"; exit 1; }
-source .venv/bin/activate
 D=runs/exp_$TAG; C=.exp_src_$TAG
 rm -rf "./$D" "./$C"; mkdir -p "$D" "$C"
 trap 'rm -rf -- "./$C"' EXIT  # the source copy goes even if interrupted
 # The sources, and the cell list config.json gives synthesis (dir::): SRC_DIR's, else src's
 CELLS="$SRC/synth_excluded.cells"; [ -f "$CELLS" ] || CELLS="$ROOT/src/synth_excluded.cells"
 cp "$SRC"/*.sv "$CELLS" "$C/"
-python - "$C" <<'PY'
+"$PY" - "$C" <<'PY'
 import json, os, sys
 c = sys.argv[1]
 cfg = json.load(open("src/config.json")); cfg.update(json.load(open("src/user_config.json")))
@@ -36,14 +35,14 @@ cfg.update(json.loads(os.environ.get("EXTRA_CFG", "{}")))
 cfg["VERILOG_FILES"] = [f for f in cfg["VERILOG_FILES"] if os.path.exists(os.path.join(c, f.replace("dir::", "")))]
 json.dump(cfg, open(os.path.join(c, "config_merged.json"), "w"), indent=2)
 PY
-python -m librelane --docker-no-tty --dockerized --run-tag "exp_$TAG" --force-run-dir "$D" \
+"$PY" -m librelane --docker-no-tty --dockerized --run-tag "exp_$TAG" --force-run-dir "$D" \
   "${TO[@]}" "$C/config_merged.json" > "$D.log" 2>&1 || { echo "$TAG: FLOW FAILED (see $D.log)"; tail -5 "$D.log"; exit 1; }
 # n/a if the log lacks the line, so the rest of the report still prints
 UTIL=$(grep -hE '^\[INFO GPL-0019\] (Util|Utilization):' "$D"/*-openroad-globalplacement/openroad-globalplacement.log | head -1 | sed -E 's/.*: *//' || true)
 UTIL=${UTIL:-n/a}
 echo "$TAG: TT utilisation $UTIL"
 if [ "$MODE" = harden ]; then
-  python3 - "$D/final/metrics.json" <<'PY'
+  "$PY" - "$D/final/metrics.json" <<'PY'
 import json, sys
 m = json.load(open(sys.argv[1]))
 for k in ["route__drc_errors", "magic__drc_error__count", "design__lvs_error__count",

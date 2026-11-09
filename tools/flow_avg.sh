@@ -23,4 +23,4 @@ for i in 0 1 2; do
   [ -n "$v" ] || { echo "$NAME: ordering $i gave no utilisation:"; echo "$out"; exit 1; }
   vals+=("$v")
 done
-python3 -c 'import sys; v=[float(x) for x in sys.argv[2:]]; print(f"{sys.argv[1]}: " + "  ".join(f"{x:.2f}" for x in v) + f"   mean {sum(v)/len(v):.2f}")' "$NAME" "${vals[@]}"
+"$PY" -c 'import sys; v=[float(x) for x in sys.argv[2:]]; print(f"{sys.argv[1]}: " + "  ".join(f"{x:.2f}" for x in v) + f"   mean {sum(v)/len(v):.2f}")' "$NAME" "${vals[@]}"

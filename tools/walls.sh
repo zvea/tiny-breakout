@@ -46,7 +46,7 @@ CPP
   "$SRC/wall_pattern.sv" "$W/main.cpp" > "$W/build.log" 2>&1 ||
   { echo "Verilator failed: see $W/build.log"; tail -5 "$W/build.log"; exit 1; }
 "$W/obj/Vwall_pattern" > "$W/walls.txt"
-"$ROOT/.venv/bin/python" - "$W/walls.txt" "$PNG" <<'PY'
+"$PY" - "$W/walls.txt" "$PNG" <<'PY'
 import sys
 from collections import defaultdict
 

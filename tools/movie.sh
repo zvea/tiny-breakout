@@ -41,7 +41,7 @@ verilator --cc --exe --build -O3 -Wno-fatal --x-assign fast --x-initial fast \
 RAW=(-f s16le -ar 48000 -ac 1 -i "$W/audio.raw")
 PEAK=$(ffmpeg -hide_banner "${RAW[@]}" -af volumedetect -f null - 2>&1 |
   sed -n 's/.*max_volume: \(-*[0-9.]*\) dB.*/\1/p')
-GAIN=$(python3 -c "print(-1 - ${PEAK:-0})")
+GAIN=$("$PY" -c "print(-1 - ${PEAK:-0})")
 ffmpeg -hide_banner -loglevel error -y -i "$W/video.mp4" "${RAW[@]}" -af "volume=${GAIN}dB" \
   -c:v copy -c:a aac -b:a 96k -shortest -movflags +faststart "$OUT"
 SECS=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUT" | cut -d. -f1)

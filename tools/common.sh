@@ -1,10 +1,11 @@
 #!/bin/bash
 # Shared by the scripts in tools/: the repo root, the design's sources (in info.yaml order),
-# the sky130 cell library and the local yosys.
+# the sky130 cell library, and the .venv's Python and yosys.
 #
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+PY="$ROOT/.venv/bin/python"  # the project's .venv, for every script
 YOSYS="$ROOT/.venv/bin/yowasp-yosys"
 
 # sources [REV]: those of git revision REV (its own info.yaml), or of the working tree
@@ -30,7 +31,7 @@ liberty() {
 # results shift with declaration order alone, so area comparisons average over these.
 # Usage: orderings TOP_FILE N OUT_PREFIX  ->  OUT_PREFIX0.sv .. OUT_PREFIX{N-1}.sv
 orderings() {
-  python3 - "$1" "$2" "$3" <<'PY'
+  "$PY" - "$1" "$2" "$3" <<'PY'
 import re, sys
 top, n, out = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 s = open(top).read()
