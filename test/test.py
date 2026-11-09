@@ -63,18 +63,23 @@ def colour(dut):
     return rgb
 
 
-def now_ns():
-    return get_sim_time(unit="ns")
+def now_ps():
+    """The simulation time, as a whole number of ps, for exact sums."""
+    return round(get_sim_time(unit="ps"))
+
+
+def clocks_since(t_ps):
+    return round((now_ps() - t_ps) / (CLOCK_NS * 1000))
 
 
 async def vsync_start(dut):
     """Wait for the next vsync pulse to begin, and return its time, for pixel()."""
     await FallingEdge(dut.vsync_n)
-    return now_ns()
+    return now_ps()
 
 
-async def pixel(dut, vsync_ns, x, y):
-    """The colour of pixel (x, y) in the frame after the vsync pulse that began at vsync_ns.
+async def pixel(dut, vsync_ps, x, y):
+    """The colour of pixel (x, y) in the frame after the vsync pulse that began at vsync_ps.
 
     uo_out is registered: it shows the pixel at the beam, and the sync pulses with it, for the
     clock after the beam is there. So vsync falls as pixel (0, 490) shows, and pixel (x, y) of
@@ -83,13 +88,13 @@ async def pixel(dut, vsync_ns, x, y):
     netlist's output delays. The calls of a frame must go in scan order.
     """
     clocks = (FRAME - VSYNC_LINE + y) * LINE + x
-    await Timer(vsync_ns + clocks * CLOCK_NS + CLOCK_NS // 2 - now_ns(), unit="ns")
+    await Timer(vsync_ps + (clocks * CLOCK_NS + CLOCK_NS // 2) * 1000 - now_ps(), unit="ps")
     return colour(dut)
 
 
-async def line_colours(dut, vsync_ns, y):
+async def line_colours(dut, vsync_ps, y):
     """The colours of line y's pixels, as pixel() reads them: a wait per pixel."""
-    return [await pixel(dut, vsync_ns, x, y) for x in range(WIDTH)]
+    return [await pixel(dut, vsync_ps, x, y) for x in range(WIDTH)]
 
 
 def run_of(colours, rgb):
@@ -106,22 +111,64 @@ def run_of(colours, rgb):
 
 @cocotb.test()
 async def test_vga_timing(dut):
-    """hsync: 96-cycle low pulse every 800 cycles."""
+    """hsync: a 96-clock low pulse every 800 clocks. (test_picture checks vsync.)"""
     await reset(dut)
-    # find a falling edge of hsync
-    while bit(dut, HSYNC) == 1:
-        await RisingEdge(dut.clk)
-    low = 0
-    while bit(dut, HSYNC) == 0:
-        low += 1
-        await RisingEdge(dut.clk)
-    period = low
-    while bit(dut, HSYNC) == 1:
-        period += 1
-        await RisingEdge(dut.clk)
-    dut._log.info(f"hsync low={low} period={period}")
+    await FallingEdge(dut.hsync_n)
+    start = now_ps()
+    await RisingEdge(dut.hsync_n)
+    low = clocks_since(start)
+    await FallingEdge(dut.hsync_n)
+    period = clocks_since(start)
+    dut._log.info(f"hsync low for {low} of {period} clocks")
     assert low == 96
-    assert period == 800
+    assert period == LINE
+
+
+# Pixels of the demo's second frame, the first to show the bricks, in scan order: what, x, y,
+# colour. Each is in the middle of its object, at least 2 px from any other colour on its line,
+# so a clock's offset couldn't change it.
+PICTURE = [
+    ("the score's last 0, top stroke", 568, 5, WHITE),  # x 564..571, y 5..6
+    ("the first spare ball", 68, 12, WHITE),  # x 64..71, y 8..15, 8 px wide on y 10..13
+    ("the second spare ball", 84, 12, WHITE),  # x 80..87
+    ("the status line", 320, 12, BLACK),  # y 0..23
+    ("inside the score's last 0", 567, 12, BLACK),  # strokes at x 564..565 and 570..571
+    ("the top wall", 320, 28, GREY),  # y 24..31
+    ("a brick in row 0", 288, 72, RED),  # column 3: x 258..319, y 66..79
+    ("a brick in row 5", 480, 152, VIOLET),  # column 6: x 450..511, y 146..159
+    ("the border, left", 28, 240, BLACK),  # x 0..55
+    ("the left wall", 60, 240, GREY),  # x 56..63
+    ("the field", 320, 240, NAVY),
+    ("the right wall", 580, 240, GREY),  # x 576..583
+    ("the border, right", 612, 240, BLACK),  # x 584..639
+    ("the paddle", 320, 452, PALE_CYAN),  # x 272..367 at the start, y 448..455
+]
+
+
+@cocotb.test()
+async def test_picture(dut):
+    """vsync: a 2-line low pulse every 525 lines; and pixels of the demo's picture.
+
+    The wall is built during the first frame after reset, and shown from the second, so the
+    pixels are read in that, between the vsync pulses timed. The ball, launched by the demo
+    from the paddle's middle, is still near it, far from them all; the paddle has moved 4 px at
+    most. (pixel() explains the timing.)
+    """
+    await reset(dut)
+    vsync = await vsync_start(dut)
+    await RisingEdge(dut.vsync_n)
+    low = clocks_since(vsync)
+    wrong = []
+    for what, x, y, want in PICTURE:
+        got = await pixel(dut, vsync, x, y)
+        if got != want:
+            wrong.append(f"{what} at ({x}, {y}) is {got:06b}, not {want:06b}")
+    await FallingEdge(dut.vsync_n)
+    period = clocks_since(vsync)
+    dut._log.info(f"vsync low for {low / LINE:g} of {period / LINE:g} lines")
+    assert low == 2 * LINE
+    assert period == FRAME * LINE
+    assert not wrong, "; ".join(wrong)
 
 
 async def send_gamepad(dut, buttons12):
