@@ -34,7 +34,20 @@ const c=document.getElementById('c'),ctx=c.getContext('2d'),img=ctx.createImageD
 const lv=[0,85,170,255];
 let keys=0,auto=0,n=0,t0=performance.now(),latest=null,taken=false;
 
-function sendKeys(extra=0){if(!taken)fetch(`/keys?k=${keys|(auto<<3)|extra}`).catch(()=>{})}
+// Key changes go one request at a time, so they reach the server in order; changes made while
+// one is on its way are sent as one, the newest state (keeping a reset, bit 16, until sent).
+let keyBusy=false,keyNext=null;
+function sendKeys(extra=0){
+ if(taken)return;
+ keyNext=keys|(auto<<3)|extra|(keyNext&16);
+ if(!keyBusy)sendNextKeys();
+}
+async function sendNextKeys(){
+ keyBusy=true;
+ while(keyNext!==null){const k=keyNext;keyNext=null;
+  try{await fetch(`/keys?k=${k}`,{signal:AbortSignal.timeout(2000)})}catch(e){}}
+ keyBusy=false;
+}
 const map={ArrowLeft:1,ArrowRight:2,' ':4};
 addEventListener('keydown',e=>{
  if(map[e.key]){e.preventDefault();if(!(keys&map[e.key])){keys|=map[e.key];sendKeys()}}
