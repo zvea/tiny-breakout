@@ -165,13 +165,15 @@ async def a_new_game_plays_its_call_on_both_voices(dut):
 
 
 @cocotb.test()
-async def walls_and_the_paddle_thump_on_voice_b_without_cutting_voice_a(dut):
+async def a_wall_rumbles_under_a_brick_and_the_paddle_takes_both_voices(dut):
+    """A wall starts the rumble on voice B and leaves voice A's brick playing; the paddle
+    replaces both, with the thock on voice A and the thump, from volume 4, on voice B."""
     await start(dut)
     await frame(dut, "brick", row=2)
     await frame(dut, "wall")
     assert await read(dut, "a_kind", "b_kind", "b_vol") == [A_BRICK, B_RUMBLE, 3]
     await frame(dut, "paddle")
-    assert await read(dut, "a_kind", "b_kind") == [A_PADDLE, B_THUMP]
+    assert await read(dut, "a_kind", "b_kind", "b_vol") == [A_PADDLE, B_THUMP, 4]
 
 
 @cocotb.test()
