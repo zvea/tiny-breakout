@@ -38,10 +38,14 @@ def sources() -> list[Path]:
 
 
 def scenarios() -> list[tuple[str, bool]]:
-    """Each scenario's name, and whether it is in the milestone tier."""
+    """Each scenario's name, and whether it is in the milestone tier, from the table at the end
+    of scenarios.cpp (only its lines: tables of other things elsewhere look the same)."""
+    text = (HERE / "scenarios.cpp").read_text()
+    table = text[text.index("const Scenario scenarios[] = {"):]
+    table = table[: table.index("\n};")]
     return [
         (line.split('"')[1], "MILESTONE" in line)
-        for line in (HERE / "scenarios.cpp").read_text().splitlines()
+        for line in table.splitlines()
         if line.strip().startswith('{"')
     ]
 
