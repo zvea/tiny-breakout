@@ -5,8 +5,8 @@ Three layers, from module to whole game:
 | Tests | What they check | Command | Time |
 |---|---|---|---|
 | [unit/](unit) | Each module on its own, through its ports (cocotb) | `pytest test/unit` | ~70 s (Verilator), ~5.5 min (`SIM=icarus`) |
-| [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~1.5 min |
-| [system/](system) | 14 gameplay scenarios, judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~13 min in parallel, ~40 min one after another |
+| [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~4 min |
+| [system/](system) | 14 gameplay scenarios, judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~20 min in parallel, set by the longest scenarios |
 
 CI ([.github/workflows/test.yaml](../.github/workflows/test.yaml)) lints the design with
 Verilator 5 and runs `test.py` and the unit tests on Icarus, both from Ubuntu 24.04's packages
@@ -74,8 +74,8 @@ sources its module needs.
 
 Harden the design (`tools/flow.sh harden TAG`, see [tools/README.md](../tools/README.md)), then
 copy the netlist from the run and run `test.py` against it. The Makefile takes the cell models
-from `$PDK_ROOT/sky130A`, so `PDK_ROOT` must be the directory that holds `sky130A`; under ciel that is
-`~/.ciel/ciel/sky130/versions/HASH`, not `~/.ciel` itself.
+from `$PDK_ROOT/sky130A`, so `PDK_ROOT` must be the directory that holds `sky130A`; under ciel
+that is `~/.ciel/ciel/sky130/versions/HASH`, not `~/.ciel` itself.
 
 ```sh
 cp runs/exp_TAG/final/pnl/tt_um_tiny_breakout.pnl.v test/gate_level_netlist.v
