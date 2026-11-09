@@ -128,8 +128,8 @@ module tt_um_tiny_breakout (
   // Ball direction and speed, stored as sign and magnitude because that is how the game
   // changes them: a wall sets one direction (the side walls the horizontal one, the top wall
   // the vertical one), a brick flips one (by the edge it was hit on), and the paddle sets
-  // both and the angle. (Two's-complement velocities need negations and absolute values
-  // instead: measured at +464 um2 in November 2026, 6% of the logic then.)
+  // both and the angle. (Two's-complement velocities would need negations and absolute
+  // values instead, which cost more logic.)
   logic ball_left;   // moving left (else right)
   logic ball_flat;   // 2 px per move horizontally (else 1): 45 degrees, else about 63
   logic ball_up;     // moving up (else down); 2 px per move vertically
