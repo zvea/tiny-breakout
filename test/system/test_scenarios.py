@@ -2,8 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 """Builds the black-box scenario tests (scenarios.cpp) with Verilator and runs each one.
 
-    pytest test/system            # one after another
-    pytest test/system -n auto    # in parallel (pytest-xdist): the scenarios are independent
+The scenarios come in two tiers (see the table at the end of scenarios.cpp):
+
+- cheap: controls, demo, losing_every_ball and opening, a few minutes in all; run all the time
+- milestone: long_game, a whole game over three walls, about half an hour; run at milestones
+
+    pytest test/system -n auto               # the cheap tier, in parallel (pytest-xdist)
+    pytest test/system -n auto --milestone   # both tiers
+    pytest test/system -m milestone          # the long game alone
+    pytest test/system                       # the cheap tier, one after another
 
 The design's source files are read from info.yaml, so this stays in step with the flow.
 Needs Verilator 4.x: sim/play/sim.h uses its one-eval-per-clock trick.
@@ -30,9 +37,10 @@ def sources() -> list[Path]:
     return [ROOT / "src" / f for f in info["project"]["source_files"]]
 
 
-def scenario_names() -> list[str]:
+def scenarios() -> list[tuple[str, bool]]:
+    """Each scenario's name, and whether it is in the milestone tier."""
     return [
-        line.split('"')[1]
+        (line.split('"')[1], "MILESTONE" in line)
         for line in (HERE / "scenarios.cpp").read_text().splitlines()
         if line.strip().startswith('{"')
     ]
@@ -70,8 +78,12 @@ def _build() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("name", scenario_names())
+@pytest.mark.parametrize(
+    "name",
+    [pytest.param(name, marks=pytest.mark.milestone) if milestone else name
+     for name, milestone in scenarios()],
+)  # fmt: skip
 def test_scenario(scenarios_binary: Path, name: str):
-    result = subprocess.run([scenarios_binary, name], capture_output=True, text=True, timeout=1800)
+    result = subprocess.run([scenarios_binary, name], capture_output=True, text=True, timeout=7200)
     print(result.stdout)
     assert result.returncode == 0, result.stdout + result.stderr
