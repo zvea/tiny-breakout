@@ -734,6 +734,10 @@ struct BrickBounces {
   void check(long s) {
     uint64_t gone = at(s - 1).standing & ~at(s).standing;
     if (gone == 0 || (gone & (gone - 1)) != 0 || at(s).bricks == 48) return;  // one brick
+    // and no other in the frames either side: two bricks hit in one frame (both bounces count)
+    // can vanish from the picture a frame apart, one drawn before the ball reached it
+    if (s >= 2 && (at(s - 2).standing & ~at(s - 1).standing)) return;
+    if (at(s).standing & ~at(s + 1).standing & ~gone) return;
     int b = __builtin_ctzll(gone), bx = 64 * (b % 8 + 1) + 2, by = 16 * (b / 8 + 4) + 2;
     // The brick (at bx..bx+61, by..by+13) vanished while frame s or s - 1 was drawn: the
     // first of them in which the ball's box overlaps it.
@@ -773,13 +777,17 @@ struct BrickBounces {
 // frames at first (1x), then 6 (1.5x), 8 (2x), 10 (2.5x), and 12 px (3x) once it has cleared
 // 16. Every ball starts at 1x, so the count starts again with each ball (and each wall).
 struct SpeedSteps {
-  int prev_y = -1, prev_bricks = -1, base = 48;  // base: the bricks when this ball was launched
+  int prev_y = -1, prev_bricks = -1, prev_lives = -1;
+  int base = 48;  // the bricks when this ball started
   bool prev_known = false;  // whether prev_y is where the ball was
   int run_step = -1, run_len = 0, window[4] = {};  // vertical moves of the last 4 frames
   int checked[5] = {};  // windows checked at 1x, 1.5x, 2x, 2.5x, 3x
   int cleared(const View &v) const { return base - v.bricks; }
   void feed(const View &v) {
-    if (resting(v) || v.bricks > prev_bricks) base = v.bricks;  // a new ball, or a new wall
+    // A new ball (a spare one used: a marker fewer), or a new wall (and a new game), restarts
+    // the count. Not a ball seen resting: one bouncing off the paddle's middle can look so.
+    if (v.lives < prev_lives || v.bricks > prev_bricks) base = v.bricks;
+    prev_lives = v.lives;
     // A ball in the top wall (y 28 or 30, at most two moves in) is read as at y 32, where the
     // search for it starts: its move is known only if it is seen below that in both frames
     bool known = v.ball && v.ball_y > 32, moved_known = known && prev_known;
@@ -854,13 +862,20 @@ struct BrickNotes {
   std::vector<Sound> heard;
   std::vector<Hit> pending;
   int checked[2] = {};  // slow, fast
+  std::vector<int> removals;  // frames in which bricks vanished from the picture
   void feed(const View &before, const View &v, const Sound &s, int cleared) {
     heard.push_back(s);
     uint64_t gone = before.standing & ~v.standing;
+    if (gone) removals.push_back(int(heard.size()) - 1);
     if (gone && v.bricks == before.bricks - 1)
       pending.push_back({__builtin_ctzll(gone) / 8, int(heard.size()) - 1, cleared});
     while (!pending.empty() && pending.front().frame + 1 < int(heard.size())) {
-      check(pending.front());
+      // Not when another brick vanished a frame before or after: two bricks hit in one frame
+      // can show a frame apart, and the note is the second's
+      int f = pending.front().frame;
+      if (std::count(removals.begin(), removals.end(), f - 1) == 0 &&
+          std::count(removals.begin(), removals.end(), f + 1) == 0)
+        check(pending.front());
       pending.erase(pending.begin());
     }
   }
@@ -1040,7 +1055,9 @@ View pause_after_clear(Follow &f) {
     celebrated += rainbow();
     Sound s = listen(g);
     if (s.a.vol && (fanfare.empty() || fanfare.back() != s.a.half)) fanfare.push_back(s.a.half);
-    unaccompanied += s.a.vol && !bass(s);
+    // The first frame can still play the last brick's note (it can vanish from the picture a
+    // frame before its sound): from the second on, the fanfare
+    unaccompanied += pause >= 1 && s.a.vol && !bass(s);
   }
   printf("frame %5d: empty wall for %d frames, rainbow in %d\n", frame_no, pause, celebrated);
   CHECK(pause >= 60 && pause <= 68, "empty wall for %d frames (expected about 64)", pause);
