@@ -16,9 +16,7 @@ case "$(uname -s)" in
   *)      CFLAGS="-O3 -march=native -fno-plt -fomit-frame-pointer -pthread" ;;
 esac
 rm -rf obj_serve
-# SOUND=1 builds the design with its sound (the define TB_SOUND), which the player plays
-DEFINES=""; [ "${SOUND:-0}" = 1 ] && DEFINES="+define+TB_SOUND"
-verilator --cc --build -O3 $DEFINES --inline-mult -1 --output-split 0 -Wno-fatal \
+verilator --cc --build -O3 --inline-mult -1 --output-split 0 -Wno-fatal \
   --x-assign fast --x-initial fast \
   -CFLAGS "$CFLAGS" -LDFLAGS "-pthread" \
   --exe serve.cpp $SOURCES --top-module tt_um_tiny_breakout -Mdir obj_serve -j 8 >/dev/null

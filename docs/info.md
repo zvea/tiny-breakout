@@ -21,10 +21,9 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 - **Autoplay:** the paddle steers itself. After each paddle hit it aims the ball at a
   pseudo-randomly chosen part of the paddle, so the ball keeps reaching new bricks.
 - **Demo:** when no controller is connected, the game plays itself.
-- **Sound (optional build):** a chip built with sound plays effects through the Audio Pmod on
-  `uio[7]`: a note for each brick (higher rows, higher notes), a thock for the paddle, a dull
-  thump for the walls, a sigh for a lost ball, a fanfare for a cleared wall, a sad trombone at
-  game over and two chords for a new game. The standard build has no sound.
+- **Sound:** effects through the Audio Pmod on `uio[7]`: a note for each brick (higher rows,
+  higher notes), a thock for the paddle, a dull thump for the walls, a sigh for a lost ball, a
+  fanfare for a cleared wall, a sad trombone at game over and two chords for a new game.
 
 ## How to test
 
@@ -49,6 +48,5 @@ demo.
 - [Gamepad PMOD](https://github.com/psychogenic/gamepad-pmod) on `ui[6:4]`, with an
   SNES-compatible controller. Optional: without it, use the direct inputs.
 - Optional: buttons or switches on `ui[3:0]`.
-- Optional, for a chip built with sound: the
-  [Audio Pmod](https://github.com/MichaelBell/tt-audio-pmod) on `uio[7]`, with headphones or a
-  speaker.
+- Optional: the [Audio Pmod](https://github.com/MichaelBell/tt-audio-pmod) on `uio[7]`, with
+  headphones or a speaker, for sound.

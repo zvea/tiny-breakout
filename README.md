@@ -31,6 +31,10 @@ drawn.
   through, so it bounces the right way.
 - A faster ball doesn't take bigger steps: it moves more often, from every other frame up to
   twice a frame, during vertical blanking.
+- The sound has no samples and no DAC. Each of its two voices keeps only which sound it is
+  playing and for how many frames, and works out the note and volume from those. A note is a
+  square wave timed by the picture's own lines, the volume is pulse-width modulation, and the
+  two voices take turns on the one audio pin, clock by clock ([sound.sv](src/sound.sv)).
 
 [![The hardened tile](docs/img/layout.png)](https://gds-explorer.tinytapeout.com/viewer?file=https://zvea.github.io/tiny-breakout/tinytapeout.oas&pdk=sky130A)
 
@@ -49,8 +53,7 @@ cd sim/play
 ./obj_serve/Vtt_um_tiny_breakout    # then open http://localhost:8765/
 ```
 
-`SOUND=1 ./build.sh` builds the player with the optional sound; turn it on with the button on the
-page.
+The page starts muted; the speaker button or <kbd>M</kbd> turns the sound on.
 
 ## Hardware
 
@@ -59,8 +62,8 @@ page.
 - A [Gamepad PMOD](https://github.com/psychogenic/gamepad-pmod) and an SNES-compatible
   controller on the inputs, or buttons on `ui[0]` to `ui[2]` and a switch on `ui[3]` for
   autoplay.
-- For a chip built with sound (the define `TB_SOUND`, not in the standard build), an
-  [Audio Pmod](https://github.com/MichaelBell/tt-audio-pmod) on `uio[7]`.
+- Optionally, an [Audio Pmod](https://github.com/MichaelBell/tt-audio-pmod) on `uio[7]` for
+  sound.
 
 Pinout and controls are in [docs/info.md](docs/info.md).
 

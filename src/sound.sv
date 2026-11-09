@@ -3,8 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Sound effects for the Tiny Tapeout Audio Pmod (mono, on uio[7]). Built only with the define
- * TB_SOUND (see tt_um_tiny_breakout.sv).
+ * Sound effects for the Tiny Tapeout Audio Pmod (mono, on uio[7]).
  *
  * Two voices take turns clock by clock (h_pos[0]), and the Pmod's filter averages them into a
  * mix. Each plays a square wave or noise at a volume of 0..7, set by pulse-width modulation:

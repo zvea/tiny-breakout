@@ -618,11 +618,8 @@ module tt_um_tiny_breakout (
   );
 
   // ---------------------------------------------------------------------------
-  // Sound, for the Audio Pmod on uio[7], built only with the define TB_SOUND: about 15 points
-  // of utilisation. tools/flow.sh with EXTRA_CFG='{"VERILOG_DEFINES": ["TB_SOUND"]}' hardens
-  // it; SOUND=1 sim/play/build.sh plays it in the web player.
+  // Sound, for the Audio Pmod on uio[7]
   // ---------------------------------------------------------------------------
-`ifdef TB_SOUND
   logic audio;
 
   sound u_sound (
@@ -648,11 +645,6 @@ module tt_um_tiny_breakout (
 
   assign uio_out = {audio, 7'b0};
   assign uio_oe  = 8'b1000_0000;
-`else
-  assign uio_out = 0;
-  assign uio_oe  = 0;
-  wire _unused_sound = &{hit_row, 1'b0};
-`endif
 
   // Unused inputs and signal bits, listed to silence lint warnings
   wire _unused = &{ena, uio_in, ui.unused, paddle_dx[2:0], band_y[4:0], 1'b0};
