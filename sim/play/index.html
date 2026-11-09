@@ -33,6 +33,9 @@
 const c=document.getElementById('c'),ctx=c.getContext('2d'),img=ctx.createImageData(640,480),st=document.getElementById('s');
 const lv=[0,85,170,255];
 let keys=0,auto=0,n=0,t0=performance.now(),latest=null,taken=false;
+// The status line: the stream's state, then a sound problem if there is one
+let line=st.textContent;
+function showStatus(){st.textContent=line+(soundErr?` · ${soundErr}`:'')}
 
 // Key changes go one request at a time, so they reach the server in order; changes made while
 // one is on its way are sent as one, the newest state (keeping a reset, bit 16, until sent).
@@ -76,7 +79,9 @@ addEventListener('blur',()=>{keys=0;sendKeys()});
 const worklet=`const T=2880;class Feed extends AudioWorkletProcessor{
  constructor(){super();this.buf=new Float32Array(48000);this.r=0;this.w=0;this.lo=0;this.playing=false;
   this.base=48000/sampleRate;
-  this.port.onmessage=e=>{const s=e.data,N=this.buf.length,f=this.fill();this.lo=f;
+  this.port.onmessage=e=>{const s=e.data,N=this.buf.length,f=this.fill();
+   if(s==='clear'){this.r=this.w=0;this.playing=false;return}  // muted: drop what is left
+   this.lo=f;
    for(let i=0;i<s.length;i++){this.buf[this.w]=s[i];this.w=(this.w+1)%N}
    if(f>4*T||f+s.length>=N-1){this.r=(this.w-T+N)%N;this.lo=T}}}
  fill(){const N=this.buf.length;return (this.w-Math.floor(this.r)+N)%N}
@@ -89,19 +94,36 @@ const worklet=`const T=2880;class Feed extends AudioWorkletProcessor{
    else{o[i]=0;this.playing=false}}
   this.port.postMessage(this.fill());return true}}
 registerProcessor('feed',Feed);`;
-let actx=null,node=null,gain=null,soundOn=false,buffered=0;
+let actx=null,node=null,gain=null,soundOn=false,soundBusy=null,soundErr='',buffered=0;
 const sb=document.getElementById('sb'),vol=document.getElementById('vol');
-async function toggleSound(){
- if(!actx){
-  actx=new AudioContext({latencyHint:'interactive'});
-  await actx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet],{type:'text/javascript'})));
-  node=new AudioWorkletNode(actx,'feed',{outputChannelCount:[1]});
-  gain=actx.createGain();gain.gain.value=+vol.value;
-  node.connect(gain).connect(actx.destination);
-  node.port.onmessage=e=>{buffered=e.data};
+// One change at a time: a press while the sound is starting or stopping is ignored
+function toggleSound(){
+ if(!soundBusy)soundBusy=setSound(!soundOn).finally(()=>{soundBusy=null});
+ return soundBusy;
+}
+async function setSound(on){
+ try{
+  if(on&&!actx){  // first time: set up the worklet, keeping nothing if that fails
+   const ac=new AudioContext({latencyHint:'interactive'});
+   const url=URL.createObjectURL(new Blob([worklet],{type:'text/javascript'}));
+   try{
+    await ac.audioWorklet.addModule(url);
+    node=new AudioWorkletNode(ac,'feed',{outputChannelCount:[1]});
+    gain=ac.createGain();gain.gain.value=+vol.value;
+    node.connect(gain).connect(ac.destination);
+    node.port.onmessage=e=>{buffered=e.data};
+   }catch(e){ac.close().catch(()=>{});throw e}
+   finally{URL.revokeObjectURL(url)}
+   actx=ac;
+  }
+  if(on){await actx.resume();soundOn=true}
+  else{soundOn=false;node.port.postMessage('clear');await actx.suspend()}  // an unmute plays only new sound
+  soundErr='';
+ }catch(e){
+  console.warn('sound:',e);
+  soundErr=on?'sound failed to start':'sound failed to stop';
  }
- soundOn=!soundOn;
- if(soundOn)await actx.resume();else await actx.suspend();
+ showStatus();
  // The button shows the state (crossed out when muted); the slider is off while muted
  sb.setAttribute('aria-pressed',String(!soundOn));
  sb.title=soundOn?'Mute (M)':'Unmute (M)';
@@ -157,11 +179,11 @@ async function stream(){
     const t=performance.now();
     // Every frame is simulated, none skipped: below 60 fps the game runs in slow motion, and
     // the server stretches the sound to match, at its true pitch
-    if(t-t0>1000){const fps=n*1000/(t-t0);st.textContent=`${fps.toFixed(1)} fps · running at ${Math.round(fps/60*100)}% of real speed${auto?' · AUTOPLAY':''}${soundOn?` · sound buffer ${Math.round(buffered/48)} ms`:''}`;n=0;t0=t}
+    if(t-t0>1000){const fps=n*1000/(t-t0);line=`${fps.toFixed(1)} fps · running at ${Math.round(fps/60*100)}% of real speed${auto?' · AUTOPLAY':''}${soundOn?` · sound buffer ${Math.round(buffered/48)} ms`:''}`;showStatus();n=0;t0=t}
    }
   }catch(e){}
-  if(taken){st.textContent='taken over by another tab – reload to watch here';return}
-  st.textContent='disconnected – retrying…';
+  if(taken){line='taken over by another tab – reload to watch here';showStatus();return}
+  line='disconnected – retrying…';showStatus();
   await new Promise(r=>setTimeout(r,1000));
  }
 }
