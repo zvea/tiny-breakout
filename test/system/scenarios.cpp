@@ -644,6 +644,52 @@ void losing_every_ball() {
   CHECK(resting(v), "ball at (%d, %d)", v.ball_x, v.ball_y);
 }
 
+
+// Balls lost faster than the base speed with FIRE held, as autoplay and the demo always hold it:
+// each costs one ball, and the next ball goes onto the paddle before it is launched. A lost ball
+// is put on the paddle at the next move, and at 1x odd frames have none: with FIRE held the game
+// once launched it from below the screen, losing it again and again, down to game over (from
+// 1.5x up, where the ball can be lost on either parity). Autoplay speeds each ball up to 1.5x (4
+// bricks), then the paddle is held at the left wall with FIRE until the ball is lost. A ball put
+// on the paddle a frame later shows a loss on the parity that failed; both must be seen.
+void lost_at_speed() {
+  Game g;
+  power_up(g);
+  part = "lost at speed";
+  View v = start_game(g);
+  std::vector<int> delays;  // per loss, frames until the next ball rests on the paddle
+  for (int round = 0; round < 8; round++) {
+    g.autoplay = true;  // speed this ball up: 4 bricks cleared since it was launched
+    g.buttons = 0;
+    int base = v.bricks;
+    for (int i = 0; i < 3000 && base - v.bricks < 4; i++) {
+      v = run(g, 1);
+      if (resting(v)) base = v.bricks;
+    }
+    CHECK(base - v.bricks >= 4, "round %d: the ball cleared %d bricks, not 4", round,
+          base - v.bricks);
+    g.autoplay = false;  // lose it, with FIRE held
+    g.buttons = LEFT | FIRE;
+    int lives = v.lives;
+    for (int i = 0; i < 3000 && v.lives == lives; i++) v = run(g, 1);
+    if (lives == 0) continue;  // the last ball: game over, and FIRE starts a new game
+    CHECK(v.lives == lives - 1, "round %d: %d spare balls after losing one of %d", round, v.lives,
+          lives);
+    int d = 1;
+    for (; d <= 4 && !resting(v); d++) v = run(g, 1);
+    CHECK(resting(v), "round %d: no ball on the paddle %d frames after the loss", round, d - 1);
+    CHECK(v.lives == lives - 1, "round %d: %d spare balls once the next ball rests (was %d)", round,
+          v.lives, lives);
+    delays.push_back(d);
+    if (std::count(delays.begin(), delays.end(), delays.front()) < int(delays.size())) break;
+  }
+  std::string seen;
+  for (int d : delays) seen += " " + std::to_string(d);
+  printf("frames from each loss to the next ball resting:%s\n", seen.c_str());
+  CHECK(delays.size() >= 2 &&
+            std::count(delays.begin(), delays.end(), delays.front()) < int(delays.size()),
+        "losses seen on only one frame parity (delays:%s)", seen.c_str());
+}
 // ---- Following play frame by frame -------------------------------------------------------
 
 // A brick turns the ball back through the edge it came in by: hit on a side, the ball
@@ -1119,6 +1165,7 @@ const Scenario scenarios[] = {
     {"controls", controls},
     {"demo", demo},
     {"losing_every_ball", losing_every_ball},
+    {"lost_at_speed", lost_at_speed},
     {"opening", opening},
     {"long_game", long_game, MILESTONE},
 };

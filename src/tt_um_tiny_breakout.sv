@@ -506,7 +506,10 @@ module tt_um_tiny_breakout (
         lives   <= SPARE_LIVES;
         serving <= 1;
       end else if (on_paddle) begin
-        serving <= ~btn_fire;
+        // Launched only once the ball is on the paddle: after a lost ball it is put there at
+        // the next move, and at 1x odd frames have none, so with FIRE held (as autoplay holds
+        // it) it would otherwise fly on from below the screen and be lost again, and again
+        serving <= ~btn_fire | ball_lost;
         if (level_done && lives != SPARE_LIVES) lives <= lives + 1;  // a spare ball for the level
       end else if (lose_ball) begin
         lives   <= lives - 1;  // from 0 to 3: game over
