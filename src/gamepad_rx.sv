@@ -15,6 +15,12 @@
  * A controller that is not connected reports all ones: up and down together (a d-pad
  * can't) is the test. The button outputs are not masked: use them with connected, including
  * select_autoplay, which such a report sets at SELECT and clears again at LEFT.
+ *
+ * Unplugging the controller from the PMOD is handled (its next report has no controller), but
+ * not unplugging the PMOD itself: no reports come then, and the last one stands, connected and
+ * with whatever buttons it had, until reset. Hot-plugging the PMOD isn't supported, so there is
+ * no report timeout (one would also need the PMOD's periodic report to be guaranteed, or it
+ * could hand an idle player's game to the demo).
  */
 
 `default_nettype none
