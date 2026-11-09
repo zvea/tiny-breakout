@@ -16,7 +16,7 @@ from cocotb_run import run
 
 A_NONE, A_BRICK, A_PADDLE, A_LOST, A_OVER, A_CLEAR, A_START = range(7)
 B_NONE, B_THUMP, B_RUMBLE, B_BASS = range(4)
-SCALE = [30, 27, 24, 20, 18, 15, 13, 12]  # half-periods in lines: C5 D5 E5 G5 A5 C6 D6 E6
+SCALE = [60, 54, 48, 40, 36, 30, 27, 24]  # half-periods in lines: C4 D4 E4 G4 A4 C5 D5 E5
 EVENTS = ["new_game", "paused", "lost", "last", "brick", "paddle", "wall"]
 
 
@@ -81,7 +81,7 @@ async def silent_without_events(dut):
 
 @cocotb.test()
 async def a_brick_plays_its_rows_note_an_octave_down_fading_over_5_frames(dut):
-    """Red (row 0) highest; a fast ball two scale steps up."""
+    """Red (row 0) highest; a fast ball two scale steps up. All within 15 cents of their notes."""
     await start(dut)
     for row in range(6):
         for fast in (False, True):
@@ -91,7 +91,7 @@ async def a_brick_plays_its_rows_note_an_octave_down_fading_over_5_frames(dut):
             for _ in range(6):
                 kind, note, vol = await read(dut, "a_kind", "a_note", "a_vol")
                 if kind == A_BRICK and vol > 0:  # it ends a frame after the last step
-                    assert note == 2 * SCALE[step], f"row {row}, fast {fast}: N {note}"
+                    assert note == SCALE[step], f"row {row}, fast {fast}: N {note}"
                     vols.append(vol)
                 await frame(dut)
             assert vols == [5, 4, 3, 2, 1], f"row {row}: volumes {vols}"
@@ -111,12 +111,12 @@ async def the_tone_has_the_pitch_of_its_note(dut):
 @cocotb.test()
 async def the_bass_is_voice_a_an_octave_down(dut):
     """Voice B's square wave in the new game's call: G3 (80 lines a half-period) under voice
-    A's G4 (N = 40) for the first 4 frames, and C5 (30 lines) under C6 (N = 15) from frame 12."""
+    A's G4 (N = 40) for the first 8 frames, and C5 (30 lines) under C6 (N = 15) from frame 24."""
     await start(dut)
     await frame(dut, "new_game")
     flips = await toggles(dut, "a_sub", 400)
     assert flips in (4, 5, 6), f"G3: {flips} flips in 400 lines (expected 5 for 80 lines)"
-    for _ in range(12):
+    for _ in range(24):
         await frame(dut)
     flips = await toggles(dut, "a_sub", 360)
     assert flips in (11, 12, 13), f"C5: {flips} flips in 360 lines (expected 12 for 30 lines)"
@@ -142,16 +142,16 @@ async def a_lost_ball_sighs_and_the_last_one_plays_game_over(dut):
 
 @cocotb.test()
 async def a_new_game_plays_its_call_on_both_voices(dut):
-    """G4, D5, G5 for 4 frames each, then C6 for 20, with voice B's bass at the same volume."""
+    """G4, D5, G5 for 8 frames each, then C6 for 24, with voice B's bass at the same volume."""
     await start(dut)
     await frame(dut, "new_game")
     assert await read(dut, "a_kind", "a_note", "b_kind") == [A_START, 40, B_BASS]
-    for f in range(1, 32):
+    for f in range(1, 48):
         await frame(dut)
         a_kind, a_note, a_vol, b_kind, b_vol = await read(
             dut, "a_kind", "a_note", "a_vol", "b_kind", "b_vol")
         assert (a_kind, b_kind) == (A_START, B_BASS), f"frame {f}: kinds {a_kind}, {b_kind}"
-        assert a_note == [40, 27, 20, 15][min(f // 4, 3)], f"frame {f}: note {a_note}"
+        assert a_note == [40, 27, 20, 15][min(f // 8, 3)], f"frame {f}: note {a_note}"
         assert a_vol > 0 and b_vol == a_vol, f"frame {f}: volumes {a_vol}, {b_vol}"
     await frame(dut)  # the frame they end: both silent
     assert await read(dut, "a_vol", "b_vol") == [0, 0]
@@ -172,14 +172,20 @@ async def walls_and_the_paddle_thump_on_voice_b_without_cutting_voice_a(dut):
 
 @cocotb.test()
 async def the_cleared_wall_fanfare_follows_the_pause_timer(dut):
-    """C, E, G for two pause steps each, then a held high C."""
+    """C, E, G for two pause steps each, then a held high C, over voice B's bass at the same
+    volume; both end with the pause."""
     await start(dut)
     for step, note in [(0, 30), (2, 24), (4, 20), (6, 15), (15, 15)]:
         dut.pause_step.value = step
         await frame(dut, "paused")
-        assert await read(dut, "a_kind", "a_note") == [A_CLEAR, note], f"pause step {step}"
+        a_kind, a_note, a_vol, b_kind, b_vol = await read(
+            dut, "a_kind", "a_note", "a_vol", "b_kind", "b_vol")
+        assert (a_kind, a_note) == (A_CLEAR, note), f"pause step {step}"
+        assert b_kind == B_BASS and b_vol == a_vol > 0, f"pause step {step}: bass {b_kind}, {b_vol}"
     await frame(dut)
-    assert (await read(dut, "a_kind"))[0] == A_NONE
+    assert (await read(dut, "a_kind", "b_vol")) == [A_NONE, 0]
+    await frame(dut)
+    assert (await read(dut, "b_kind"))[0] == B_NONE
 
 
 @cocotb.test()

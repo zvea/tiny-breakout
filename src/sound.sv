@@ -16,17 +16,17 @@
  * Each voice keeps only which sound it plays and how many frames it has been playing; the
  * note and the volume are worked out from those, frame by frame:
  *   voice A  start       a new game's call: G4, D5, G5, then up to a held C6, with voice B
- *                        playing it an octave below
+ *                        playing it an octave below (the bass)
  *            brick       a marimba-like note an octave below the row's (pentatonic, red
  *                        highest), two steps higher once the ball is fast, fading over 5 frames
  *            paddle      a low C dropping in pitch over 3 frames (the "thock")
  *            clear       a fanfare in the pause after a cleared wall: C, E, G, a held high C,
- *                        timed by the pause timer
+ *                        timed by the pause timer, over the bass: the loudest sound
  *            lost        a minor sigh: E-flat, D, then a long C (a ball lost, spares left)
  *            over        a sad trombone: G4, F#4, F4, then a long wobbling E4 (the last ball,
  *                        instead of the lost-ball sound)
- *   voice B  bass        voice A's start, an octave below (from voice A's square wave, so
- *                        voice B needs no tone counter of its own)
+ *   voice B  bass        voice A's start and fanfare, an octave below (from voice A's square
+ *                        wave, so voice B needs no tone counter of its own)
  *            thump       noise stepped every line, under the paddle's thock
  *            rumble      noise stepped every 8 lines (no hiss): a dull thump, for the walls
  * A later sound on a voice replaces the one playing; only a new game interrupts a lost ball or
@@ -56,17 +56,19 @@ module sound (
     output logic       audio
 );
 
-  // Half-periods in lines of the pentatonic scale C5 D5 E5 G5 A5 C6 D6 E6
+  // Half-periods in lines of the pentatonic scale C4 D4 E4 G4 A4 C5 D5 E5, the bricks' notes.
+  // Stored at this octave rather than doubled from the one above: D6 has no whole-line
+  // half-period close to it (13 lines is 52 cents sharp), D5 does (27 lines, 14 cents flat).
   function automatic logic [6:0] scale(input logic [2:0] i);
     case (i)
-      0:       scale = 30;
-      1:       scale = 27;
-      2:       scale = 24;
-      3:       scale = 20;
-      4:       scale = 18;
-      5:       scale = 15;
-      6:       scale = 13;
-      default: scale = 12;
+      0:       scale = 60;
+      1:       scale = 54;
+      2:       scale = 48;
+      3:       scale = 40;
+      4:       scale = 36;
+      5:       scale = 30;
+      6:       scale = 27;
+      default: scale = 24;
     endcase
   endfunction
 
@@ -90,7 +92,7 @@ module sound (
     a_done = 0;
     case (a_kind)
       A_BRICK: begin
-        a_note = {brick_n[5:0], 1'b0};
+        a_note = brick_n;
         a_vol  = 3'd5 - a_t[2:0];
         a_done = a_t[2] & a_t[0];  // a_t counts up from 0: the first 5
       end
@@ -123,15 +125,15 @@ module sound (
         endcase
         a_vol = 3'd7 - {1'b0, pause_step[3:2]};
       end
-      A_START: begin  // G4, D5, G5: 4 frames each; then C6 for 20
-        case (step)
+      A_START: begin  // G4, D5, G5: 8 frames each, as the other phrases move; then C6 for 24
+        case (step[3:1])
           0:       a_note = 40;
           1:       a_note = 27;
           2:       a_note = 20;
           default: a_note = 15;
         endcase
-        a_vol  = 3'd6 - {1'b0, a_t[4:3]};
-        a_done = a_t[5];
+        a_vol  = 3'd6 - {1'b0, a_t[5:4]};
+        a_done = a_t[5] & a_t[4];  // frame 48
       end
       default: ;
     endcase
@@ -175,7 +177,7 @@ module sound (
       B_THUMP:  b_vol = b_t[2] ? 3'd0 : {b_t[1:0] == 0, -b_t[1:0]};  // 4 - b_t
       B_RUMBLE: b_vol = b_t[2] ? 3'd0 : {1'b0, ~b_t[1:0]};           // 3 - b_t, down to 0
       B_BASS: begin  // voice A's volume, silent with it on the frame it ends
-        if (a_kind == A_START) b_vol = a_vol;
+        if (a_kind == A_START || a_kind == A_CLEAR) b_vol = a_vol;
         else b_vol = 0;
       end
       default:  b_vol = 0;
@@ -187,11 +189,11 @@ module sound (
       b_kind <= B_NONE;
       b_t    <= 0;
     end else if (frame_tick) begin
-      if (new_game) b_kind <= B_BASS;
+      if (new_game || paused) b_kind <= B_BASS;
       else if (paddle) {b_kind, b_t} <= {B_THUMP, 3'd0};
       else if (wall) {b_kind, b_t} <= {B_RUMBLE, 3'd0};
-      else if (b_kind == B_BASS) begin  // as long as voice A plays the start
-        if (a_kind != A_START || a_done) b_kind <= B_NONE;
+      else if (b_kind == B_BASS) begin  // as long as voice A plays the start or the fanfare
+        if ((a_kind != A_START && a_kind != A_CLEAR) || a_done) b_kind <= B_NONE;
       end else if (b_t[2]) b_kind <= B_NONE;  // b_t is 4
       else b_t <= b_t + 1;
     end
@@ -235,7 +237,7 @@ module sound (
     else audio <= h_pos[0] ? a_on : b_on;
   end
 
-  // the fanfare moves every 2 pause steps; N < 64
-  wire _unused = &{pause_step[0], brick_n[6], v_pos[9], 1'b0};
+  // the fanfare and the call move every 2 steps; N < 64
+  wire _unused = &{pause_step[0], step[0], v_pos[9], 1'b0};
 
 endmodule

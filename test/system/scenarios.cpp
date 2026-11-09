@@ -403,7 +403,7 @@ void controls() {
     run(g, 1, false);
     s = listen(g);
   }
-  const int call[][2] = {{40, 4}, {27, 4}, {20, 4}, {15, 20}};  // G4 D5 G5 C6: lines, frames
+  const int call[][2] = {{40, 8}, {27, 8}, {20, 8}, {15, 24}};  // G4 D5 G5 C6: lines, frames
   for (const auto &note : call) {
     int n = 0;
     for (; s.a.half == note[0] && bass(s); n++) {
@@ -840,12 +840,12 @@ struct BrickNotes {
     }
   }
   void check(const Hit &h) {
-    static const int scale[8] = {30, 27, 24, 20, 18, 15, 13, 12};  // C5 D5 E5 G5 A5 C6 D6 E6
+    static const int scale[8] = {60, 54, 48, 40, 36, 30, 27, 24};  // C4 D4 E4 G4 A4 C5 D5 E5
     // The picture can lag the game by a brick cleared after the beam passed it: with 7 shown
     // cleared, this may be the 8th, and either note is right
     if (h.cleared == 7) return;
     bool fast = h.cleared >= 8;
-    int n = 2 * scale[std::min(7, 5 - h.row + (fast ? 2 : 0))];
+    int n = scale[std::min(7, 5 - h.row + (fast ? 2 : 0))];
     bool ok = false;
     for (int f = h.frame - 1; f <= h.frame + 1; f++)
       ok |= f >= 0 && f < int(heard.size()) && heard[f].a.half == n && heard[f].a.vol == 5 &&
@@ -972,7 +972,7 @@ void opening() {
 
 // The pause after a cleared wall, from its first frame with no bricks: the empty wall stays for
 // about a second, with rainbow bands over the field and the border, and the fanfare (C, E, G,
-// then a held high C), which has ended by the time the next wall comes in. Autoplay leaves the
+// then a held high C, over its bass), which has ended by the time the next wall comes in. Autoplay leaves the
 // paddle where it is while the ball waits on it: to see that wherever the paddle is (autoplay
 // often has it at a wall by now), it is steered away by hand for the first frames of the pause,
 // then handed back to autoplay. Returns the first frame of the next wall.
@@ -987,6 +987,7 @@ View pause_after_clear(Follow &f) {
   };
   int pause = 0, celebrated = 0, held_x = -1;
   std::vector<int> fanfare;  // voice A's notes in the pause, in order
+  int unaccompanied = 0;     // frames of the fanfare without its bass
   View v = f.v;
   for (; pause < 100 && v.bricks == 0; pause++) {
     g.autoplay = pause >= 8;
@@ -999,8 +1000,9 @@ View pause_after_clear(Follow &f) {
             pause, held_x, v.paddle_x);
     v = f.step();
     celebrated += rainbow();
-    Voice a = hear(g, 1);
-    if (a.vol && (fanfare.empty() || fanfare.back() != a.half)) fanfare.push_back(a.half);
+    Sound s = listen(g);
+    if (s.a.vol && (fanfare.empty() || fanfare.back() != s.a.half)) fanfare.push_back(s.a.half);
+    unaccompanied += s.a.vol && !bass(s);
   }
   printf("frame %5d: empty wall for %d frames, rainbow in %d\n", frame_no, pause, celebrated);
   CHECK(pause >= 60 && pause <= 68, "empty wall for %d frames (expected about 64)", pause);
@@ -1008,6 +1010,7 @@ View pause_after_clear(Follow &f) {
   CHECK(!rainbow(), "the rainbow stays after the pause");
   CHECK(fanfare == std::vector<int>({30, 24, 20, 15}), "fanfare of %zu notes, the last %d",
         fanfare.size(), fanfare.empty() ? 0 : fanfare.back());
+  CHECK(unaccompanied == 0, "%d frames of the fanfare without its bass", unaccompanied);
   Voice after = hear(g, 1);
   CHECK(after.vol == 0, "the new wall comes in with a note of %d lines at volume %d", after.half,
         after.vol);
