@@ -78,8 +78,14 @@ static void streamer() {
   g.reset();
   g.capture_audio = true;
   // Audio: each frame's 800 samples are stretched so the output keeps pace with real time.
-  // The output owed is 48 kHz x the time since audio started, less what has been sent; the
-  // stretch ratio is the frame time over 1/60 s, smoothed, between 1 (full speed) and 8.
+  // The output owed is 48 kHz x the time since audio started, less what has been sent. The
+  // stretch ratio starts from the frame time over 1/60 s, smoothed, between 1 (full speed)
+  // and 8. That alone runs a few percent high at full speed, where a late frame is followed
+  // by an early one that the clamp at 1 ignores, and the input it leaves over would wait in
+  // the stretcher as an ever-growing delay; on a slow machine it can run low, and the output
+  // falls behind. So it is corrected both ways: each 0.5 s of input waiting beyond what this
+  // frame's grains need halves it, and each 0.5 s of output still owed from earlier frames
+  // doubles it. That holds the delay to a few tens of ms, and the output to real time.
   Stretcher stretcher;
   long sent = 0;
   double ratio = 1;
@@ -124,7 +130,10 @@ static void streamer() {
       owed = 0;
     }
     stretcher.push(g.audio.data(), Game::AUDIO_PER_FRAME);
-    std::vector<float> audio = stretcher.pull(ratio, (int)std::max(0L, owed));
+    double excess = stretcher.backlog() - (Stretcher::AHEAD + Game::AUDIO_PER_FRAME);
+    double carry = std::max(0.0, owed - 48000 * dt);
+    double r = std::min(8.0, std::max(0.5, ratio * (1 + carry / 24000) / (1 + excess / 24000)));
+    std::vector<float> audio = stretcher.pull(r, (int)std::max(0L, owed));
     sent += audio.size();
 
     msg.assign(8, '\0');

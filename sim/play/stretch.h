@@ -18,6 +18,10 @@
 #include <vector>
 
 class Stretcher {
+  static constexpr int W = 1024;     // grain length: 21 ms at 48 kHz
+  static constexpr int HS = W / 2;   // output hop: grains overlap by half
+  static constexpr int SEEK = 256;   // how far a grain may move to line up: 5 ms
+
  public:
   Stretcher() : window_(W) {
     for (int i = 0; i < W; i++) window_[i] = 0.5f - 0.5f * std::cos(6.2831853f * i / W);
@@ -35,6 +39,11 @@ class Stretcher {
   // Adds input samples (one frame's).
   void push(const float *x, int n) { in_.insert(in_.end(), x, x + n); }
 
+  // Input samples waiting: from where the next grain should start to the end of the input.
+  // A grain needs AHEAD of them.
+  static constexpr int AHEAD = W + SEEK;
+  int backlog() const { return (int)in_.size() - (int)pos_; }
+
   // Returns up to `count` output samples, stretching the input by `ratio` (output / input
   // length). Output comes in grains, a hop at a time, and needs input a grain ahead, so it can
   // fall short of `count`; the caller asks for the shortfall again next time (and keeps
@@ -49,9 +58,6 @@ class Stretcher {
   }
 
  private:
-  static constexpr int W = 1024;     // grain length: 21 ms at 48 kHz
-  static constexpr int HS = W / 2;   // output hop: grains overlap by half
-  static constexpr int SEEK = 256;   // how far a grain may move to line up: 5 ms
   std::vector<float> window_, in_, acc_, ready_;
   double pos_;  // where the next grain should start in in_, before lining up
   int prev_;    // where the last grain started (-1: none yet)
