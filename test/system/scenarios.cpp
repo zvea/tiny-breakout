@@ -1018,6 +1018,138 @@ void controls() {
   CHECK(v.paddle_x == x0, "paddle moved with autoplay off: %d -> %d", x0, v.paddle_x);
 }
 
+// A new game in which every ball falls: the paddle stays against the left wall, and FIRE
+// launches each ball as soon as it rests on the paddle.
+// - losses: the spare-ball markers count down one at a time, and every new ball starts at the
+//   base speed, a 2-px move every other frame, however fast the last one was. A ball that has
+//   fallen below the paddle (top at y >= 456) is lost: the border (the status line and the
+//   strips beside the walls) turns red, brighter in each 8-px band it falls through (maroon,
+//   dark red, red), and black again once the ball has left the screen; black at every other
+//   time. Each lost ball sighs (E-flat, 25 lines), the last one plays the sad trombone (G4, 40).
+// - game over: no ball and no markers, and the score is 10 per brick cleared. A black curtain
+//   comes down from the top, 16 px a frame, until only the score is left, unchanged; no ball
+//   comes without FIRE, and once the trombone has ended, all is quiet.
+// - restart: fire (A on the gamepad here) starts a new game. From its first frame nothing of the
+//   old one shows: the border is black (it once flashed the level-clear rainbow, as the
+//   curtain's count carried over), and the picture is back with a full wall, two spare balls,
+//   score 0 and the ball resting on the paddle.
+void losing_every_ball() {
+  Game g;
+  power_up(g);
+  part = "losses";
+  View v = start_game(g), before = v;
+  int expected_lives = 2, since_launch = 1000, prev_y = -1, prev_dy = 0, missing = 0, lit = 0;
+  bool shades[4] = {};
+  std::vector<int> starts;  // the first note of each new sound on voice A at volume 6
+  int prev_note = 0;
+  Sound s;
+  auto listen_for_losses = [&] {
+    s = listen(g);
+    int note = s.a.vol == 6 ? s.a.half : 0;  // bricks play at 5 at most
+    if ((note == 25 || note == 40) && note != prev_note) starts.push_back(note);
+    prev_note = note;
+  };
+  // Until the curtain shows (more than the 24-line status line is black), or the ball has
+  // been gone for 10 frames: game over, with no curtain
+  for (int i = 0; i < 20000 && black_from_top(g) <= 24 && missing < 10; i++) {
+    bool launch = resting(v);
+    g.buttons = LEFT | (launch ? FIRE : 0);
+    since_launch = launch ? 0 : since_launch + 1;
+    before = v;
+    v = run(g, 1);
+    listen_for_losses();
+    // Red channel = the ball's 8-px band below the paddle; black while it is higher, and once
+    // it has left the screen (then it is not visible)
+    int expected = v.ball && v.ball_y >= 456 ? ((v.ball_y >> 3) & 3) << 4 : BLACK;
+    CHECK(border_colour(g) == expected, "ball at y %d, border %#x, expected %#x",
+          v.ball ? v.ball_y : -1, border_colour(g), expected);
+    if (expected != BLACK) {
+      lit++;
+      shades[expected >> 4] = true;
+    }
+    int dy = std::abs(v.ball_y - prev_y);
+    if (since_launch >= 3 && since_launch < 12)
+      CHECK(v.ball && (dy == 0 || dy == 2) && dy + prev_dy == 2, "new ball moved %d then %d px",
+            prev_dy, dy);
+    prev_y = v.ball_y;
+    prev_dy = dy;
+    if (v.lives != expected_lives) {
+      CHECK(v.lives == expected_lives - 1, "life markers %d -> %d", expected_lives, v.lives);
+      printf("frame %5d: %d spare balls left\n", frame_no, v.lives);
+      expected_lives = v.lives;
+    }
+    missing = v.ball ? 0 : missing + 1;
+  }
+  CHECK(lit > 0 && shades[1] && shades[2] && shades[3],
+        "the border never showed all three shades (%d lit frames)", lit);
+
+  part = "game over";
+  CHECK(black_from_top(g) > 24, "no curtain (ball gone for %d frames)", missing);
+  if (black_from_top(g) <= 24) return;
+  // The frame before the curtain shows is after game over (see below)
+  CHECK(!before.ball && before.lives == 0, "ball %s, %d markers left",
+        before.ball ? "showing" : "gone", before.lives);
+  CHECK(before.score == 10 * (48 - before.bricks), "score %d with %d bricks cleared", before.score,
+        48 - before.bricks);
+  printf("frame %5d: game over with %d bricks standing, score %d\n", frame_no, before.bricks,
+         before.score);
+
+  // The first frame that shows it has it 32 lines down (game over, then 16, then 32: the first
+  // 16 are the black status line anyway), then 16 more each frame until it reaches the bottom
+  part = "curtain";
+  g.buttons = 0;
+  for (int line = 32; line <= 480 + 32; line += 16) {
+    int expected = line < 480 ? line : 480;
+    CHECK(black_from_top(g) == expected, "curtain at %d lines, expected %d", black_from_top(g),
+          expected);
+    CHECK(border_colour(g) == BLACK, "border %#x", border_colour(g));
+    CHECK(!v.ball, "a ball at (%d, %d) without FIRE", v.ball_x, v.ball_y);
+    v = run(g, 1);
+    listen_for_losses();
+  }
+  int others = 0;
+  for (int y = 0; y < 480; y++)
+    for (int x = 0; x < 640; x++)
+      if (!(x >= 512 && x < 576 && y >= 3 && y < 19) && colour(g.fb[y * 640 + x]) != BLACK)
+        others++;  // the score's cells: x 512..575, y 3..18
+  CHECK(others == 0, "after the curtain: %d pixels besides the score are not black", others);
+  CHECK(v.score == before.score, "after the curtain: score %d, was %d", v.score, before.score);
+
+  // Wait for the trombone to end, then 30 frames of quiet, still with no ball
+  part = "game over";
+  for (int i = 0; i < 200 && !(starts.size() >= 3 && s.a.vol == 0); i++) {
+    v = run(g, 1);
+    listen_for_losses();
+    CHECK(!v.ball && border_colour(g) == BLACK, "ball %s, border %#x without FIRE",
+          v.ball ? "showing" : "gone", border_colour(g));
+  }
+  CHECK(starts == std::vector<int>({25, 25, 40}), "lost balls: %zu sounds, the first %d",
+        starts.size(), starts.empty() ? 0 : starts[0]);
+  for (int i = 0; i < 30; i++) {
+    v = run(g, 1);
+    s = listen(g);
+    CHECK(s.a.vol == 0 && s.b.vol == 0, "%d frames after the trombone: volumes %d, %d", i, s.a.vol,
+          s.b.vol);
+    CHECK(!v.ball && border_colour(g) == BLACK, "ball %s, border %#x without FIRE",
+          v.ball ? "showing" : "gone", border_colour(g));
+  }
+
+  part = "restart";
+  g.pad_bits = GP_A;
+  run(g, 1);
+  g.pad_bits = 0;
+  for (int i = 0; i < 3; i++) {
+    v = run(g, 1);
+    CHECK(border_colour(g) == BLACK, "frame %d of the new game: border %#x", i, border_colour(g));
+  }
+  v = settle(g, v);
+  CHECK(black_from_top(g) == 24, "%d black lines from the top", black_from_top(g));
+  CHECK(v.lives == 2, "life markers %d", v.lives);
+  CHECK(v.score == 0, "score %d", v.score);
+  CHECK(v.bricks == 48, "bricks %d", v.bricks);
+  CHECK(resting(v), "ball at (%d, %d)", v.ball_x, v.ball_y);
+}
+
 struct Scenario {
   const char *name;
   void (*run)();
@@ -1039,6 +1171,7 @@ const Scenario scenarios[] = {
     {"autoplay_clears_a_level", autoplay_clears_a_level},
     {"sound", sound},
     {"controls", controls},
+    {"losing_every_ball", losing_every_ball},
 };
 
 }  // namespace
