@@ -6,8 +6,11 @@
  * Tiny Breakout: a brick-breaker game in a single Tiny Tapeout tile.
  *
  * Style: `logic` for variables, always_ff for flip-flops, always_comb for combinational
- * blocks, and `wire x = expr;` for continuous definitions (`logic x = expr;` would only
- * initialise x).
+ * blocks, and `wire x = expr;` (typed too: `wire T x = expr;`) for continuous definitions
+ * (`logic x = expr;` would only initialise x). Two exceptions, by need: a signal used before
+ * the logic that works it out is declared ahead and given by `assign` there (clear_brick,
+ * new_game, refill_bricks), and a struct filled in field by field is `logic` with an `assign`
+ * per field (tiny_vga_out's pins).
  *
  * Pins (see inputs_t below and tiny_vga_out.sv for the exact bit layout):
  *   uo_out     : TinyVGA PMOD (640x480 @ 60 Hz, 25.175 MHz clock)
@@ -78,8 +81,7 @@ module tt_um_tiny_breakout (
 
   // The pins as the game reads them: the gamepad's as they are (gamepad_rx synchronises
   // them), the direct ones registered
-  inputs_t ui;
-  assign ui = {ui_in[7:4], direct_q};
+  wire inputs_t ui = {ui_in[7:4], direct_q};
 
   // ---------------------------------------------------------------------------
   // Video timing
@@ -600,8 +602,7 @@ module tt_um_tiny_breakout (
   wire curtain = game_over && (v_pos[9:4] < {1'b0, speed_level});
   // Red that brightens as it falls: ball_y[4:3] is 1, 2, 3 for y 456, 464, 472 (maroon, dark
   // red, red), so the pulse keeps pace with the ball
-  colour_pkg::rgb_t lost_rgb;
-  assign lost_rgb = {ball_y[4:3], 4'b0000};  // {r, g, b}
+  wire colour_pkg::rgb_t lost_rgb = {ball_y[4:3], 4'b0000};  // {r, g, b}
 
   // Celebration, in the pause after a cleared wall: rainbow bands rise behind the ball and
   // paddle, over the field and the border. They show while speed_level counts 17..31 (the
