@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -29,7 +30,8 @@ namespace {
 constexpr uint8_t LEFT = 1, RIGHT = 2, FIRE = 4;  // direct button pins ui_in[2:0]
 
 // Gamepad report bits {b,y,select,start,up,down,left,right,a,x,l,r}, b most significant
-constexpr uint16_t GP_SELECT = 1 << 9, GP_LEFT = 1 << 5, GP_RIGHT = 1 << 4;
+constexpr uint16_t GP_SELECT = 1 << 9, GP_LEFT = 1 << 5, GP_RIGHT = 1 << 4, GP_A = 1 << 3;
+constexpr uint16_t GP_NONE = 0x0fff;  // the report of a PMOD with no controller: all ones
 
 // ---- Reading the picture -----------------------------------------------------------------
 
@@ -42,7 +44,9 @@ int colour(uint8_t o) {
   return r << 4 | g << 2 | b;
 }
 
-constexpr int BLACK = 0x00, WHITE = 0x3f, PADDLE = 0x2f;
+constexpr int BLACK = 0x00, WHITE = 0x3f, PADDLE = 0x2f, GREY = 0x15, NAVY = 0x01;
+// The bricks by row, top to bottom: red, orange, yellow, green, azure, violet
+constexpr int ROW_COLOURS[6] = {0x30, 0x38, 0x3c, 0x0c, 0x0b, 0x23};
 
 struct View {
   int lives = 0;        // spare-life markers shown
@@ -888,6 +892,132 @@ void sound() {
   }
 }
 
+// The colours of one frame of a new game: each row of bricks in its colour (red at the top,
+// then orange, yellow, green, azure and violet), the walls grey, the field navy, the paddle
+// pale cyan.
+void check_colours(const Game &g, const View &v) {
+  auto at = [&](int x, int y) { return colour(g.fb[y * 640 + x]); };
+  for (int r = 0; r < 6; r++)
+    for (int c = 0; c < 8; c++) {
+      int k = at(64 * (c + 1) + 32, 16 * (r + 4) + 8);
+      CHECK(k == ROW_COLOURS[r], "brick %d in row %d is %#x, expected %#x", c, r, k, ROW_COLOURS[r]);
+    }
+  for (auto [x, y] : {std::pair{60, 300}, {580, 300}, {300, 28}})
+    CHECK(at(x, y) == GREY, "the wall at (%d, %d) is %#x", x, y, at(x, y));
+  CHECK(at(300, 300) == NAVY, "the field is %#x", at(300, 300));
+  CHECK(at(v.paddle_x + v.paddle_w / 2, 452) == PADDLE, "the paddle is %#x",
+        at(v.paddle_x + v.paddle_w / 2, 452));
+}
+
+// A new game, played by hand from the pins:
+// - new game: the chords on both voices (C5 with G5 for 8 frames, C6 with E6 for 24), the full
+//   wall, two spare balls and the ball resting on the paddle; then quiet while it waits there
+// - colours: of the bricks, walls, field and paddle
+// - steering: the paddle moves 4 px every other frame (at the base speed) while LEFT or RIGHT
+//   is held, from either the direct pins or the gamepad; both together cancel out. The resting
+//   ball moves with it.
+// - limits: the first level's paddle is 96 px wide and stops at the walls: its left end at
+//   x 64, its right end at x 575 (left end at x 480)
+// - launch: FIRE launches the ball upwards
+// - select: after a reset, SELECT on the gamepad switches autoplay on: it launches the ball and
+//   steers. Left, right or fire switches it off, after which the paddle only moves when told.
+void controls() {
+  Game g;
+  power_up(g);
+  part = "new game";
+  Sound s;
+  for (int i = 0; i < 10 && !(s.a.half == 30 && s.b.half == 20); i++) {  // the demo ends
+    run(g, 1, false);
+    s = listen(g);
+  }
+  int low = 0, high = 0;
+  for (; s.a.half == 30 && s.b.half == 20 && s.a.vol && s.b.vol; low++) {
+    run(g, 1, false);
+    s = listen(g);
+  }
+  for (; s.a.half == 15 && s.b.half == 12 && s.a.vol && s.b.vol; high++) {
+    run(g, 1, false);
+    s = listen(g);
+  }
+  CHECK(low == 8 && high == 24, "%d frames of C5 + G5 and %d of C6 + E6 (expected 8, 24)", low,
+        high);
+  View v = look(g);
+  CHECK(v.bricks == 48, "bricks %d", v.bricks);
+  CHECK(v.lives == 2, "life markers %d", v.lives);
+  CHECK(resting(v), "ball at (%d, %d), paddle at %d", v.ball_x, v.ball_y, v.paddle_x);
+  for (int i = 0; i < 30; i++) {  // the ball waits on the paddle: quiet
+    CHECK(s.a.vol == 0 && s.b.vol == 0, "%d frames after the chords: volumes %d, %d (notes %d, %d)",
+          i, s.a.vol, s.b.vol, s.a.half, s.b.half);
+    run(g, 1, false);
+    s = listen(g);
+  }
+
+  part = "colours";
+  check_colours(g, look(g));
+
+  for (int source = 0; source < 2; source++) {
+    part = source ? "steering by gamepad" : "steering by direct pins";
+    auto press = [&](bool l, bool r) {
+      if (source) g.pad_bits = (l ? GP_LEFT : 0) | (r ? GP_RIGHT : 0);
+      else g.buttons = (l ? LEFT : 0) | (r ? RIGHT : 0);
+    };
+    // Each press lasts 10 frames; a frame shows the paddle as the frame before left it, so its
+    // last move shows in the frame after
+    int x0 = run(g, 2).paddle_x;
+    press(false, true);
+    for (int i = 0; i < 10; i++) {  // the resting ball stays centred on the moving paddle
+      v = run(g, 1);
+      CHECK(resting(v), "moving right, frame %d: ball at x %d, paddle %d", i, v.ball_x, v.paddle_x);
+    }
+    press(false, false);
+    int x1 = run(g, 1).paddle_x;
+    CHECK(x1 >= x0 + 16 && x1 <= x0 + 24, "right moved the paddle %d -> %d", x0, x1);
+    press(true, false);
+    run(g, 10);
+    press(false, false);
+    int x2 = run(g, 1).paddle_x;
+    CHECK(x2 <= x1 - 16 && x2 >= x1 - 24, "left moved the paddle %d -> %d", x1, x2);
+    press(true, true);
+    int x3 = run(g, 2).paddle_x;
+    int x4 = run(g, 10).paddle_x;
+    CHECK(x4 == x3, "left + right moved the paddle %d -> %d", x3, x4);
+    press(false, false);
+  }
+
+  // From the middle, 2 px a frame takes 104 frames to the left wall and 208 across
+  part = "limits";
+  CHECK(v.paddle_w == 96, "the first level's paddle is %d px wide", v.paddle_w);
+  g.buttons = LEFT;
+  v = run(g, 120);
+  CHECK(v.paddle_x == 64, "left limit %d", v.paddle_x);
+  g.buttons = RIGHT;
+  v = run(g, 225);
+  CHECK(v.paddle_x == 480 && v.paddle_w == 96, "right limit %d (%d px wide)", v.paddle_x,
+        v.paddle_w);
+
+  part = "launch";
+  g.buttons = FIRE;
+  run(g, 1);
+  g.buttons = 0;
+  v = run(g, 20);
+  CHECK(v.ball && v.ball_y < 440 - 10, "ball not launched upwards: y %d", v.ball_y);
+
+  part = "select";
+  power_up(g);
+  start_game(g);
+  g.pad_bits = GP_SELECT;
+  run(g, 3);
+  g.pad_bits = 0;
+  v = run(g, 30);
+  CHECK(v.ball && v.ball_y < 440, "autoplay did not launch the ball: y %d", v.ball_y);
+  g.pad_bits = GP_LEFT;
+  run(g, 2);
+  g.pad_bits = 0;
+  int x0 = run(g, 1).paddle_x;
+  v = run(g, 60);
+  CHECK(v.paddle_x == x0, "paddle moved with autoplay off: %d -> %d", x0, v.paddle_x);
+}
+
 struct Scenario {
   const char *name;
   void (*run)();
@@ -908,6 +1038,7 @@ const Scenario scenarios[] = {
     {"level_cleared", level_cleared},
     {"autoplay_clears_a_level", autoplay_clears_a_level},
     {"sound", sound},
+    {"controls", controls},
 };
 
 }  // namespace
