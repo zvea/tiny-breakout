@@ -60,6 +60,7 @@ PY
   # (LVS only checks the layout against the netlist). Both run before either can fail.
   FAIL=0
   "$ROOT/tools/warnings.sh" "$D" | sed 's/^/  /' || FAIL=1
-  if LEC=$("$ROOT/tools/lec.sh" "$D" "$C"); then echo "  LEC: $LEC"; else echo "  LEC: $LEC"; FAIL=1; fi
+  LEC=$("$ROOT/tools/lec.sh" "$D" "$C") || FAIL=1
+  echo "LEC: $LEC" | sed 's/^/  /'
   exit $FAIL
 fi
