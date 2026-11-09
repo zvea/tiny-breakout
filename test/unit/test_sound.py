@@ -145,6 +145,41 @@ async def a_lost_ball_sighs_and_the_last_one_plays_game_over(dut):
 
 
 @cocotb.test()
+async def the_trombone_falls_g_f_sharp_f_then_wobbles_on_e_and_ends(dut):
+    """G4, F#4, F4 (N = 40, 42, 45) for 8 frames each, then E4 (48) wobbling flat, to 49 and
+    50 and back, for 32 frames, its volume falling a step every 16 frames from 6; silent on
+    frame 56, the frame it ends, and gone the frame after."""
+    await start(dut)
+    await frame(dut, "lost", "last")
+    wobble = [48, 48, 49, 49, 50, 50, 49, 49]
+    for f, note in enumerate([40] * 8 + [42] * 8 + [45] * 8 + wobble * 4):
+        heard = await read(dut, "a_kind", "a_note", "a_vol")
+        assert heard == [A_OVER, note, 6 - f // 16], f"frame {f}: kind, note, volume {heard}"
+        await frame(dut)
+    heard = await read(dut, "a_kind", "a_vol")
+    assert heard == [A_OVER, 0], f"frame 56: kind, volume {heard}"
+    await frame(dut)
+    heard = await read(dut, "a_kind")
+    assert heard == [A_NONE], f"frame 57: kind {heard}"
+
+
+@cocotb.test()
+async def a_new_game_cuts_the_sigh_and_the_trombone_short_a_brick_or_the_paddle_doesnt(dut):
+    """A brick or the paddle leaves a lost ball's sigh or the trombone playing on, without
+    restarting it; a new game replaces either with its call, from the start."""
+    await start(dut)
+    for sound, events, kind in (("sigh", ["lost"], A_LOST), ("trombone", ["lost", "last"], A_OVER)):
+        await frame(dut, *events)
+        await frame(dut, "brick")
+        await frame(dut, "paddle")
+        heard = await read(dut, "a_kind", "a_t")
+        assert heard == [kind, 2], f"the {sound} after a brick and the paddle: kind, a_t {heard}"
+        await frame(dut, "new_game")
+        heard = await read(dut, "a_kind", "a_t", "a_note")
+        assert heard == [A_START, 0, 40], f"the {sound} after a new game: kind, a_t, note {heard}"
+
+
+@cocotb.test()
 async def a_new_game_plays_its_call_on_both_voices(dut):
     """G4, D5, G5 for 8 frames each, then C6 for 24, with voice B's bass at the same volume."""
     await start(dut)
