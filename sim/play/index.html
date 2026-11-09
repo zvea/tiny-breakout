@@ -34,25 +34,33 @@ addEventListener('keydown',e=>{
 addEventListener('keyup',e=>{if(map[e.key]){keys&=~map[e.key];sendKeys()}});
 addEventListener('blur',()=>{keys=0;sendKeys()});
 
-// --- Sound: the frames' samples go into an AudioWorklet ring buffer. Playback starts once
-// ~80 ms is buffered (absorbing network and scheduling jitter); if the buffer runs dry it
-// pauses and refills, and if it grows past ~250 ms (clock drift) it drops the excess.
+// --- Sound: the frames' samples (48 kHz, from the server) go into an AudioWorklet ring buffer.
+// The worklet plays the 48 kHz stream at whatever rate the browser's audio runs (often 44.1
+// kHz on a Mac), resampling with linear interpolation, and holds its buffer near 60 ms: it
+// plays up to 1% faster or slower (too little to hear) as the buffer runs over or under, so
+// the delay can't creep up with clock drift. Playback starts once 60 ms is in; a far
+// overfull buffer (a stall) jumps to the target, and a dry one pauses until refilled.
 const worklet=`class Feed extends AudioWorkletProcessor{
  constructor(){super();this.buf=new Float32Array(48000);this.r=0;this.w=0;this.playing=false;
+  this.base=48000/sampleRate;
   this.port.onmessage=e=>{const s=e.data,N=this.buf.length;
-   for(let i=0;i<s.length;i++){this.buf[this.w]=s[i];this.w=(this.w+1)%N}
-   let fill=(this.w-this.r+N)%N;if(fill>12000)this.r=(this.w-3840+N)%N}}
- process(_,outs){const o=outs[0][0],N=this.buf.length;let fill=(this.w-this.r+N)%N;
-  if(!this.playing&&fill>=3840)this.playing=true;
-  for(let i=0;i<o.length;i++){if(this.playing&&fill>0){o[i]=this.buf[this.r];this.r=(this.r+1)%N;fill--}
+   for(let i=0;i<s.length;i++){this.buf[this.w]=s[i];this.w=(this.w+1)%N}}}
+ fill(){const N=this.buf.length;return (this.w-Math.floor(this.r)+N)%N}
+ process(_,outs){const o=outs[0][0],N=this.buf.length,T=2880;let f=this.fill();
+  if(f>4*T){this.r=(this.w-T+N)%N;f=T}
+  if(!this.playing&&f>=T)this.playing=true;
+  const step=this.base*(1+0.01*Math.max(-1,Math.min(1,(f-T)/T)));
+  for(let i=0;i<o.length;i++){
+   if(this.playing&&this.fill()>2){const i0=Math.floor(this.r),a=this.buf[i0],b=this.buf[(i0+1)%N];
+    o[i]=a+(b-a)*(this.r-i0);this.r+=step;if(this.r>=N)this.r-=N}
    else{o[i]=0;this.playing=false}}
-  this.port.postMessage(fill);return true}}
+  this.port.postMessage(this.fill());return true}}
 registerProcessor('feed',Feed);`;
 let actx=null,node=null,gain=null,soundOn=false,buffered=0;
 const sb=document.getElementById('sb'),vol=document.getElementById('vol');
 async function toggleSound(){
  if(!actx){
-  actx=new AudioContext({sampleRate:48000});
+  actx=new AudioContext({latencyHint:'interactive'});
   await actx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet],{type:'text/javascript'})));
   node=new AudioWorkletNode(actx,'feed',{outputChannelCount:[1]});
   gain=actx.createGain();gain.gain.value=+vol.value;
