@@ -10,6 +10,13 @@
  * target lets the ball settle into a loop that never reaches the last bricks. Picking from
  * the game's own state (such as the ball's position) was tried and also fell into such
  * loops.
+ *
+ * Where the ball is over the paddle is read off the beam, as the drawing finds it, rather than
+ * worked out from their positions: as the beam crosses the ball's columns, on every line, it
+ * samples the paddle zone under it, which the drawing works out for every pixel anyway (from
+ * the beam's x alone, so on every line, not just the paddle's). Comparing that with the
+ * target takes two 2-bit compares, where subtracting the positions took an adder and two 8-bit
+ * compares, and the flip-flops holding the result cost less than those.
  */
 
 `default_nettype none
@@ -20,9 +27,11 @@ module autoplay (
     input  logic       frame_tick,   // once per frame
     input  logic       paddle_hit,   // at frame_tick: the ball hit the paddle this frame
     input  logic [1:0] random,       // pseudo-random bits that change every frame (the LFSR)
-    input  logic [9:0] ball_x,       // left edge of the 8x8 box the round ball is drawn in
-    input  logic [9:0] paddle_c,     // centre of the paddle (a multiple of 4)
-    input  logic [2:0] paddle_w16,   // width of the paddle in 16 px
+    input  logic       in_ball_x,    // the beam is over the columns of the ball's 8x8 box ...
+    input  logic [2:0] ball_dx,      // ... at this offset from its left edge (0..7)
+    input  logic [1:0] paddle_zone,  // the paddle zone under the beam, 0..3 from the left;
+                                     // 0 / 3 also beyond the paddle's left / right end
+    input  logic       over_paddle,  // the beam is over the paddle's columns
     output logic       steer_left,   // move the paddle left / right by one 4-px step
     output logic       steer_right
 );
@@ -35,30 +44,32 @@ module autoplay (
   end
 
   // The zone a bounce takes is the one under the last ball pixel to touch the paddle: the
-  // right end of the ball's bottom row, ball_x + 5. Steer that pixel over the middle of the
-  // zone. The outer zones are the paddle's last 16 px, so their middle is 8 px in from the
-  // end: half a width (8 x paddle_w16) - 8 from the centre. The inner ones fill the rest,
-  // 8 x paddle_w16 - 16 px each side of the centre, so their middle is 4 x paddle_w16 - 8 from
-  // it. Compared in 4-px units, relative to the centre: ball_x / 4 = paddle_c / 4 + aim_dx4,
-  // where the - 2 is that pixel's 5 px, rounded down (aim_x4 covers ball_x up to 3 px further
-  // right, so the pixel lands 0..3 px left of the middle). The paddle moves one 4-px step at
-  // a time and this is re-evaluated before each step, so it stops on target.
-  wire [7:0] w16 = {5'b0, paddle_w16};
-  logic [7:0] aim_dx4;
-  always_comb begin
-    case (aim_zone)
-      0:       aim_dx4 = -(2 * w16 - 2) - 2;
-      1:       aim_dx4 = -(w16 - 2) - 2;
-      2:       aim_dx4 = (w16 - 2) - 2;
-      default: aim_dx4 = (2 * w16 - 2) - 2;
-    endcase
+  // right end of the ball's bottom row, ball x + 5. Steer until that pixel is at least 2 px
+  // inside the target zone, that is, until the pixels 2 px either side of it, ball x + 3 and
+  // ball x + 7, are both over the zone (and over the paddle, for an outer zone). That leaves
+  // 4 px or more to stop in (the inner zones of the narrowest paddle are 8 px), at least the
+  // paddle's 4-px step, so it stops on target rather than stepping back and forth. Once it
+  // has stopped, the ball moves at most 2 px before the next step is decided, so the pixel
+  // stays in the zone. At the left end, steer left also while ball x is off the paddle: that
+  // keeps the ball's whole bottom row (ball x + 2 .. ball x + 5) on the paddle, as ball x + 7
+  // does at the right.
+  //
+  // The paddle and the ball move only at the start of a line (move_tick), and this samples on
+  // every line, so each step is decided on the positions the step before left, as fresh as
+  // working them out from the positions would be. No reset: the first line after a reset sets
+  // both, long before the first move.
+  wire left_of_paddle  = !over_paddle && !paddle_zone[1];
+  wire right_of_paddle = !over_paddle && paddle_zone[1];
+
+  always_ff @(posedge clk) begin
+    if (in_ball_x) begin
+      case (ball_dx)
+        0:       steer_left  <= left_of_paddle;
+        3:       steer_left  <= steer_left | (paddle_zone < aim_zone);
+        7:       steer_right <= right_of_paddle | (paddle_zone > aim_zone);
+        default: ;
+      endcase
+    end
   end
-  wire [7:0] ball_x4 = ball_x[9:2];
-  wire [7:0] aim_x4  = paddle_c[9:2] + aim_dx4;
-
-  assign steer_right = ball_x4 > aim_x4;
-  assign steer_left  = ball_x4 < aim_x4;
-
-  wire _unused = &{ball_x[1:0], paddle_c[1:0], 1'b0};
 
 endmodule

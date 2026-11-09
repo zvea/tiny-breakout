@@ -210,20 +210,7 @@ module tt_um_tiny_breakout (
       .value     (random)
   );
 
-  logic auto_left, auto_right;
-
-  autoplay u_autoplay (
-      .clk        (clk),
-      .rst_n      (rst_n),
-      .frame_tick (frame_tick),
-      .paddle_hit (hit.paddle),
-      .random     (random[1:0]),
-      .ball_x     (ball_x),
-      .paddle_c   (paddle_c),
-      .paddle_w16 (paddle_w16),
-      .steer_left (auto_left),
-      .steer_right(auto_right)
-  );
+  logic auto_left, auto_right;  // from autoplay, below: it reads the ball and paddle off the beam
 
   // Paddle steering: from autoplay, or from the buttons (left and right together cancel)
   wire go_left  = autoplay ? auto_left  : (btn_left & ~btn_right);
@@ -295,7 +282,8 @@ module tt_um_tiny_breakout (
   // are 0 .. paddle_w16 - 1 exactly.
   wire [9:0] paddle_dx = h_pos - paddle_c;
   wire [6:0] paddle_d8 = paddle_dx[9:3] ^ {7{paddle_dx[9]}};
-  wire       paddle_px = (cell_y == PADDLE_CELL_Y) && (paddle_d8 < 7'(paddle_w16));
+  wire       over_paddle = paddle_d8 < 7'(paddle_w16);  // the beam is over the paddle's columns
+  wire       paddle_px   = (cell_y == PADDLE_CELL_Y) && over_paddle;
   // Angle zones, 0..3 from the left: the outer 16 px at each end (0 and 3) send the ball off
   // at the flatter angle, the rest (1 and 2) at the steeper one; the half sets the direction.
   wire       paddle_right = !paddle_dx[9];
@@ -334,6 +322,21 @@ module tt_um_tiny_breakout (
 
   wire ball_px = in_ball_x && in_ball_y &&
                  in_circle8(ball_dx, ball_dy) && ~game_over;
+
+  // Autoplay's steering (see Controls), from the paddle zone under the ball's columns
+  autoplay u_autoplay (
+      .clk        (clk),
+      .rst_n      (rst_n),
+      .frame_tick (frame_tick),
+      .paddle_hit (hit.paddle),
+      .random     (random[1:0]),
+      .in_ball_x  (in_ball_x),
+      .ball_dx    (ball_dx),
+      .paddle_zone(paddle_zone),
+      .over_paddle(over_paddle),
+      .steer_left (auto_left),
+      .steer_right(auto_right)
+  );
 
   // Spare lives: 8-px circles at x 64 (with 1 or 2 spare balls) and x 80 (with 2), y 8..15
   wire life_slot_1 = (h_pos[9:4] == 4) && (lives >= 1) && (lives <= SPARE_LIVES);
