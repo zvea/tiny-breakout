@@ -22,7 +22,7 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   pseudo-randomly chosen part of the paddle, so the ball keeps reaching new bricks.
 - **Demo:** when no controller is connected, the game plays itself.
 - **Sound:** effects through the Audio Pmod on `uio[7]`: a note for each brick (higher rows,
-  higher notes), a thock for the paddle, a dull thump for the walls, a sigh for a lost ball and
+  higher notes), a thock for the paddle, a low rumble for the walls, a sigh for a lost ball and
   a sad trombone at game over; a rising call for a new game and a fanfare for a cleared wall,
   each doubled an octave below.
 

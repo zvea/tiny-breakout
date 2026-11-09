@@ -28,10 +28,11 @@
  *   voice B  bass        voice A's start and fanfare, an octave below (from voice A's square
  *                        wave, so voice B needs no tone counter of its own)
  *            thump       noise stepped every line, under the paddle's thock
- *            rumble      noise stepped every 8 lines (no hiss): a dull thump, for the walls
- * A later sound on a voice replaces the one playing; only a new game interrupts a lost ball or
- * game over on voice A. The phrases move in 4-frame steps, so a note and its volume are a small
- * table on the timer's top bits, not comparisons and subtractions: cheaper logic.
+ *            rumble      noise stepped every 8 lines (no hiss), lower than the thump: the walls
+ * A later sound on a voice replaces the one playing, except that a brick or the paddle doesn't
+ * cut a lost ball's sigh or the trombone short (a new game, the pause or another loss does).
+ * The phrases move in 4-frame steps, so a note and its volume are a small table on the timer's
+ * top bits, not comparisons and subtractions: cheaper logic.
  */
 
 `default_nettype none
@@ -50,8 +51,8 @@ module sound (
     input  logic       brick,        // a brick was hit this frame
     input  logic [2:0] brick_row,    // its row, 0 (top) .. 5
     input  logic       fast,         // the ball is fast (2x and up)
-    input  logic       paddle,       // the ball hit the paddle
-    input  logic       wall,         // the ball touched a wall
+    input  logic       paddle,       // the ball bounced off the paddle
+    input  logic       wall,         // the ball bounced off a wall
     input  logic [3:0] pause_step,   // in the pause: 0..15, one step every 4 frames
     output logic       audio
 );
@@ -237,7 +238,7 @@ module sound (
     else audio <= h_pos[0] ? a_on : b_on;
   end
 
-  // the fanfare and the call move every 2 steps; N < 64
+  // the fanfare and the call move every 2 steps
   wire _unused = &{pause_step[0], step[0], v_pos[9], 1'b0};
 
 endmodule
