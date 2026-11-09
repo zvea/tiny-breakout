@@ -40,23 +40,32 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 2. Connect a VGA monitor through the TinyVGA PMOD on the output pins, and an SNES controller
    through the Gamepad PMOD on the input pins. For sound, also connect the Audio Pmod to the
    bidirectional pins (`uio[7]`); it is optional.
-3. Reset. With no controller connected the demo runs; connecting one starts a new game.
+3. Reset. With no controller connected the demo runs; connecting one starts a new game. Press
+   fire to launch the ball.
 
 | Control | Gamepad | Direct input |
 |---|---|---|
 | Move left / right | D-pad left / right | `ui[0]` / `ui[1]` |
-| Launch the ball, or start a new game after game over | A, X, L or R | `ui[2]` |
+| Fire: launch the ball, or start a new game after game over | A, X, L or R | `ui[2]` |
 | Autoplay | SELECT switches it on; left, right or fire switches it off | `ui[3]` high |
+
+The other gamepad buttons (B, Y, START, up and down) do nothing. There is no pause, and a
+game you are playing can't be restarted before game over, except by a reset. Only the first of
+the Gamepad PMOD's two controllers is read (the one Psychogenic's `gamepad_pmod_single` reads:
+the last 12 bits of each report); with only the second one connected, the game sees no
+controller.
 
 The direct inputs are active high, for plain buttons or for simulators that can't produce
 the gamepad's serial signal. Pressing left, right or fire (`ui[0]` to `ui[2]`) also ends the
-demo.
+demo. Hold unused direct inputs low with pull-downs: a high `ui[3]` keeps autoplay on, and a
+high `ui[0]` to `ui[2]` holds that button down. On the demo board, switch off the DIP switches
+for `ui[0]` to `ui[3]`, and those for `ui[4]` to `ui[6]` too when the Gamepad PMOD is fitted.
 
 ## External hardware
 
 - [TinyVGA PMOD](https://github.com/mole99/tiny-vga) on `uo[7:0]`, with a VGA monitor.
 - [Gamepad PMOD](https://github.com/psychogenic/gamepad-pmod) on `ui[6:4]`, with an
   SNES-compatible controller. Optional: without it, use the direct inputs.
-- Optional: buttons or switches on `ui[3:0]`.
+- Optional: buttons or switches on `ui[3:0]`, active high, with pull-downs.
 - Optional: the [Audio Pmod](https://github.com/MichaelBell/tt-audio-pmod) on `uio[7]`, with
   headphones or a speaker, for sound.
