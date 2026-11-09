@@ -23,7 +23,7 @@
   <path class="on" d="M15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12"/>
   <path class="off" d="M16 9l6 6M22 9l-6 6"/></svg></button>
  <label for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.3" disabled></div>
-<div id="help"><kbd>←</kbd>/<kbd>→</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> toggle autoplay &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> <span id="mk">unmute</span></div>
+<div id="help"><kbd>←</kbd>/<kbd>→</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> autoplay (arrows stop it) &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> <span id="mk">unmute</span></div>
 <script>
 // The server runs the RTL model at 60 fps and streams frames:
 // [u32 video length][u32 audio samples][video: RLE (count, RRGGBB) pairs][audio: s16 at 48 kHz].
@@ -50,7 +50,8 @@ async function sendNextKeys(){
 }
 const map={ArrowLeft:1,ArrowRight:2,' ':4};
 addEventListener('keydown',e=>{
- if(map[e.key]){e.preventDefault();if(!(keys&map[e.key])){keys|=map[e.key];sendKeys()}}
+ if(map[e.key]){e.preventDefault();if(e.key!==' ')auto=0;  // steering takes over from autoplay
+  if(!(keys&map[e.key])){keys|=map[e.key];sendKeys()}}
  else if(e.key==='a'||e.key==='A'){auto^=1;sendKeys()}
  else if(e.key==='r'||e.key==='R'){sendKeys(16)}
  else if(e.key==='m'||e.key==='M'){toggleSound()}});
