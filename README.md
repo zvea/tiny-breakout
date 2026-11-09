@@ -31,9 +31,10 @@ There is no frame buffer. Each pixel is computed from the game's state as the be
   LFSR, and each row after it grows from the one before by an elementary, one-dimensional
   cellular automaton (Wolfram's rule 150 or 182). This gives 21 different walls in under 1% of
   the tile.
-- Positions are whole pixels, with no fractional bits. The ball's step never changes; its speed,
-  from 1x to 3x in half steps, comes from how many steps it takes each frame (none, one or two,
-  all in vertical blanking).
+- The ball's velocity is three bits: left or right, up or down, steep or flat. A bounce just
+  sets or flips one of them, where signed velocities would need negations and absolute values.
+  The ball always moves by the same step, two to six times every four frames as it speeds up
+  from 1x to 3x.
 - The sound effects are square waves timed by the video's line clock, so a 7-bit counter is
   enough for a note's pitch. Each of the two voices keeps only which sound it is playing and
   for how many frames, and works out the note and volume from those. Volume is pulse-width
