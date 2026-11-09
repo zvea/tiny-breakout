@@ -130,9 +130,16 @@ async def a_new_game_plays_chords_on_both_voices(dut):
     await start(dut)
     await frame(dut, "new_game")
     assert await read(dut, "a_kind", "a_note", "b_kind", "b_note") == [A_START, 30, B_CHORD, 20]
-    for _ in range(9):
+    for f in range(1, 32):  # both voices throughout: C5 with G5 for 8 frames, C6 with E6 for 24
         await frame(dut)
-    assert await read(dut, "a_note", "b_note") == [15, 12]  # C6 with E6
+        a_kind, a_note, a_vol, b_kind, b_note, b_vol = await read(
+            dut, "a_kind", "a_note", "a_vol", "b_kind", "b_note", "b_vol")
+        assert (a_kind, b_kind) == (A_START, B_CHORD), f"frame {f}: kinds {a_kind}, {b_kind}"
+        assert (a_note, b_note) == ((30, 20) if f < 8 else (15, 12)), f"frame {f}"
+        assert a_vol > 0 and b_vol > 0, f"frame {f}: volumes {a_vol}, {b_vol}"
+    for _ in range(2):
+        await frame(dut)
+    assert await read(dut, "a_kind", "b_kind") == [A_NONE, B_NONE]
 
 
 @cocotb.test()

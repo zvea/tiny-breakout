@@ -141,11 +141,13 @@ module sound (
       end else if (paused) begin
         a_kind <= A_CLEAR;
       end else if (lost) begin
-        a_kind <= last ? A_OVER : A_LOST;
-        a_t    <= 0;
+        if (last) a_kind <= A_OVER;
+        else a_kind <= A_LOST;
+        a_t <= 0;
       end else if ((brick || paddle) && a_kind != A_LOST && a_kind != A_OVER) begin
-        a_kind <= brick ? A_BRICK : A_PADDLE;
-        a_t    <= 0;
+        if (brick) a_kind <= A_BRICK;
+        else a_kind <= A_PADDLE;
+        a_t <= 0;
       end else if (a_done || a_kind == A_CLEAR) begin
         a_kind <= A_NONE;
       end else if (a_t != 63) begin
@@ -180,7 +182,9 @@ module sound (
       if (new_game) b_kind <= B_CHORD;
       else if (paddle) {b_kind, b_t} <= {B_THUMP, 3'd0};
       else if (wall) {b_kind, b_t} <= {B_RUMBLE, 3'd0};
-      else if ((b_kind == B_CHORD && a_kind != A_START) || b_t == 4) b_kind <= B_NONE;
+      else if (b_kind == B_CHORD) begin  // as long as voice A plays its lower notes
+        if (a_kind != A_START || a_done) b_kind <= B_NONE;
+      end else if (b_t == 4) b_kind <= B_NONE;
       else b_t <= b_t + 1;
     end
   end
