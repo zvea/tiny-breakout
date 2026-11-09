@@ -27,6 +27,10 @@ liberty() {
     awk 'NF && !done { print; done = 1 }'
 }
 
+# valid_name NAME: true if NAME is a plain file name (letters, digits, _ . -, not starting with
+# a dot), safe to build the paths from that a script removes and recreates
+valid_name() { [[ $1 =~ ^[A-Za-z0-9_.-]+$ && $1 != .* ]]; }
+
 # Writes copies of a top module with pairs of register declarations swapped: synthesis
 # results shift with declaration order alone, so area comparisons average over these.
 # Usage: orderings TOP_FILE N OUT_PREFIX  ->  OUT_PREFIX0.sv .. OUT_PREFIX{N-1}.sv

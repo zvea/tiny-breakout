@@ -12,13 +12,16 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
-[ $# -ge 2 ] || { sed -n '2,9p' "$0"; exit 2; }
-MODE=$1; TAG=$2; SRC=$(cd "${3:-$ROOT/src}" && pwd)
+usage() { sed -n '2,9p' "$0"; exit 2; }
+[ $# -ge 2 ] && [ $# -le 3 ] || usage
+MODE=$1; TAG=$2
 case $MODE in
   place)  TO=(--to OpenROAD.GlobalPlacement) ;;
   harden) TO=() ;;
-  *)      sed -n '2,9p' "$0"; exit 2 ;;
+  *)      usage ;;
 esac
+valid_name "$TAG" || { echo "TAG: letters, digits, _ . - only, not starting with a dot"; usage; }
+SRC=$(cd "${3:-$ROOT/src}" && pwd)
 cd "$ROOT"
 [ -f src/user_config.json ] || { echo "missing src/user_config.json: run ./tt/tt_tool.py --create-user-config"; exit 1; }
 D=runs/exp_$TAG; C=.exp_src_$TAG

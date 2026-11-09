@@ -8,8 +8,11 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
-[ $# -ge 1 ] || { sed -n '2,5p' "$0"; exit 2; }
-NAME=$1; SRC=$(cd "${2:-$ROOT/src}" && pwd)
+usage() { sed -n '2,5p' "$0"; exit 2; }
+[ $# -ge 1 ] && [ $# -le 2 ] || usage
+NAME=$1
+valid_name "$NAME" || { echo "NAME: letters, digits, _ . - only, not starting with a dot"; usage; }
+SRC=$(cd "${2:-$ROOT/src}" && pwd)
 W="$ROOT/build/flow_avg/$NAME"; rm -rf "$W"; mkdir -p "$W"
 orderings "$SRC/tt_um_tiny_breakout.sv" 3 "$W/top"
 vals=()
