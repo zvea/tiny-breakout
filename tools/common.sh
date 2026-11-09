@@ -13,10 +13,17 @@ sources() {
     sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p'
 }
 
-# The typical-corner library of sky130's high-density cells, from $PDK_ROOT or ciel's default
+# The typical-corner library of sky130's high-density cells, from $PDK_ROOT or ciel's default:
+# the PDK version LibreLane uses if that is there, else the first by path. Prints nothing if
+# there is none, so that callers (under set -euo pipefail) reach their own message.
 liberty() {
-  find "${PDK_ROOT:-$HOME/.ciel}" -path '*sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib' \
-    2>/dev/null | head -1
+  local libs want
+  libs=$({ find "${PDK_ROOT:-$HOME/.ciel}" -path '*sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib' \
+    2>/dev/null || true; } | sort)
+  want=$(sed -n 's/^sky130: *//p' "$ROOT"/.venv/lib/python*/site-packages/librelane/pdk_hashes.yaml 2>/dev/null || true)
+  # The first non-empty line (reading all of it: no early exit to break the pipe)
+  { if [ -n "$want" ]; then grep -F "/$want/" <<<"$libs" || true; fi; echo "$libs"; } |
+    awk 'NF && !done { print; done = 1 }'
 }
 
 # Writes copies of a top module with pairs of register declarations swapped: synthesis
