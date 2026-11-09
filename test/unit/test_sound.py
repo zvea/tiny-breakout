@@ -100,11 +100,12 @@ async def a_brick_plays_its_rows_note_an_octave_down_fading_over_5_frames(dut):
 
 @cocotb.test()
 async def the_tone_has_the_pitch_of_its_note(dut):
-    """A note of N flips the square wave every N lines."""
+    """A note of N flips the square wave every N lines. Not N = 30, the note when nothing
+    plays, so that a counter ignoring the note would fail."""
     await start(dut)
-    await frame(dut, "brick", row=0)  # red: C6, an octave down C5, N = 30
-    flips = await toggles(dut, "a_square", 600)
-    assert flips in (19, 20, 21), f"{flips} flips in 600 lines (expected 20 for N = 30)"
+    await frame(dut, "brick", row=5, fast=True)  # scale step 2: E5, an octave down E4, N = 48
+    flips = await toggles(dut, "a_square", 480)
+    assert flips in (9, 10, 11), f"{flips} flips in 480 lines (expected 10 for N = 48)"
 
 
 @cocotb.test()
