@@ -147,12 +147,15 @@ int black_from_top(const Game &g) {
   return y;
 }
 
-// The walls after the first are grown from a seed row chosen by the LFSR (brick_wall.sv): the
-// bottom row is the seed, 4 bits mirrored into 8 columns, and each row from the top down is
+// The walls after the first are grown from a seed row chosen by the LFSR (wall_pattern.sv):
+// the bottom row is the seed, 4 bits mirrored into 8 columns, and each row from the top down is
 // grown from the one before it by rule 150, or rule 182 when bit 4 is set. As `standing`.
 uint64_t pattern_wall(int value) {
   int rule_182 = value >> 4 & 1;
-  int half = (value & 0b1110) | (value & 1) | rule_182;  // bit c: column c, for c = 0..3
+  // Bit c: column c, for c = 0..3. Column 0 from bit 0 or bit 4, but never all four columns:
+  // from 1111 every row grows full, which would repeat the first wall
+  int high = value & 0b1110;
+  int half = high | (((value & 1) | rule_182) & (high != 0b1110));
   auto row_bits = [](int h) {
     uint64_t row = 0;
     for (int c = 0; c < 8; c++) row |= uint64_t((h >> (c < 4 ? c : 7 - c)) & 1) << c;
@@ -1073,7 +1076,8 @@ void long_game() {
   part = "pause after level 1";
   v = pause_after_clear(f);
   part = "level 2";
-  CHECK(is_pattern_wall(v.standing), "the wall (%d bricks, %016llx) is not a pattern wall",
+  CHECK(v.bricks < 48 && is_pattern_wall(v.standing),
+        "the wall (%d bricks, %016llx) is not a pattern wall",
         v.bricks, (unsigned long long)v.standing);
   CHECK(v.lives == 2, "%d spare balls (expected no more than 2)", v.lives);
   CHECK(v.paddle_w == 80, "paddle %d px wide (expected 80)", v.paddle_w);
@@ -1101,7 +1105,8 @@ void long_game() {
   part = "pause after level 2";
   v = pause_after_clear(f);
   part = "level 3";
-  CHECK(is_pattern_wall(v.standing), "the wall (%d bricks, %016llx) is not a pattern wall",
+  CHECK(v.bricks < 48 && is_pattern_wall(v.standing),
+        "the wall (%d bricks, %016llx) is not a pattern wall",
         v.bricks, (unsigned long long)v.standing);
   CHECK(v.lives == lives_at_clear + 1, "%d spare balls after the level (expected one back)",
         v.lives);
