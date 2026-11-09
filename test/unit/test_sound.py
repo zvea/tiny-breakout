@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for sound: which sound each event starts on which voice, the notes it plays and
-how its volume falls, that the tones have the pitch their notes say, and that the output
-interleaves the two voices.
+how its volume falls, that the tones have the pitch their notes say, how the noise changes,
+and that the output interleaves the two voices.
 
 A frame here is one frame_tick; a line is one clock with h_pos at 0, so a whole line costs two
 clocks rather than 800.
@@ -22,7 +22,8 @@ EVENTS = ["new_game", "paused", "lost", "last", "brick", "paddle", "wall"]
 
 async def start(dut):
     cocotb.start_soon(Clock(dut.clk, 40, unit="ns").start())
-    for name in EVENTS + ["frame_tick", "fast", "brick_row", "pause_step", "frame_phase", "v_pos"]:
+    for name in EVENTS + ["frame_tick", "fast", "brick_row", "pause_step", "frame_phase", "v_pos",
+                          "random"]:
         getattr(dut, name).value = 0
     dut.h_pos.value = 1
     dut.rst_n.value = 0
@@ -165,9 +166,34 @@ async def the_cleared_wall_fanfare_follows_the_pause_timer(dut):
 
 
 @cocotb.test()
+async def the_noise_changes_every_line_for_the_thump_and_every_8_lines_for_the_rumble(dut):
+    """About half the lines (or 8-line blocks) change it, half are 1, and it differs from
+    frame to frame with the random number."""
+    await start(dut)
+    for event, step in (("paddle", 1), ("wall", 8)):
+        await frame(dut, event)
+        heard = {}
+        for random in (1, 6):
+            dut.random.value = random
+            values = []
+            for line in range(525):
+                dut.v_pos.value = line
+                values += await read(dut, "noise")
+            changes = [v for v in range(1, 525) if values[v] != values[v - 1]]
+            assert all(v % step == 0 for v in changes), f"{event}: changes off the {step}-line grid"
+            blocks = len(range(0, 525, step))
+            assert 0.35 * blocks < len(changes) < 0.65 * blocks, f"{event}: {len(changes)} changes"
+            assert 0.4 * 525 < sum(values) < 0.6 * 525, f"{event}: {sum(values)} lines of 1"
+            heard[random] = values
+        differ = sum(a != b for a, b in zip(heard[1], heard[6]))
+        assert differ > 0.3 * 525, f"{event}: frames differ in only {differ} lines"
+
+
+@cocotb.test()
 async def the_output_takes_the_voices_in_turn(dut):
     """Voice A on odd clocks of h_pos, voice B on even ones: here only B (a wall) sounds."""
     await start(dut)
+    dut.random.value = 0b1000  # the noise is 1 on line 0
     await frame(dut, "wall")
     heard = {0: 0, 1: 0}
     for h in range(2, 400):
