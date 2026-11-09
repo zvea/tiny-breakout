@@ -179,16 +179,19 @@ module tt_um_tiny_breakout (
 
   // Demo: autoplay while no controller is connected, until a direct button is pressed
   // (held at a frame update; for simulators that only toggle pins). Ending the demo starts
-  // a new game. Unplugging the controller later resumes the demo in the current game.
+  // a new game, with its call. Unplugging the controller later resumes the demo in the current
+  // game. demo_was starts at 1, as if the demo had been running: a controller already
+  // connected at the first frame update ends it there, so a player's first game starts with
+  // the call too, while without a controller the demo starts silently.
   logic demo_allowed;  // no direct button pressed since reset
-  logic demo_was;      // the demo ran in the previous frame
+  logic demo_was;      // the demo ran in the previous frame (or reset)
   wire  demo     = demo_allowed & ~gp_connected;
   wire  end_demo = demo_was & ~demo;
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       demo_allowed <= 1;
-      demo_was     <= 0;
+      demo_was     <= 1;
     end else if (frame_tick) begin
       if (ui.left || ui.right || ui.fire) demo_allowed <= 0;
       demo_was <= demo;
