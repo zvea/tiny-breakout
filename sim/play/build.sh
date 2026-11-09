@@ -9,6 +9,13 @@ set -e
 cd "$(dirname "$0")"  # obj_serve and serve.cpp are relative to this directory
 ROOT=$(cd ../.. && pwd)
 export PATH="$ROOT/.tools/v4/bin:$PATH"
+# Verilator 5 fails later with a C++ error about __Vclklast__TOP__clk: say so up front
+VERSION=$(verilator --version 2>/dev/null || true)
+case "$VERSION" in
+  "Verilator 4."*) ;;
+  "") echo "build.sh: verilator not found; the player needs Verilator 4.x (see test/README.md)" >&2; exit 1 ;;
+  *)  echo "build.sh: found ${VERSION%% rev*}; the player needs Verilator 4.x (see test/README.md)" >&2; exit 1 ;;
+esac
 # The sources listed in info.yaml, in order
 SOURCES=$(sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p' "$ROOT/info.yaml" | sed "s|^|$ROOT/src/|")
 case "$(uname -s)" in
