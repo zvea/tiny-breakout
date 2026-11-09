@@ -26,8 +26,8 @@
  *
  * Collisions with bricks and the paddle are found by pixel overlap during scan-out: a ball
  * pixel on a brick or paddle pixel sets a flag (and clears the brick at once). The flags
- * are used and cleared at frame_tick, the first of the frame's moves; wall contacts are
- * worked out there from the ball's position.
+ * are used and cleared at frame_tick (line 480, where the frame's moves, if any, begin); wall
+ * contacts are worked out there from the ball's position.
  *
  * Sections: pins, video timing, game state, controls, what is under the
  * beam, collisions, frame update, video output, sound.
@@ -148,8 +148,9 @@ module tt_um_tiny_breakout (
   } hits_t;
   hits_t      hit;
   logic [2:0] hit_row;   // the row of the last brick hit (for the sound)
-  logic [1:0] hit_zone;  // paddle zone (0..3 from the left, see paddle_px) under the last ball
-                         // pixel to touch the paddle: the right end of the ball's bottom row
+  logic [1:0] hit_zone;  // paddle zone (0..3 from the left, see paddle_zone) under the last
+                         // ball pixel to touch the paddle: the right end of the ball's bottom
+                         // row, unless the ball overhangs an end of the paddle
 
   // ---------------------------------------------------------------------------
   // Controls: gamepad, direct buttons and autoplay
@@ -179,7 +180,7 @@ module tt_um_tiny_breakout (
   // Demo: autoplay while no controller is connected, until a direct button is pressed
   // (held at a frame update; for simulators that only toggle pins). Ending the demo starts
   // a new game. Unplugging the controller later resumes the demo in the current game.
-  logic demo_allowed;  // no direct button pressed since power-up
+  logic demo_allowed;  // no direct button pressed since reset
   logic demo_was;      // the demo ran in the previous frame
   wire  demo     = demo_allowed & ~gp_connected;
   wire  end_demo = demo_was & ~demo;
@@ -579,8 +580,8 @@ module tt_um_tiny_breakout (
   // Celebration, in the pause after a cleared wall: rainbow bands rise behind the ball and
   // paddle, over the field and the border. They show while speed_level counts 17..31 (the
   // pause starts at 16, where play stops, so 16 alone can't tell the two apart). The bands
-  // are 64 px tall and rise 2 px per frame: the band under the beam is its line in 2-px units
-  // plus a count of the pause's frames, in 32s.
+  // are 64 px tall and rise 2 px per frame: the band under the beam is (line / 2 + frames into
+  // the pause) / 32, the frames counted by speed_level's low bits and frame_phase.
   wire       celebrate = !game_over && speed_level[4] && (speed_level[3:0] != 0);
   wire [7:0] band_y    = v_pos[8:1] + 8'({speed_level[3:0], frame_phase});
 

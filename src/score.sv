@@ -6,9 +6,9 @@
  * The score: a 3-digit BCD counter and its display. A fixed 0 follows the count, so a point
  * reads as 10 and the display runs 0000 .. 9990, where it stops, so a player sees it maxed out
  * rather than reset. Seven-segment digits, 8 x 14 px with 2-px strokes, in 16 x 16-px cells at
- * x 512..575, y 3..18 (digit at x 4..11, y 5..18): centred in the black band above the top
- * wall (y 0..23), level with the spare-ball markers. BCD costs a little more than binary but
- * needs no division to draw.
+ * x 512..575, y 3..18 (in each cell the digit is at x 4..11, y 2..15: lines 5..18): centred in
+ * the black band above the top wall (y 0..23), level with the spare-ball markers. BCD costs a
+ * little more than binary but needs no division to draw.
  */
 
 `default_nettype none

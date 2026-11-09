@@ -28,8 +28,8 @@
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.05,
   "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.05,
 
-  "//": "Tiny Breakout: routing at ~81% utilisation, with the sound. With the defaults, detailed",
-  "//": "routing got stuck at ~4,600 violations. The global router reserves 10% of each layer's",
+  "//": "Tiny Breakout: once it had sound, at ~81% utilisation (2026-11), detailed routing with the defaults",
+  "//": "got stuck at ~4,600 violations. The global router reserves 10% of each layer's",
   "//": "tracks instead of 30%, and synthesis uses ABC's AREA 1 script instead of AREA 0: with both",
   "//": "it routed with 0 DRC, LVS and antenna errors at 80.4% (AREA 0 also routed, at 81.2%).",
   "GRT_ADJUSTMENT": 0.1,

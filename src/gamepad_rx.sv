@@ -70,7 +70,11 @@ module gamepad_rx (
     end
   end
 
-  // No reset needed: these are only used with connected, which a whole report sets
+  // No reset needed: the game reads these only together with connected, which reset clears.
+  // connected is set at the DOWN bit, though, and the buttons follow 1 to 6 bits later, so for
+  // those few microseconds after a controller connects they still hold the report before
+  // (all ones when there was no controller): LEFT and RIGHT together cancel, and the new game
+  // the connection starts takes priority over FIRE
   always_ff @(posedge clk) begin
     if (clk_rise) begin
       case (index)
@@ -85,6 +89,6 @@ module gamepad_rx (
   end
 
   // The buttons the game doesn't use, named here so lint doesn't flag their constants
-  wire [14:0] _unused = {gamepad_pkg::BIT_B, gamepad_pkg::BIT_Y, gamepad_pkg::BIT_START};
+  wire _unused = &{gamepad_pkg::BIT_B, gamepad_pkg::BIT_Y, gamepad_pkg::BIT_START, 1'b0};
 
 endmodule
