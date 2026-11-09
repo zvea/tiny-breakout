@@ -85,7 +85,11 @@ async function toggleSound(){
  vol.disabled=!soundOn;
 }
 sb.addEventListener('click',toggleSound);
-vol.addEventListener('input',()=>{if(gain)gain.gain.value=+vol.value});
+// The volume is remembered across reloads, where the browser allows storage
+try{const v=localStorage.getItem('tb-volume');if(v!==null)vol.value=v}catch(e){}
+vol.addEventListener('input',()=>{
+ if(gain)gain.gain.value=+vol.value;
+ try{localStorage.setItem('tb-volume',vol.value)}catch(e){}});
 function playAudio(bytes){
  if(!soundOn||!node)return;
  const s=new Int16Array(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.length));
