@@ -1,23 +1,23 @@
 ## How it works
 
-Tiny Breakout is a brick-breaker game with 640x480 VGA output at 60 Hz. There is no frame
+Tiny Breakout is a brick-breaker game with 640×480 VGA output at 60 Hz. There is no frame
 buffer: every pixel is worked out from the beam position as the picture is drawn.
 
-- **Wall:** 8 x 6 bricks, coloured by row from red at the top to violet at the bottom. The
-  first wall of a game is full; each later one is a symmetric pattern of 20 to 32 bricks, one
+- **Bricks:** 8×6, coloured by row from red at the top to violet at the bottom. The first
+  brick wall of a game is full; each later one is a symmetric pattern of 20 to 32 bricks, one
   of 21, picked at random.
-- **Ball:** bounces off the walls, the paddle and the bricks. Where it lands on the paddle
-  sets its angle (flatter on the last 16 px at each end). A brick hit on its side sends the
-  ball back sideways; a hit on its top or bottom sends it back vertically.
+- **Ball:** bounces off the side and top walls, the paddle and the bricks. Where it lands on
+  the paddle sets its angle (flatter on the last 16 px at each end). A brick hit on its side
+  sends the ball back sideways; a hit on its top or bottom sends it back vertically.
 - **Speed:** every ball starts at 1x and speeds up by half a step for every 4 bricks it
   clears, up to 3x.
 - **Lives and score:** you have 2 spare balls, shown top left; the score, top right, counts
   10 per brick, up to 9990. Losing the last ball ends the game: a black curtain comes down over
-  everything but the score. Once a ball has fallen past the paddle the border glows red,
-  brightening as the ball drops off the screen.
-- **Levels:** when the wall is cleared, the game pauses for about a second while rainbow
-  bands rise up the screen, gives back a spare ball (up to 2) and builds a new wall. Each
-  level's paddle is narrower: 96 px, 80, 64, then 48 from the 4th level.
+  everything but the score. Once a ball has fallen past the paddle, the black
+  margin around the playfield turns red, brightening as the ball drops off the screen.
+- **Levels:** when the last brick is cleared, the game pauses for about a second while
+  rainbow bands rise up the screen, gives back a spare ball (up to 2) and builds a new brick
+  wall. Each level's paddle is narrower: 96 px, 80, 64, then 48 from the 4th level.
 - **Autoplay:** the paddle steers itself. After each paddle hit it aims the ball at a
   pseudo-randomly chosen part of the paddle, so the ball keeps reaching new bricks.
 - **Demo:** when no controller is connected, the game plays itself.

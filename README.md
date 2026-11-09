@@ -21,11 +21,11 @@ Every pixel of the 640×480, 60 Hz picture is worked out from the beam position 
 drawn.
 
 - The bricks are kept in a ring of flip-flops that turns with the beam, so the brick under the
-  beam is always in the same flip-flop. This avoids a 48-way multiplexer and halves the wall's
-  logic ([brick_wall.sv](src/brick_wall.sv)).
-- Each wall after the first is generated as the ring fills. Its bottom row, built first, comes
-  from a 5-bit LFSR, and each later row from the row before it, by an elementary cellular
-  automaton (Wolfram's rules 150 and 182). This gives 21 brick patterns in under 1% of the tile.
+  beam is always in the same flip-flop. This avoids a 48-way multiplexer and halves the brick
+  wall's logic ([brick_wall.sv](src/brick_wall.sv)).
+- Each brick wall after the first is generated as the ring fills. Its bottom row, built first,
+  comes from a 5-bit LFSR, and each later row from the row before it, by an elementary
+  cellular automaton (Wolfram's rules 150 and 182). This gives 21 brick patterns in under 1% of the tile.
 - Collisions are read off the picture: a ball pixel drawn over a brick or the paddle is a hit.
   The ball's offset within its own 8×8 box at that pixel tells which edge of the brick it came
   through, so it bounces the right way.
