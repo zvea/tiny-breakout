@@ -7,7 +7,7 @@ They use only the chip's pins, as internal signal names don't survive synthesis.
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, RisingEdge
+from cocotb.triggers import ClockCycles, RisingEdge, Timer
 
 HSYNC = 7
 VSYNC = 3
@@ -106,3 +106,47 @@ async def test_gamepad_and_paddle(dut):
     dut._log.info(f"paddle x: {x1} -> {x2}")
     assert x1 is not None and x2 is not None
     assert x2 < x1
+
+
+def check_uio(dut):
+    """uio[7] is the only output (audio, for the Audio Pmod); the other uio pins are unused."""
+    assert int(dut.uio_oe.value) == 0x80, f"uio_oe = {int(dut.uio_oe.value):#04x}"
+    assert int(dut.uio_out.value) & 0x7F == 0, f"uio_out = {int(dut.uio_out.value):#04x}"
+
+
+@cocotb.test()
+async def test_sound(dut):
+    """Silent after reset; a new game plays a chord on uio[7].
+
+    Holding a direct button through the first frame update (line 480) ends the demo at the
+    second, a frame later, which starts a new game: a chord on both voices at volume 6 of 7,
+    square waves with periods of 60 and 40 lines. Each voice has every other clock, high on 6
+    of every 8 while its wave is 1, and over 40 lines the waves are 1 for 10..30 and 20
+    lines: 9/32 to 15/32 of the clocks are high.
+    """
+    await reset(dut)
+    for _ in range(800):  # a line: nothing plays yet
+        await RisingEdge(dut.clk)
+        check_uio(dut)
+        assert int(dut.uio_out.value) >> 7 == 0, "audio after reset"
+    dut.ui_in.value = 1  # LEFT
+    # To line 469 of the next frame in one wait (cheaper than a Python step every clock),
+    # then to the end of its vsync pulse, line 492: 12 lines into the new game
+    await Timer((420_000 + 468 * 800) * 40, unit="ns")
+    while bit(dut, VSYNC) == 1:
+        await RisingEdge(dut.clk)
+    while bit(dut, VSYNC) == 0:
+        await RisingEdge(dut.clk)
+    clocks = 40 * 800
+    high = changes = 0
+    prev = 0
+    for _ in range(clocks):
+        await RisingEdge(dut.clk)
+        check_uio(dut)
+        audio = int(dut.uio_out.value) >> 7
+        high += audio
+        changes += audio != prev
+        prev = audio
+    dut._log.info(f"audio high on {high} of {clocks} clocks, {changes} changes")
+    assert 0.25 * clocks < high < 0.5 * clocks, f"audio high on {high} of {clocks} clocks"
+    assert changes > 1000, f"audio changed {changes} times in {clocks} clocks"
