@@ -144,14 +144,41 @@ const char *part = "";
     }                                                                      \
   } while (0)
 
+int shown_bricks = 0;  // in the last frame
+
 // Reset through the pin, as at power-up
 void power_up(Game &g) {
   g.reset();
   frame_no = 0;
+  shown_bricks = 0;
+}
+
+// Checked on every frame played, in every scenario:
+// - the ball never gets into the outer half of a wall: one touching a wall turns at the next
+//   frame update, by then at most two moves (4 px) into it, so nothing white in x 56..59 or
+//   580..583 below y 24, or in y 24..27 (the walls are 8 px thick: x 56..63, 576..583, y 24..31)
+// - a new wall comes in whole: when the brick count rises, the frame before showed no bricks.
+//   The frame in which a wall fills shows none (it once showed the bottom row).
+void watch(const Game &g) {
+  auto white = [&](int x, int y) { return colour(g.fb[y * 640 + x]) == WHITE; };
+  int in_walls = 0;
+  for (int y = 24; y < 480; y++)
+    for (int x : {56, 57, 58, 59, 580, 581, 582, 583}) in_walls += white(x, y);
+  for (int y = 24; y < 28; y++)
+    for (int x = 60; x < 580; x++) in_walls += white(x, y);
+  CHECK(in_walls == 0, "the ball is in a wall: %d white pixels in the walls' outer half", in_walls);
+  int bricks = look(g, false).bricks;
+  CHECK(bricks <= shown_bricks || shown_bricks == 0,
+        "a wall of %d bricks came in after a frame that showed %d", bricks, shown_bricks);
+  shown_bricks = bricks;
 }
 
 View run(Game &g, int frames, bool find_ball = true) {
-  for (int i = 0; i < frames; i++, frame_no++) g.frame();
+  for (int i = 0; i < frames; i++) {
+    g.frame();
+    frame_no++;
+    watch(g);
+  }
   return look(g, find_ball);
 }
 
