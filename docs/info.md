@@ -7,10 +7,12 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   brick wall of a game is full; each later one is a symmetric pattern of 20 to 32 bricks, one
   of 21, picked at random.
 - **Ball:** bounces off the side and top walls, the paddle and the bricks. Where it lands on
-  the paddle sets its angle (flatter on the last 16 px at each end). A brick hit on its side
-  sends the ball back sideways; a hit on its top or bottom sends it back vertically.
-- **Speed:** every ball starts at 1x and speeds up by half a step for every 4 bricks it
-  clears, up to 3x.
+  the paddle sets its direction: off the left half it goes left, off the right half right, and
+  at a flatter angle off the outer 16 px at each end. A brick hit on its side sends the ball
+  back sideways; a hit on its top or bottom sends it back vertically.
+- **Speed:** every ball starts at 1x and goes up to 1.5x, 2x, 2.5x and 3x as it clears 4, 8,
+  12 and 16 bricks. The speed goes back to 1x for each new ball and after a cleared brick wall.
+  The paddle moves 4 px each time the ball moves, so it speeds up with the ball.
 - **Lives and score:** you have 2 spare balls, shown top left; the score, top right, counts
   10 per brick, up to 9990. Losing the last ball ends the game: a black curtain comes down over
   everything but the score. Once a ball has fallen past the paddle, the black
@@ -18,9 +20,15 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 - **Levels:** when the last brick is cleared, the game pauses for about a second while
   rainbow bands rise up the screen, gives back a spare ball (up to 2) and builds a new brick
   wall. Each level's paddle is narrower: 96 px, 80, 64, then 48 from the 4th level.
-- **Autoplay:** the paddle steers itself. After each paddle hit it aims the ball at a
-  pseudo-randomly chosen part of the paddle, so the ball keeps reaching new bricks.
-- **Demo:** when no controller is connected, the game plays itself.
+- **Autoplay:** the paddle steers itself and launches the ball. After each paddle hit it
+  picks one of the paddle's four angle zones at random (the two outer ends and the two halves
+  of the middle) and steers so that the ball lands there, so the ball keeps reaching new
+  bricks.
+- **Demo:** from reset, while no controller is connected and no direct button (`ui[0]` to
+  `ui[2]`) has been pressed, the game plays itself. Connecting a controller or pressing a
+  direct button starts a new game. A direct button ends the demo for good, until the next
+  reset; unplugging the controller instead resumes the demo, in the current game. With a
+  controller connected at reset, the game waits with the ball on the paddle.
 - **Sound:** effects through the Audio Pmod on `uio[7]`: a note for each brick (higher rows,
   higher notes), a thock for the paddle, a low rumble for the walls, a sigh for a lost ball and
   a sad trombone at game over; a rising call for a new game and a fanfare for a cleared wall,
