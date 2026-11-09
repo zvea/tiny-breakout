@@ -642,6 +642,7 @@ void level_cleared() {
   // the paddle is (autoplay often has it at a wall by now), steer it away by hand for the
   // first frames of the pause, then hand it back to autoplay.
   int pause = 0, celebrated = 0, held_x = -1;
+  std::vector<int> fanfare;  // voice A's notes in the pause, in order
   for (; pause < 100 && v.bricks == 0; pause++) {
     g.autoplay = pause >= 8;
     g.buttons = pause < 8 ? LEFT : 0;
@@ -651,12 +652,20 @@ void level_cleared() {
             pause, held_x, v.paddle_x);
     v = run(g, 1, false);
     celebrated += rainbow();
+    Voice a = hear(g, 1);
+    if (a.vol && (fanfare.empty() || fanfare.back() != a.half)) fanfare.push_back(a.half);
   }
   printf("frame %5d: level cleared, empty wall for %d frames, rainbow in %d\n", frame, pause,
          celebrated);
   CHECK(pause >= 60 && pause <= 68, "empty wall for %d frames (expected about 64)", pause);
   CHECK(celebrated >= pause - 8, "rainbow in only %d of the pause's %d frames", celebrated, pause);
   CHECK(!rainbow(), "the rainbow stays after the pause");
+  // The fanfare: C, E, G, then a held high C; it has ended by the time the new wall is in
+  CHECK(fanfare == std::vector<int>({30, 24, 20, 15}), "fanfare of %zu notes, the last %d",
+        fanfare.size(), fanfare.empty() ? 0 : fanfare.back());
+  Voice after = hear(g, 1);
+  CHECK(after.vol == 0, "the new wall comes in with a note of %d lines at volume %d", after.half,
+        after.vol);
   v = run(g, 1);  // past the filling frame
   CHECK(is_pattern_wall(v.standing), "level 2 wall (%d bricks, %016llx) is not a pattern wall",
         v.bricks, (unsigned long long)v.standing);

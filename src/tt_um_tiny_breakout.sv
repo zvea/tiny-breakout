@@ -630,7 +630,7 @@ module tt_um_tiny_breakout (
       .v_pos      (v_pos),
       .random     (random[3:0]),
       .new_game   (new_game),
-      .paused     (paused),
+      .paused     (paused & ~level_done),  // the fanfare ends with the pause
       .lost       (lose_ball),
       .last       (lives == 0),
       .brick      (hit.brick_top_bottom | hit.brick_side),
@@ -638,7 +638,7 @@ module tt_um_tiny_breakout (
       .fast       (speed_level[3] | speed_level[4]),
       .paddle     (hit.paddle),
       .wall       (fly & (touch_wall_l | touch_wall_r | touch_wall_t)),
-      .pause_step (speed_level[3:0]),  // read only in the pause (16..31) and the frame after (0)
+      .pause_step (speed_level[3:0]),  // read only in the pause (16..31)
       .frame_phase(frame_phase),
       .audio      (audio)
   );
