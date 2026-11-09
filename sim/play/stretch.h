@@ -14,6 +14,7 @@
 // are steady tones and noise, which stretch this way with hardly a trace. At a ratio of 1
 // (a fast machine) every grain lines up with no move and the output is the input.
 #pragma once
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
