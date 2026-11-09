@@ -38,10 +38,13 @@ Notes:
   ```
 
   The local scripts need the sky130 PDK, found via `$PDK_ROOT` or ciel's default `~/.ciel`.
+  `walls.sh` needs Verilator, from `.tools/env` (as in test/README.md) or `PATH`; its `--png`
+  needs Pillow, which is not in `test/requirements.txt` but comes into `.venv` with LibreLane.
 - **Experiments:** `EXTRA_CFG='{"KEY": value}'` overrides flow settings for one run, and
   `GOLD_RENAMES='rename old new;'` lets `equiv.sh` pair up renamed registers.
 - **Trying a new wall layout:** edit `src/wall_pattern.sv` (its header says what brick_wall
   expects of it), then `walls.sh --png walls.png` to see every wall it builds, and
-  `local_area.sh` for its cost. `pytest test/unit/test_wall_pattern.py` checks the rules any
-  layout must keep (no empty wall), plus the current layout exactly, which a new one replaces.
+  `local_area.sh` for its cost. `.venv/bin/pytest test/unit/test_wall_pattern.py` checks the
+  rules any layout must keep (no empty wall), plus the current layout exactly, which a new one
+  replaces.
   Then play it: `sim/play/build.sh` and the player.
