@@ -10,20 +10,29 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
+usage() { sed -n '2,7p' "$0"; exit 2; }
 OUT="$ROOT/build/demo.mp4"
 EXTRA=3
 while [ $# -gt 0 ]; do
   case "$1" in
-    -o) OUT=$(realpath -m "$2"); shift 2 ;;
-    --extra) EXTRA=$2; shift 2 ;;
-    -*) echo "unknown option $1"; exit 2 ;;
+    -o) [ $# -ge 2 ] || usage; OUT=$(abspath "$2"); shift 2 ;;
+    --extra) [ $# -ge 2 ] && [[ $2 =~ ^(0|[1-9][0-9]*)$ ]] || usage; EXTRA=$2; shift 2 ;;
+    --) shift; break ;;
+    -*) echo "unknown option $1"; usage ;;
     *) break ;;
   esac
 done
+[ $# -le 1 ] || usage
 SRC=$(cd "${1:-$ROOT/src}" && pwd)
 command -v ffmpeg > /dev/null || { echo "ffmpeg not found"; exit 1; }
-# Verilator 4: sim.h relies on its internals (see sim/play/build.sh)
+# Verilator 4: sim.h relies on its internals (see sim/play/build.sh); 5 fails with C++ errors
 if [ -x "$ROOT/.tools/v4/bin/verilator" ]; then export PATH="$ROOT/.tools/v4/bin:$PATH"; fi
+VERSION=$(verilator --version 2>/dev/null || true)
+case $VERSION in
+  "Verilator 4."*) ;;
+  *) echo "movie.sh needs Verilator 4, in .tools/v4 or on PATH (see test/README.md); found: ${VERSION:-none}"
+     exit 1 ;;
+esac
 W="$ROOT/build/movie"; rm -rf "$W"; mkdir -p "$W" "$(dirname "$OUT")"
 case "$(uname -s)" in
   Darwin) CFLAGS="-O3" ;;

@@ -12,9 +12,19 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
+usage() { sed -n '2,9p' "$0"; exit 2; }
 PNG=""
-if [ "${1:-}" = --png ]; then PNG=$(realpath -m "$2"); shift 2; fi
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --png) [ $# -ge 2 ] || usage; PNG=$(abspath "$2"); shift 2 ;;
+    --) shift; break ;;
+    -*) echo "unknown option $1"; usage ;;
+    *) break ;;
+  esac
+done
+[ $# -le 1 ] || usage
 SRC=$(cd "${1:-$ROOT/src}" && pwd)
+if [ -n "$PNG" ]; then mkdir -p "$(dirname "$PNG")"; fi
 # Verilator from the local tools (test/README.md), with that environment's compiler, else PATH's
 if [ -x "$ROOT/.tools/env/bin/verilator" ]; then export PATH="$ROOT/.tools/env/bin:$PATH"; fi
 VERILATOR=verilator

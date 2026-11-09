@@ -31,6 +31,10 @@ liberty() {
 # a dot), safe to build the paths from that a script removes and recreates
 valid_name() { [[ $1 =~ ^[A-Za-z0-9_.-]+$ && $1 != .* ]]; }
 
+# abspath PATH: PATH made absolute against the current directory (realpath -m, which BSD's
+# realpath on macOS lacks, without resolving . or ..)
+abspath() { case $1 in /*) echo "$1" ;; *) echo "$PWD/$1" ;; esac; }
+
 # Writes copies of a top module with pairs of register declarations swapped: synthesis
 # results shift with declaration order alone, so area comparisons average over these.
 # Usage: orderings TOP_FILE N OUT_PREFIX  ->  OUT_PREFIX0.sv .. OUT_PREFIX{N-1}.sv
