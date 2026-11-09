@@ -4,8 +4,8 @@
 
 The scenarios come in two tiers (see the table at the end of scenarios.cpp):
 
-- cheap: controls, demo, losing_every_ball and opening, a few minutes in all; run all the time
-- milestone: long_game, a whole game over three walls, about half an hour; run at milestones
+- cheap: controls, demo, losing_every_ball and opening, ~3 min in parallel; run all the time
+- milestone: long_game, a game from a new game to the third wall, ~23 min; run at milestones
 
     pytest test/system -n auto               # the cheap tier, in parallel (pytest-xdist)
     pytest test/system -n auto --milestone   # both tiers

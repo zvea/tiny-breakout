@@ -6,7 +6,16 @@ Three layers, from module to whole game:
 |---|---|---|---|
 | [unit/](unit) | Each module on its own, through its ports (cocotb) | `pytest test/unit` | ~70 s (Verilator), ~5.5 min (`SIM=icarus`) |
 | [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~4 min |
-| [system/](system) | 14 gameplay scenarios, judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~20 min in parallel, set by the longest scenarios |
+| [system/](system), cheap tier | 4 gameplay scenarios, judged only from the decoded video output and the audio pin: controls, demo, losing every ball, a game's opening | `pytest test/system -n auto` | ~3 min in parallel (the longest scenarios ~2.2 min, plus ~1 min for a first build) |
+| [system/](system), milestone tier | 1 long game, from a new game to the third wall and a restart, judged the same way | `pytest test/system -n auto -m milestone` | ~23 min |
+
+The system scenarios come in two tiers. The cheap one runs by default and is meant to run all
+the time. The milestone tier is one long game that simulates each expensive stretch of play
+once (autoplay clearing a wall, the pause, the later levels) and carries every check that needs
+it; run it at milestones, such as before a harden, with `-m milestone` alone or `--milestone`
+for both tiers. The game is deterministic, so the opening scenario plays exactly the first
+frames of the long game. Each scenario's comment in [scenarios.cpp](system/scenarios.cpp) lists
+what its parts check; a failure names its part and frame.
 
 CI ([.github/workflows/test.yaml](../.github/workflows/test.yaml)) lints the design with
 Verilator 5 and runs `test.py` and the unit tests on Icarus, both from Ubuntu 24.04's packages
@@ -60,9 +69,11 @@ autoconf && ./configure --prefix="$HOME/opt/verilator-4.228" && make -j8 && make
 ```sh
 .venv/bin/pytest test/unit                 # Verilator 5
 SIM=icarus .venv/bin/pytest test/unit      # Icarus, as in CI (which has version 12)
-.venv/bin/pytest test/system -n auto       # needs Verilator 4; one worker per scenario
-.venv/bin/pytest test/system               # one after another
-.venv/bin/pytest test/system -k launch     # one scenario
+.venv/bin/pytest test/system -n auto       # cheap tier; needs Verilator 4; one worker per scenario
+.venv/bin/pytest test/system -n auto -m milestone  # the long game alone
+.venv/bin/pytest test/system -n auto --milestone   # both tiers
+.venv/bin/pytest test/system               # cheap tier, one after another
+.venv/bin/pytest test/system -k controls   # one scenario
 (cd test && PATH=$PWD/../.venv/bin:$PWD/../.tools/env/bin:$PATH make -B)   # full chip
 ```
 
