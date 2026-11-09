@@ -6,7 +6,7 @@ A complete VGA brick-breaker game in a single [Tiny Tapeout](https://tinytapeout
 
 ![Tiny Breakout, mid-game](docs/img/gameplay.png)
 
-Tiny Breakout consists of some 15,200 transistors in 1,700 standard cells. There is no
+Tiny Breakout consists of some 14,600 transistors in 1,600 standard cells. There is no
 processor or frame buffer; the game keeps its state in about 200 flip-flops.
 
 ## The game
