@@ -18,8 +18,9 @@ jobs:
         shell: bash
         run: |
           verilator --version
-          verilator --lint-only -Wall --top-module tt_um_tiny_breakout \
-            $(sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p' info.yaml | sed 's|^|src/|')
+          SOURCES=$(sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p' info.yaml | sed 's|^|src/|')
+          verilator --lint-only -Wall --top-module tt_um_tiny_breakout $SOURCES
+          verilator --lint-only -Wall --top-module tt_um_tiny_breakout +define+TB_SOUND $SOURCES  # with sound
 
       # Set Python up and install cocotb
       - name: Setup python

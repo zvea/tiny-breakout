@@ -146,6 +146,7 @@ module tt_um_tiny_breakout (
     logic brick_top_bottom, brick_side, paddle;
   } hits_t;
   hits_t      hit;
+  logic [2:0] hit_row;   // the row of the last brick hit (for the sound)
   logic [1:0] hit_zone;  // paddle zone (0..3 from the left, see paddle_px) under the last ball
                          // pixel to touch the paddle: the right end of the ball's bottom row
 
@@ -361,11 +362,13 @@ module tt_um_tiny_breakout (
     if (!rst_n) begin
       hit         <= '0;
       hit_zone    <= 0;
+      hit_row     <= 0;
     end else if (frame_tick) begin
       hit <= '0;
     end else if (touch) begin
       if (brick_px && !side_hit) hit.brick_top_bottom <= 1;
       if (brick_px && side_hit)  hit.brick_side       <= 1;
+      if (brick_px)              hit_row              <= brick_row;
       if (paddle_px) begin
         hit.paddle  <= 1;
         hit_zone    <= paddle_zone;
@@ -614,8 +617,41 @@ module tt_um_tiny_breakout (
       .uo_out  (uo_out)
   );
 
+  // ---------------------------------------------------------------------------
+  // Sound, for the Audio Pmod on uio[7], built only with the define TB_SOUND: about 15 points
+  // of utilisation. tools/flow.sh with EXTRA_CFG='{"VERILOG_DEFINES": ["TB_SOUND"]}' hardens
+  // it; SOUND=1 sim/play/build.sh plays it in the web player.
+  // ---------------------------------------------------------------------------
+`ifdef TB_SOUND
+  logic audio;
+
+  sound u_sound (
+      .clk        (clk),
+      .rst_n      (rst_n),
+      .frame_tick (frame_tick),
+      .h_pos      (h_pos),
+      .v_pos      (v_pos[2:0]),
+      .new_game   (new_game),
+      .paused     (paused),
+      .lost       (lose_ball),
+      .last       (lives == 0),
+      .brick      (hit.brick_top_bottom | hit.brick_side),
+      .brick_row  (hit_row),
+      .fast       (speed_level[3] | speed_level[4]),
+      .paddle     (hit.paddle),
+      .wall       (fly & (touch_wall_l | touch_wall_r | touch_wall_t)),
+      .pause_step (speed_level[4] ? speed_level[3:0] : 4'd0),
+      .frame_phase(frame_phase),
+      .audio      (audio)
+  );
+
+  assign uio_out = {audio, 7'b0};
+  assign uio_oe  = 8'b1000_0000;
+`else
   assign uio_out = 0;
   assign uio_oe  = 0;
+  wire _unused_sound = &{hit_row, 1'b0};
+`endif
 
   // Unused inputs and signal bits, listed to silence lint warnings
   wire _unused = &{ena, uio_in, ui.unused, paddle_dx[2:0], band_y[4:0], 1'b0};

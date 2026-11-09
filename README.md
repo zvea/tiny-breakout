@@ -49,6 +49,9 @@ cd sim/play
 ./obj_serve/Vtt_um_tiny_breakout    # then open http://localhost:8765/
 ```
 
+`SOUND=1 ./build.sh` builds the player with the optional sound; turn it on with the button on the
+page.
+
 ## Hardware
 
 - A Tiny Tapeout chip with this design selected, clocked at 25.175 MHz.
@@ -56,6 +59,8 @@ cd sim/play
 - A [Gamepad PMOD](https://github.com/psychogenic/gamepad-pmod) and an SNES-compatible
   controller on the inputs, or buttons on `ui[0]` to `ui[2]` and a switch on `ui[3]` for
   autoplay.
+- For a chip built with sound (the define `TB_SOUND`, not in the standard build), an
+  [Audio Pmod](https://github.com/MichaelBell/tt-audio-pmod) on `uio[7]`.
 
 Pinout and controls are in [docs/info.md](docs/info.md).
 

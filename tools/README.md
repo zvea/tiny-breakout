@@ -38,6 +38,9 @@ Notes:
   ```
 
   The local scripts need the sky130 PDK, found via `$PDK_ROOT` or ciel's default `~/.ciel`.
+- **Sound:** the design's sound is built only with the define `TB_SOUND`:
+  `EXTRA_CFG='{"VERILOG_DEFINES": ["TB_SOUND"]}' tools/flow.sh harden TAG` hardens it, and
+  `SOUND=1 sim/play/build.sh` builds the player with it.
 - **Experiments:** `EXTRA_CFG='{"KEY": value}'` overrides flow settings for one run, and
   `GOLD_RENAMES='rename old new;'` lets `equiv.sh` pair up renamed registers.
 - **Trying a new wall layout:** edit `src/wall_pattern.sv` (its header says what brick_wall

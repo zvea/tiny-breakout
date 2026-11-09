@@ -26,6 +26,7 @@ project:
     - "wall_pattern.sv"
     - "brick_wall.sv"
     - "score.sv"
+    - "sound.sv"
     - "tiny_vga_out.sv"
     - "tt_um_tiny_breakout.sv"
 
@@ -60,7 +61,7 @@ pinout:
   uio[4]: ""
   uio[5]: ""
   uio[6]: ""
-  uio[7]: ""
+  uio[7]: "audio (sound build only)"
 
 # Do not change!
 yaml_version: 6
