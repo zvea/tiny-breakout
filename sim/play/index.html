@@ -10,12 +10,20 @@
  #snd{display:flex;gap:10px;align-items:center;margin:8px}
  button{background:#333;color:#ddd;border:1px solid #555;border-radius:4px;padding:4px 10px;font:inherit;cursor:pointer}
  button:focus-visible,input:focus-visible{outline:2px solid #6af}
+ #sb{display:inline-flex;padding:4px 8px}
+ #sb[aria-pressed=true] .on,#sb[aria-pressed=false] .off{display:none}
+ #snd.muted label{color:#666}
+ input:disabled{opacity:.4;cursor:default}
 </style></head><body>
 <canvas id="c" width="640" height="480"></canvas>
 <div id="s">connecting…</div>
-<div id="snd"><button id="sb">Turn sound on</button>
- <label for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.3"></div>
-<div><kbd>←</kbd>/<kbd>→</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> toggle autoplay &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> sound on / off</div>
+<div id="snd" class="muted"><button id="sb" aria-label="Mute" aria-pressed="true" title="Unmute (M)">
+ <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 9v6h4l5 4V5L7 9z" fill="currentColor"/>
+  <path class="on" d="M15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12"/>
+  <path class="off" d="M16 9l6 6M22 9l-6 6"/></svg></button>
+ <label for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.3" disabled></div>
+<div id="help"><kbd>←</kbd>/<kbd>→</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> toggle autoplay &nbsp; <kbd>R</kbd> reset<span class="snd"> &nbsp; <kbd>M</kbd> <span id="mk">unmute</span></span></div>
 <script>
 // The server runs the RTL model at 60 fps and streams frames:
 // [u32 video length][u32 audio samples][video: RLE (count, RRGGBB) pairs][audio: s16 at 48 kHz].
@@ -69,7 +77,12 @@ async function toggleSound(){
  }
  soundOn=!soundOn;
  if(soundOn)await actx.resume();else await actx.suspend();
- sb.textContent=soundOn?'Turn sound off':'Turn sound on';
+ // The button shows the state (crossed out when muted); the slider is off while muted
+ sb.setAttribute('aria-pressed',String(!soundOn));
+ sb.title=soundOn?'Mute (M)':'Unmute (M)';
+ document.getElementById('mk').textContent=soundOn?'mute':'unmute';
+ document.getElementById('snd').classList.toggle('muted',!soundOn);
+ vol.disabled=!soundOn;
 }
 sb.addEventListener('click',toggleSound);
 vol.addEventListener('input',()=>{if(gain)gain.gain.value=+vol.value});
