@@ -636,8 +636,11 @@ module tt_um_tiny_breakout (
       .brick      (hit.brick_top_bottom | hit.brick_side),
       .brick_row  (hit_row),
       .fast       (speed_level[3] | speed_level[4]),
-      .paddle     (hit.paddle),
-      .wall       (fly & (touch_wall_l | touch_wall_r | touch_wall_t)),
+      // Only bounces: at 1x the ball moves every other frame, so in the frame after a bounce it
+      // can still touch the paddle or the wall it is already leaving
+      .paddle     (hit.paddle & ~ball_up),
+      .wall       (fly & ((touch_wall_l & ball_left) | (touch_wall_r & ~ball_left) |
+                          (touch_wall_t & ball_up))),
       .pause_step (speed_level[3:0]),  // read only in the pause (16..31)
       .frame_phase(frame_phase),
       .audio      (audio)

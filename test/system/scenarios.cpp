@@ -801,10 +801,16 @@ void sound() {
   View v = run(g, 1);
   std::vector<Sound> heard;
   std::vector<int> brick_rows, brick_frames;
+  int bounces = 0, dir = 0;  // paddle bounces in the picture: the ball turning up near the paddle
   for (int i = 0; i < 3000 && brick_rows.size() < 4; i++) {
     View before = v;
     v = run(g, 1);
     heard.push_back(listen(g));
+    if (v.ball && before.ball && v.ball_y != before.ball_y) {
+      int d = v.ball_y > before.ball_y ? 1 : -1;
+      bounces += dir == 1 && d == -1 && before.ball_y >= 400;
+      dir = d;
+    }
     uint64_t gone = before.standing & ~v.standing;
     if (gone && v.bricks == before.bricks - 1) {
       brick_rows.push_back(__builtin_ctzll(gone) / 8);
@@ -817,14 +823,17 @@ void sound() {
     const Sound &h = heard[f];
     if (h.a.half == 60 && h.a.vol == 5 && h.b.vol == 4 && !h.b.coarse) {  // a thock over a thump
       thocks++;
-      size_t k = f + 1;
-      while (k < f + 3 && heard[k].a.half == 60) k++;  // a bounce at 1x can count twice
+      size_t k = f + 1;  // once per bounce: straight on to the next notes
       CHECK(heard[k].a.half == 66 && heard[k].a.vol == 3 && heard[k + 1].a.half == 72 &&
                 heard[k + 1].a.vol == 1,
             "thock at frame %zu: then %d (volume %d), %d (volume %d)", f, heard[k].a.half,
             heard[k].a.vol, heard[k + 1].a.half, heard[k + 1].a.vol);
     }
-    if (h.b.coarse && h.b.vol == 3 && !(f && heard[f - 1].b.coarse)) rumbles++;
+    if (h.b.coarse && h.b.vol == 3) {  // a rumble, once per bounce: it fades
+      rumbles++;
+      CHECK(!(heard[f + 1].b.coarse && heard[f + 1].b.vol == 3), "frame %zu: the rumble restarts",
+            f);
+    }
     if (h.b.coarse) CHECK(h.b.vol <= 3, "frame %zu: the rumble at volume %d", f, h.b.vol);
   }
   for (size_t i = 0; i < brick_rows.size(); i++) {
@@ -835,9 +844,12 @@ void sound() {
     CHECK(ok, "brick in row %d at frame %d: no note of %d lines", brick_rows[i], brick_frames[i],
           n);
   }
-  printf("%zu frames of autoplay: %d thocks, %d rumbles, %zu bricks\n", heard.size(), thocks,
-         rumbles, brick_rows.size());
+  printf("%zu frames of autoplay: %d paddle bounces, %d thocks, %d rumbles, %zu bricks\n",
+         heard.size(), bounces, thocks, rumbles, brick_rows.size());
   CHECK(thocks >= 2 && rumbles >= 1, "%d thocks and %d rumbles", thocks, rumbles);
+  // One thock per bounce (one in the last 3 frames isn't counted as a thock)
+  CHECK(thocks == bounces || thocks == bounces - 1, "%d thocks for %d paddle bounces", thocks,
+        bounces);
 
   // Lose every ball: a sigh (E-flat, 25 lines) for each spare, the trombone (G4, 40) for the last
   g.autoplay = false;
