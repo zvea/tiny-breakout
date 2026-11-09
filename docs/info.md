@@ -23,7 +23,8 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 - **Demo:** when no controller is connected, the game plays itself.
 - **Sound:** effects through the Audio Pmod on `uio[7]`: a note for each brick (higher rows,
   higher notes), a thock for the paddle, a dull thump for the walls, a sigh for a lost ball, a
-  fanfare for a cleared wall, a sad trombone at game over and two chords for a new game.
+  fanfare for a cleared wall, a sad trombone at game over and a rising call over a bass for a
+  new game.
 
 ## How to test
 

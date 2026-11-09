@@ -15,7 +15,8 @@
  *
  * Each voice keeps only which sound it plays and how many frames it has been playing; the
  * note and the volume are worked out from those, frame by frame:
- *   voice A  start       two chords at a new game, with voice B: C5 with G5, then C6 with E6
+ *   voice A  start       a new game's call: G4, D5, G5, then up to a held C6, with voice B
+ *                        playing it an octave below
  *            brick       a marimba-like note an octave below the row's (pentatonic, red
  *                        highest), two steps higher once the ball is fast, fading over 5 frames
  *            paddle      a low C dropping in pitch over 3 frames (the "thock")
@@ -24,7 +25,8 @@
  *            lost        a minor sigh: E-flat, D, then a long C (a ball lost, spares left)
  *            over        a sad trombone: G4, F#4, F4, then a long wobbling E4 (the last ball,
  *                        instead of the lost-ball sound)
- *   voice B  chord       the upper note of the new game's chords
+ *   voice B  bass        voice A's start, an octave below (from voice A's square wave, so
+ *                        voice B needs no tone counter of its own)
  *            thump       noise stepped every line, under the paddle's thock
  *            rumble      noise stepped every 8 lines (no hiss): a dull thump, for the walls
  * A later sound on a voice replaces the one playing; only a new game interrupts a lost ball or
@@ -121,8 +123,13 @@ module sound (
         endcase
         a_vol = 3'd7 - {1'b0, pause_step[3:2]};
       end
-      A_START: begin  // C5 for 8 frames, then C6 for 24
-        a_note = step[3:1] == 0 ? 7'd30 : 7'd15;
+      A_START: begin  // G4, D5, G5: 4 frames each; then C6 for 20
+        case (step)
+          0:       a_note = 40;
+          1:       a_note = 27;
+          2:       a_note = 20;
+          default: a_note = 15;
+        endcase
         a_vol  = 3'd6 - {1'b0, a_t[4:3]};
         a_done = a_t[5];
       end
@@ -158,18 +165,16 @@ module sound (
   end
 
   // ---- Voice B ----
-  typedef enum logic [1:0] {B_NONE, B_THUMP, B_RUMBLE, B_CHORD} b_kind_t;
+  typedef enum logic [1:0] {B_NONE, B_THUMP, B_RUMBLE, B_BASS} b_kind_t;
   (* fsm_encoding = "none" *) b_kind_t b_kind;
-  logic [2:0] b_t;  // frames since a thump or rumble started, 0..4 (the chord follows voice A's)
+  logic [2:0] b_t;  // frames since a thump or rumble started, 0..4 (the bass follows voice A's)
 
-  logic [4:0] b_note;
   logic [2:0] b_vol;
   always_comb begin
-    b_note = (a_t[5:3] == 0) ? 5'd20 : 5'd12;  // the chord's upper notes: G5, then E6
     case (b_kind)
       B_THUMP:  b_vol = b_t[2] ? 3'd0 : {b_t[1:0] == 0, -b_t[1:0]};  // 4 - b_t
       B_RUMBLE: b_vol = b_t[2] ? 3'd0 : {1'b0, ~b_t[1:0]};           // 3 - b_t, down to 0
-      B_CHORD: begin  // voice A's volume, silent with it on the frame it ends
+      B_BASS: begin  // voice A's volume, silent with it on the frame it ends
         if (a_kind == A_START) b_vol = a_vol;
         else b_vol = 0;
       end
@@ -182,33 +187,33 @@ module sound (
       b_kind <= B_NONE;
       b_t    <= 0;
     end else if (frame_tick) begin
-      if (new_game) b_kind <= B_CHORD;
+      if (new_game) b_kind <= B_BASS;
       else if (paddle) {b_kind, b_t} <= {B_THUMP, 3'd0};
       else if (wall) {b_kind, b_t} <= {B_RUMBLE, 3'd0};
-      else if (b_kind == B_CHORD) begin  // as long as voice A plays its lower notes
+      else if (b_kind == B_BASS) begin  // as long as voice A plays the start
         if (a_kind != A_START || a_done) b_kind <= B_NONE;
       end else if (b_t[2]) b_kind <= B_NONE;  // b_t is 4
       else b_t <= b_t + 1;
     end
   end
 
-  // ---- The two tones and the noise ----
-  // A note: a counter loaded with N counts lines down to 1, then flips the square wave
+  // ---- The tone and the noise ----
+  // A note: a counter loaded with N counts lines down to 1, then flips the square wave. Voice B's
+  // only note is voice A's an octave down, a_sub, which flips at every other flip of a_square:
+  // that costs one flip-flop instead of a second counter.
   wire line = (h_pos == 0);
   logic [6:0] a_count;
-  logic [4:0] b_count;  // voice B's notes are short
-  logic       a_square, b_square;
+  logic       a_square, a_sub;
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       a_count  <= 1;
-      b_count  <= 1;
       a_square <= 0;
-      b_square <= 0;
+      a_sub    <= 0;
     end else if (line) begin
-      if (a_count <= 1) {a_count, a_square} <= {a_note, ~a_square};
-      else a_count <= a_count - 1;
-      if (b_count <= 1) {b_count, b_square} <= {b_note, ~b_square};
-      else b_count <= b_count - 1;
+      if (a_count <= 1) begin
+        {a_count, a_square} <= {a_note, ~a_square};
+        if (a_square) a_sub <= ~a_sub;
+      end else a_count <= a_count - 1;
     end
   end
 
@@ -223,14 +228,14 @@ module sound (
   wire noise = (v_pos[3] & (v_pos[6] ^ random[0])) ^ (v_pos[4] & (v_pos[7] ^ random[1])) ^
                (v_pos[5] & (v_pos[8] ^ random[2])) ^ random[3] ^ (fine & (b_kind != B_RUMBLE));
 
-  wire       b_src = (b_kind == B_CHORD) ? b_square : noise;
+  wire       b_src = (b_kind == B_BASS) ? a_sub : noise;
   wire       b_on  = b_src & (pwm < b_vol);
   always_ff @(posedge clk) begin  // registered, so the pin never glitches
     if (!rst_n) audio <= 0;
     else audio <= h_pos[0] ? a_on : b_on;
   end
 
-  // the fanfare moves every 2 pause steps; N < 64; the done tests above read the timer's bits
-  wire _unused = &{pause_step[0], brick_n[6], step[0], v_pos[9], 1'b0};
+  // the fanfare moves every 2 pause steps; N < 64
+  wire _unused = &{pause_step[0], brick_n[6], v_pos[9], 1'b0};
 
 endmodule

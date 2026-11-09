@@ -116,13 +116,15 @@ def check_uio(dut):
 
 @cocotb.test()
 async def test_sound(dut):
-    """Silent after reset; a new game plays a chord on uio[7].
+    """Silent after reset; a new game plays its call on uio[7].
 
     Holding a direct button through the first frame update (line 480) ends the demo at the
-    second, a frame later, which starts a new game: a chord on both voices at volume 6 of 7,
-    square waves with periods of 60 and 40 lines. Each voice has every other clock, high on 6
-    of every 8 while its wave is 1, and over 40 lines the waves are 1 for 10..30 and 20
-    lines: 9/32 to 15/32 of the clocks are high.
+    second, a frame later, which starts a new game: the call's first note, G4 on voice A over
+    its octave below on voice B, both at volume 6 of 7, square waves with periods of 80 and 160
+    lines. Each voice has every other clock, high on 6 of every 8 while its wave is 1. Over 160
+    lines, a whole period of the slower wave and two of the faster, each wave is 1 for half the
+    lines, whatever their phase: 3/8 of the clocks are high, a little either way where the
+    window cuts a line.
     """
     await reset(dut)
     for _ in range(800):  # a line: nothing plays yet
@@ -137,7 +139,7 @@ async def test_sound(dut):
         await RisingEdge(dut.clk)
     while bit(dut, VSYNC) == 0:
         await RisingEdge(dut.clk)
-    clocks = 40 * 800
+    clocks = 160 * 800  # the call's first note lasts 4 frames: all of this is in it
     high = changes = 0
     prev = 0
     for _ in range(clocks):
@@ -148,5 +150,5 @@ async def test_sound(dut):
         changes += audio != prev
         prev = audio
     dut._log.info(f"audio high on {high} of {clocks} clocks, {changes} changes")
-    assert 0.25 * clocks < high < 0.5 * clocks, f"audio high on {high} of {clocks} clocks"
+    assert 0.33 * clocks < high < 0.42 * clocks, f"audio high on {high} of {clocks} clocks"
     assert changes > 1000, f"audio changed {changes} times in {clocks} clocks"

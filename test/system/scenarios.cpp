@@ -279,6 +279,9 @@ Voice hear(const Game &g, int voice) {
 
 Sound listen(const Game &g) { return {hear(g, 1), hear(g, 0)}; }
 
+// Voice B playing voice A an octave below, at its volume: the new game's call
+bool bass(const Sound &s) { return s.a.vol && s.b.vol == s.a.vol && s.b.half == 2 * s.a.half; }
+
 // ---- Scenarios ---------------------------------------------------------------------------
 
 // With no controller connected the game plays itself (demo): with no Gamepad PMOD at all,
@@ -373,8 +376,9 @@ void check_colours(const Game &g, const View &v) {
 }
 
 // A new game, played by hand from the pins:
-// - new game: the chords on both voices (C5 with G5 for 8 frames, C6 with E6 for 24), the full
-//   wall, two spare balls and the ball resting on the paddle; then quiet while it waits there
+// - new game: the call (G4, D5, G5 for 4 frames each, then C6 for 20) with voice B an octave
+//   below, the full wall, two spare balls and the ball resting on the paddle; then quiet while
+//   it waits there
 // - colours: of the bricks, walls, field and paddle
 // - steering: the paddle moves 4 px every other frame (at the base speed) while LEFT or RIGHT
 //   is held, from either the direct pins or the gamepad; both together cancel out. The resting
@@ -389,27 +393,26 @@ void controls() {
   power_up(g);
   part = "new game";
   Sound s;
-  for (int i = 0; i < 10 && !(s.a.half == 30 && s.b.half == 20); i++) {  // the demo ends
+  for (int i = 0; i < 10 && !(bass(s) && s.a.half == 40); i++) {  // the demo ends
     run(g, 1, false);
     s = listen(g);
   }
-  int low = 0, high = 0;
-  for (; s.a.half == 30 && s.b.half == 20 && s.a.vol && s.b.vol; low++) {
-    run(g, 1, false);
-    s = listen(g);
+  const int call[][2] = {{40, 4}, {27, 4}, {20, 4}, {15, 20}};  // G4 D5 G5 C6: lines, frames
+  for (const auto &note : call) {
+    int n = 0;
+    for (; s.a.half == note[0] && bass(s); n++) {
+      run(g, 1, false);
+      s = listen(g);
+    }
+    CHECK(n == note[1], "%d frames of the note at %d lines over its bass (expected %d)", n,
+          note[0], note[1]);
   }
-  for (; s.a.half == 15 && s.b.half == 12 && s.a.vol && s.b.vol; high++) {
-    run(g, 1, false);
-    s = listen(g);
-  }
-  CHECK(low == 8 && high == 24, "%d frames of C5 + G5 and %d of C6 + E6 (expected 8, 24)", low,
-        high);
   View v = look(g);
   CHECK(v.bricks == 48, "bricks %d", v.bricks);
   CHECK(v.lives == 2, "life markers %d", v.lives);
   CHECK(resting(v), "ball at (%d, %d), paddle at %d", v.ball_x, v.ball_y, v.paddle_x);
   for (int i = 0; i < 30; i++) {  // the ball waits on the paddle: quiet
-    CHECK(s.a.vol == 0 && s.b.vol == 0, "%d frames after the chords: volumes %d, %d (notes %d, %d)",
+    CHECK(s.a.vol == 0 && s.b.vol == 0, "%d frames after the call: volumes %d, %d (notes %d, %d)",
           i, s.a.vol, s.b.vol, s.a.half, s.b.half);
     run(g, 1, false);
     s = listen(g);
@@ -508,7 +511,7 @@ void losing_every_ball() {
   Sound s;
   auto listen_for_losses = [&] {
     s = listen(g);
-    int note = s.a.vol == 6 ? s.a.half : 0;  // bricks play at 5 at most
+    int note = s.a.vol == 6 && !bass(s) ? s.a.half : 0;  // bricks play at 5 at most
     if ((note == 25 || note == 40) && note != prev_note) starts.push_back(note);
     prev_note = note;
   };
@@ -768,7 +771,8 @@ struct BrickNotes {
     int n = 2 * scale[std::min(7, 5 - h.row + (fast ? 2 : 0))];
     bool ok = false;
     for (int f = h.frame - 1; f <= h.frame + 1; f++)
-      ok |= f >= 0 && f < int(heard.size()) && heard[f].a.half == n && heard[f].a.vol == 5;
+      ok |= f >= 0 && f < int(heard.size()) && heard[f].a.half == n && heard[f].a.vol == 5 &&
+            !bass(heard[f]);
     CHECK(ok, "brick in row %d, %d cleared by this ball: no note of %d lines", h.row, h.cleared,
           n);
     checked[fast]++;
@@ -816,6 +820,7 @@ void check_paddle_and_wall_sounds(const std::vector<Sound> &heard, int bounces) 
             "thock at frame %d: then %d (volume %d), %d (volume %d)", frame_of(f),
             heard[k].a.half, heard[k].a.vol, heard[k + 1].a.half, heard[k + 1].a.vol);
     }
+    if (bass(h)) continue;  // the new game's call: its bass's runs can be multiples of 8 too
     if (h.b.coarse && h.b.vol == 3) {  // a rumble, once per bounce: it fades
       rumbles++;
       CHECK(!(heard[f + 1].b.coarse && heard[f + 1].b.vol == 3),

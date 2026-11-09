@@ -15,7 +15,7 @@ from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 from cocotb_run import run
 
 A_NONE, A_BRICK, A_PADDLE, A_LOST, A_OVER, A_CLEAR, A_START = range(7)
-B_NONE, B_THUMP, B_RUMBLE, B_CHORD = range(4)
+B_NONE, B_THUMP, B_RUMBLE, B_BASS = range(4)
 SCALE = [30, 27, 24, 20, 18, 15, 13, 12]  # half-periods in lines: C5 D5 E5 G5 A5 C6 D6 E6
 EVENTS = ["new_game", "paused", "lost", "last", "brick", "paddle", "wall"]
 
@@ -109,16 +109,17 @@ async def the_tone_has_the_pitch_of_its_note(dut):
 
 
 @cocotb.test()
-async def the_chords_upper_voice_has_the_pitch_of_its_notes(dut):
-    """Voice B's square wave: G5 (N = 20) for the new game's first 8 frames, then E6 (N = 12)."""
+async def the_bass_is_voice_a_an_octave_down(dut):
+    """Voice B's square wave in the new game's call: G3 (80 lines a half-period) under voice
+    A's G4 (N = 40) for the first 4 frames, and C5 (30 lines) under C6 (N = 15) from frame 12."""
     await start(dut)
     await frame(dut, "new_game")
-    flips = await toggles(dut, "b_square", 400)
-    assert flips in (19, 20, 21), f"G5: {flips} flips in 400 lines (expected 20 for N = 20)"
-    for _ in range(8):
+    flips = await toggles(dut, "a_sub", 400)
+    assert flips in (4, 5, 6), f"G3: {flips} flips in 400 lines (expected 5 for 80 lines)"
+    for _ in range(12):
         await frame(dut)
-    flips = await toggles(dut, "b_square", 360)
-    assert flips in (29, 30, 31), f"E6: {flips} flips in 360 lines (expected 30 for N = 12)"
+    flips = await toggles(dut, "a_sub", 360)
+    assert flips in (11, 12, 13), f"C5: {flips} flips in 360 lines (expected 12 for 30 lines)"
 
 
 @cocotb.test()
@@ -140,17 +141,18 @@ async def a_lost_ball_sighs_and_the_last_one_plays_game_over(dut):
 
 
 @cocotb.test()
-async def a_new_game_plays_chords_on_both_voices(dut):
+async def a_new_game_plays_its_call_on_both_voices(dut):
+    """G4, D5, G5 for 4 frames each, then C6 for 20, with voice B's bass at the same volume."""
     await start(dut)
     await frame(dut, "new_game")
-    assert await read(dut, "a_kind", "a_note", "b_kind", "b_note") == [A_START, 30, B_CHORD, 20]
-    for f in range(1, 32):  # both voices throughout: C5 with G5 for 8 frames, C6 with E6 for 24
+    assert await read(dut, "a_kind", "a_note", "b_kind") == [A_START, 40, B_BASS]
+    for f in range(1, 32):
         await frame(dut)
-        a_kind, a_note, a_vol, b_kind, b_note, b_vol = await read(
-            dut, "a_kind", "a_note", "a_vol", "b_kind", "b_note", "b_vol")
-        assert (a_kind, b_kind) == (A_START, B_CHORD), f"frame {f}: kinds {a_kind}, {b_kind}"
-        assert (a_note, b_note) == ((30, 20) if f < 8 else (15, 12)), f"frame {f}"
-        assert a_vol > 0 and b_vol > 0, f"frame {f}: volumes {a_vol}, {b_vol}"
+        a_kind, a_note, a_vol, b_kind, b_vol = await read(
+            dut, "a_kind", "a_note", "a_vol", "b_kind", "b_vol")
+        assert (a_kind, b_kind) == (A_START, B_BASS), f"frame {f}: kinds {a_kind}, {b_kind}"
+        assert a_note == [40, 27, 20, 15][min(f // 4, 3)], f"frame {f}: note {a_note}"
+        assert a_vol > 0 and b_vol == a_vol, f"frame {f}: volumes {a_vol}, {b_vol}"
     await frame(dut)  # the frame they end: both silent
     assert await read(dut, "a_vol", "b_vol") == [0, 0]
     for _ in range(2):
