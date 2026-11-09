@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for sound: which sound each event starts on which voice, the notes it plays and
 how its volume falls, that the tones have the pitch their notes say, how the noise changes,
-and that the output interleaves the two voices.
+and that the output interleaves the two voices, each at its volume.
 
 A frame here is one frame_tick; a line is one clock with h_pos at 0, so a whole line costs two
 clocks rather than 800.
@@ -10,7 +10,7 @@ clocks rather than 800.
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge
+from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 
 from cocotb_run import run
 
@@ -204,6 +204,35 @@ async def the_output_takes_the_voices_in_turn(dut):
         heard[h & 1] += int(dut.audio.value)  # registered at this edge, from this h_pos
         await RisingEdge(dut.clk)
     assert heard[1] == 0 and heard[0] > 0, heard
+
+
+@cocotb.test()
+async def each_voice_is_high_for_the_first_volume_steps_of_8(dut):
+    """The PWM at the output: on voice A's clocks (odd h) the output follows its square wave,
+    high for the first a_vol of every 8 steps of h[3:1] while the square is 1 and low while
+    it is 0; on voice B's (even h), the same for b_vol against its noise, held at 1 here."""
+    await start(dut)
+    dut.random.value = 0b1000  # with v_pos at 0, the noise is 1
+    await frame(dut, "brick", "wall", row=0, fast=True)  # N = 24 (E6 an octave down)
+    for a_vol, b_vol in [(5, 3), (4, 2), (3, 1), (2, 0), (1, 0)]:  # the brick and the rumble fade
+        squares = set()
+        for _ in range(30):  # a flip every 24 lines: both halves of the square wave
+            heard = []
+            for h in range(16):  # one PWM period, the voices taking turns
+                dut.h_pos.value = h  # h 0 steps the line's counters
+                await RisingEdge(dut.clk)
+                await ReadOnly()
+                heard.append(int(dut.audio.value))  # registered at this edge, from this h
+                if h == 1:
+                    square = int(dut.a_square.value)
+                await FallingEdge(dut.clk)
+            squares.add(square)
+            assert heard[1::2] == [square & (s < a_vol) for s in range(8)], \
+                f"voice A at volume {a_vol}, square {square}: {heard[1::2]}"
+            assert heard[0::2] == [int(s < b_vol) for s in range(8)], \
+                f"voice B at volume {b_vol}: {heard[0::2]}"
+        assert squares == {0, 1}, f"volume {a_vol}: the square wave stayed at {squares}"
+        await frame(dut)
 
 
 def test_sound():
