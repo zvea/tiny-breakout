@@ -9,8 +9,8 @@
 //               [video][audio], little-endian. Video is (count, RRGGBB) byte pairs covering
 //               640x480. Audio is the Audio Pmod's output (uio[7], see sim.h) as s16 at
 //               48 kHz, stretched to the time the frame really took, at its true pitch (see
-//               stretch.h), so it plays continuously however fast the CPU. Only one viewer at
-//               a time: a new /stream takes over from the previous one.
+//               stretch.h), so it plays continuously down to 3.75 fps (a stretch of 16). Only
+//               one viewer at a time: a new /stream takes over from the previous one.
 // GET /keys?k=K sets the controls. K bits: 1 left, 2 right, 4 fire (gamepad A), 8 autoplay,
 //               16 reset.
 // Anything else returns index.html.
@@ -80,12 +80,14 @@ static void streamer() {
   // Audio: each frame's 800 samples are stretched so the output keeps pace with real time.
   // The output owed is 48 kHz x the time since audio started, less what has been sent. The
   // stretch ratio starts from the frame time over 1/60 s, smoothed, between 1 (full speed)
-  // and 8. That alone runs a few percent high at full speed, where a late frame is followed
-  // by an early one that the clamp at 1 ignores, and the input it leaves over would wait in
-  // the stretcher as an ever-growing delay; on a slow machine it can run low, and the output
-  // falls behind. So it is corrected both ways: each 0.5 s of input waiting beyond what this
-  // frame's grains need halves it, and each 0.5 s of output still owed from earlier frames
-  // doubles it. That holds the delay to a few tens of ms, and the output to real time.
+  // and 16 (3.75 fps; below that the output falls behind). That alone runs a few percent
+  // high at full speed, where a late frame is followed by an early one that the clamp at 1
+  // ignores, and the input it leaves over would wait in the stretcher as an ever-growing
+  // delay; on a slow machine it can run low, and the output falls behind. So it is corrected
+  // both ways, in proportion: it is divided by 1 + the input waiting beyond what this frame's
+  // grains need, in units of 0.5 s, and multiplied by 1 + the output still owed from earlier
+  // frames, in the same units (so 0.5 s of either halves or doubles it). That holds the delay
+  // to a few tens of ms, and the output to real time.
   Stretcher stretcher;
   long sent = 0;
   double ratio = 1;
@@ -123,7 +125,7 @@ static void streamer() {
     auto t = clk::now();
     double dt = std::chrono::duration<double>(t - last_frame).count();
     last_frame = t;
-    ratio += 0.1 * (std::min(8.0, std::max(1.0, dt * 60)) - ratio);
+    ratio += 0.1 * (std::min(16.0, std::max(1.0, dt * 60)) - ratio);
     long owed = std::lround(48000 * std::chrono::duration<double>(t - audio_start).count()) - sent;
     if (owed > 24000) {  // half a second behind (a stall): don't try to catch up
       audio_start = t - std::chrono::nanoseconds(sent * 1000000000L / 48000);
@@ -132,7 +134,7 @@ static void streamer() {
     stretcher.push(g.audio.data(), Game::AUDIO_PER_FRAME);
     double excess = stretcher.backlog() - (Stretcher::AHEAD + Game::AUDIO_PER_FRAME);
     double carry = std::max(0.0, owed - 48000 * dt);
-    double r = std::min(8.0, std::max(0.5, ratio * (1 + carry / 24000) / (1 + excess / 24000)));
+    double r = std::min(16.0, std::max(0.5, ratio * (1 + carry / 24000) / (1 + excess / 24000)));
     std::vector<float> audio = stretcher.pull(r, (int)std::max(0L, owed));
     sent += audio.size();
 
