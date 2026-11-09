@@ -21,7 +21,9 @@ TOOLS_BIN = ROOT / ".tools" / "env" / "bin"  # local simulator installs, used if
 
 
 def run(toplevel: str, sources: list[str], test_module: str) -> None:
-    """Builds `sources` (file names in src/, packages first) and runs `test_module`."""
+    """Builds `sources` (packages first) and runs `test_module`. A source is a path relative
+    to src/, such as a file name there, or an absolute path, such as a testbench in this
+    directory, str(UNIT_DIR / "brick_wall_tb.sv")."""
     sim = os.environ.get("SIM", "verilator")
     executable = {"verilator": "verilator", "icarus": "iverilog"}[sim]
     if shutil.which(executable) is None and TOOLS_BIN.is_dir():
@@ -29,7 +31,7 @@ def run(toplevel: str, sources: list[str], test_module: str) -> None:
     build_dir = UNIT_DIR / "sim_build" / f"{toplevel}_{sim}"
     runner = get_runner(sim)
     runner.build(
-        sources=[SRC_DIR / s for s in sources],
+        sources=[SRC_DIR / s for s in sources],  # an absolute s stays as it is
         hdl_toplevel=toplevel,
         build_dir=build_dir,
         always=True,
