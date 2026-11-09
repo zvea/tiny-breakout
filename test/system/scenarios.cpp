@@ -121,20 +121,32 @@ bool resting(const View &v) {
 
 // ---- Checks ------------------------------------------------------------------------------
 
-int failures = 0;
+// A failed check is reported and counted, and the scenario goes on, so that one failure does
+// not hide others. Each message names the part of the scenario it comes from (`part`, set as
+// the scenario goes) and the frame since power-up; past 100 failures they are only counted.
+int failures = 0, frame_no = 0;
+const char *part = "";
 
-#define CHECK(cond, ...)                                     \
-  do {                                                       \
-    if (!(cond)) {                                           \
-      printf("FAIL line %d: %s: ", __LINE__, #cond);         \
-      printf(__VA_ARGS__);                                   \
-      printf("\n");                                          \
-      failures++;                                            \
-    }                                                        \
+#define CHECK(cond, ...)                                                   \
+  do {                                                                     \
+    if (!(cond)) {                                                         \
+      if (failures < 100) {                                                \
+        printf("FAIL line %d, frame %d, %s: ", __LINE__, frame_no, part);  \
+        printf(__VA_ARGS__);                                               \
+        printf("  [%s]\n", #cond);                                         \
+      }                                                                    \
+      failures++;                                                          \
+    }                                                                      \
   } while (0)
 
+// Reset through the pin, as at power-up
+void power_up(Game &g) {
+  g.reset();
+  frame_no = 0;
+}
+
 View run(Game &g, int frames, bool find_ball = true) {
-  for (int i = 0; i < frames; i++) g.frame();
+  for (int i = 0; i < frames; i++, frame_no++) g.frame();
   return look(g, find_ball);
 }
 
@@ -193,7 +205,7 @@ Sound listen(const Game &g) { return {hear(g, 1), hear(g, 0)}; }
 // stays there until FIRE launches it upwards.
 void launch() {
   Game g;
-  g.reset();
+  power_up(g);
   View v = start_game(g);
   CHECK(v.bricks == 48, "bricks %d", v.bricks);
   CHECK(v.lives == 2, "life markers %d", v.lives);
@@ -218,7 +230,7 @@ void steering() {
       else g.buttons = (l ? LEFT : 0) | (r ? RIGHT : 0);
     };
     Game g;
-    g.reset();
+    power_up(g);
     start_game(g);
     int x0 = run(g, 2).paddle_x;
     press(g, false, true);
@@ -246,7 +258,7 @@ void steering() {
 // right end at x 575 (left end at x 480).
 void paddle_limits() {
   Game g;
-  g.reset();
+  power_up(g);
   View v = start_game(g);
   CHECK(v.paddle_w == 96, "the first level's paddle is %d px wide", v.paddle_w);
   g.buttons = LEFT;
@@ -273,7 +285,7 @@ int border_colour(const Game &g) {
 // the ball has left the screen. Black at every other time, game over included.
 void falling_ball_lights_the_border() {
   Game g;
-  g.reset();
+  power_up(g);
   View v = start_game(g);
   int frame = 0, lit = 0, missing = 0;
   bool shades[4] = {};
@@ -314,7 +326,7 @@ int black_from_top(const Game &g) {
 // left; the next game brings the picture back.
 void game_over_curtain() {
   Game g;
-  g.reset();
+  power_up(g);
   View v = start_game(g);
   int frame = 0, score = -1, missing = 0;
   // Until the curtain shows (more than the 24-line status line is black), or the ball has
@@ -357,7 +369,7 @@ void game_over_curtain() {
 
 void game_over_and_restart() {
   Game g;
-  g.reset();
+  power_up(g);
   int expected_lives = 2, frame = 0, missing = 0, since_launch = 1000, prev_y = -1, prev_dy = 0;
   View v = start_game(g);
   for (; frame < 20000; frame++) {
@@ -413,7 +425,7 @@ void game_over_and_restart() {
 // settling into a loop that never reaches the last bricks.
 void autoplay_clears_a_level() {
   Game g;
-  g.reset();
+  power_up(g);
   g.autoplay = true;
   int fewest = 48, frame = 0, lives_lost = 0, lives = 2, prev_bricks = 48;
   bool cleared = false;
@@ -442,7 +454,7 @@ void autoplay_clears_a_level() {
 // cleared 16.
 void ball_speeds_up() {
   Game g;
-  g.reset();
+  power_up(g);
   g.autoplay = true;
   View v = start_game(g);
   int prev_y = v.ball_y, prev_bricks = v.bricks, frame = 0, checked[5] = {};
@@ -478,7 +490,7 @@ void ball_speeds_up() {
 // allows, it came in by the one its 8x8 box is less far past (ties: top or bottom).
 void brick_bounces() {
   Game g;
-  g.reset();
+  power_up(g);
   g.autoplay = true;
   constexpr int N = 15000;
   static View v[N];
@@ -572,7 +584,7 @@ bool is_pattern_wall(uint64_t standing) {
 // touches. Autoplay aims at all four zones in turn; the first level's paddle is 96 px.
 void paddle_zones_set_the_angle() {
   Game g;
-  g.reset();
+  power_up(g);
   g.autoplay = true;
   View v = start_game(g), prev, touch, from;
   int checked[4] = {}, tracking = -1;  // tracking: frames since the ball left the paddle
@@ -618,7 +630,7 @@ void paddle_zones_set_the_angle() {
 // the next level's balls start at 1x, as every ball does, also after a ball is lost.
 void level_cleared() {
   Game g;
-  g.reset();
+  power_up(g);
   View v = start_game(g);
   CHECK(v.paddle_w == 96, "level 1 paddle is %d px wide", v.paddle_w);
   int frame = 0;
@@ -715,7 +727,7 @@ void demo_until_a_controller_or_button() {
   for (int how = 0; how < 3; how++) {
     const char *name = names[how];
     Game g;
-    g.reset();
+    power_up(g);
     if (how) g.pad_bits = 0x0fff;  // the PMOD reports no controller
     else g.pmod_plugged = false;
     // A report with no controller is all ones, so the receiver sees SELECT (bit 14) pressed
@@ -750,7 +762,7 @@ void demo_until_a_controller_or_button() {
 // or fire switches it off, after which the paddle only moves when told to.
 void select_turns_autoplay_on() {
   Game g;
-  g.reset();
+  power_up(g);
   start_game(g);
   g.pad_bits = GP_SELECT;
   run(g, 3);
@@ -771,7 +783,7 @@ void select_turns_autoplay_on() {
 // octave down (red highest); a sigh for each lost ball and the sad trombone for the last.
 void sound() {
   Game g;
-  g.reset();
+  power_up(g);
   Sound s;
   int frame = 0;
   for (; frame < 10 && !(s.a.half == 30 && s.b.half == 20); frame++) {  // the demo ends
@@ -909,6 +921,7 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "list")) {
       printf("%s\n", s.name);
     } else if (!strcmp(argv[1], s.name)) {
+      part = s.name;
       s.run();
       printf("%s: %s\n", s.name, failures ? "FAIL" : "PASS");
       return failures ? 1 : 0;
