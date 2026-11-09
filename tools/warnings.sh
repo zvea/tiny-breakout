@@ -10,8 +10,15 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
-[ $# -ge 1 ] || { sed -n '2,8p' "$0"; exit 2; }
+usage() { sed -n '2,7p' "$0"; exit 2; }
+case ${1:-} in ''|-*) usage ;; esac  # RUN_DIR comes first
+case $# in
+  1) ;;
+  2) [ "$2" = --update ] || { echo "unknown argument: $2"; usage; } ;;
+  *) usage ;;
+esac
 RUN=$(cd "$1" && pwd)
+[ -f "$RUN/final/metrics.json" ] || { echo "no final/metrics.json in $RUN: not a hardened run"; exit 1; }
 "$PY" - "$RUN" "$ROOT/tools/warnings.ref" "${2:-}" <<'PY'
 import glob, json, re, sys
 
@@ -21,7 +28,10 @@ m = json.load(open(f"{run}/final/metrics.json"))
 # Clock pins over their slew limit at any corner: flip-flop clock pins and clock-buffer pins,
 # from the slew section of the sign-off timing checks
 clock_slew = set()
-sta = sorted(glob.glob(f"{run}/*-openroad-stapostpnr"))[-1]
+sta_dirs = sorted(glob.glob(f"{run}/*-openroad-stapostpnr"))
+if not sta_dirs:
+    sys.exit(f"FAILED: no *-openroad-stapostpnr directory in {run}, so no sign-off timing checks to read")
+sta = sta_dirs[-1]
 for rpt in glob.glob(f"{sta}/*/checks.rpt"):
     text = open(rpt).read()
     if "\nmax slew\n" in text:
@@ -31,18 +41,22 @@ for rpt in glob.glob(f"{sta}/*/checks.rpt"):
             if pin.endswith("/CLK") or pin.startswith(("clkbuf_", "clkload")):
                 clock_slew.add(pin)
 
-counts = {
-    "max slew violations": m.get("design__max_slew_violation__count"),
-    "max fanout violations": m.get("design__max_fanout_violation__count"),
-    "max capacitance violations": m.get("design__max_cap_violation__count"),
-    "lint warnings": m.get("design__lint_warning__count"),
-    "inferred latches": m.get("design__inferred_latch__count"),
-    "critical disconnected pins": m.get("design__critical_disconnected_pin__count"),
-    "clock pins over slew limit": len(clock_slew),
+metrics = {
+    "max slew violations": "design__max_slew_violation__count",
+    "max fanout violations": "design__max_fanout_violation__count",
+    "max capacitance violations": "design__max_cap_violation__count",
+    "lint warnings": "design__lint_warning__count",
+    "inferred latches": "design__inferred_latch__count",
+    "critical disconnected pins": "design__critical_disconnected_pin__count",
 }
+counts = {k: m.get(key, "missing") for k, key in metrics.items()}
+counts["clock pins over slew limit"] = len(clock_slew)
 print("warnings: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
 failed = [k for k in ("inferred latches", "critical disconnected pins", "clock pins over slew limit")
-          if counts[k]]
+          if counts[k] and counts[k] != "missing"]
+# A metric LibreLane no longer reports (renamed in an upgrade, say) would otherwise pass unseen
+failed += [f"metric {key} missing from metrics.json (renamed? update tools/warnings.sh)"
+           for key in metrics.values() if key not in m]
 
 # Kinds of message: without timestamps, numbers (counts, paths with versions) or the list of
 # corners that follows "violations found in the following corners"

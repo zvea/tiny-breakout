@@ -24,8 +24,10 @@ Notes:
   point of utilisation, or 50-100 µm² locally), so compare means over orderings.
 - **Routability:** the only real test is `flow.sh harden` (0 DRC, LVS and antenna errors).
 - **Warnings:** the flow passes runs with warnings. `warnings.sh` (run by `flow.sh harden`) fails
-  on an inferred latch, a critical disconnected pin or a clock pin over its slew limit, and lists
-  any kind of message missing from `warnings.ref`; after checking them, `--update` adds them.
+  on an inferred latch, a critical disconnected pin, a clock pin over its slew limit or a
+  metric missing from `metrics.json` (renamed by a LibreLane upgrade, say), and lists any kind
+  of message missing from `warnings.ref`; after checking them, `--update` rewrites
+  `warnings.ref` from that run (so kinds the run no longer has go too).
 - **RTL vs netlist:** LVS only checks the layout against the netlist. `lec.sh` checks that
   netlist against the RTL, so changes to synthesis or other flow settings can't quietly change
   the logic; `flow.sh harden` runs it and fails if it fails.
