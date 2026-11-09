@@ -17,24 +17,29 @@ the game plays itself as a demo.
 
 ## How it fits in one tile
 
-Every pixel of the 640×480, 60 Hz picture is worked out from the beam position as it is
-drawn.
+There is no frame buffer. Each pixel is computed from the game's state as the beam draws it.
 
-- The bricks are kept in a ring of flip-flops that turns with the beam, so the brick under the
-  beam is always in the same flip-flop. This avoids a 48-way multiplexer and halves the brick
-  wall's logic ([brick_wall.sv](src/brick_wall.sv)).
-- Each brick wall after the first is generated as the ring fills. Its bottom row, built first,
-  comes from a 5-bit LFSR, and each later row from the row before it, by an elementary
-  cellular automaton (Wolfram's rules 150 and 182). This gives 21 brick patterns in under 1% of the tile.
-- Collisions are read off the picture: a ball pixel drawn over a brick or the paddle is a hit.
-  The ball's offset within its own 8×8 box at that pixel tells which edge of the brick it came
-  through, so it bounces the right way.
-- A faster ball doesn't take bigger steps: it moves more often, from every other frame up to
-  twice a frame, during vertical blanking.
-- The sound has no samples and no DAC. Each of its two voices keeps only which sound it is
-  playing and for how many frames, and works out the note and volume from those. A note is a
-  square wave timed by the picture's own lines, the volume is pulse-width modulation, and the
-  two voices take turns on the one audio pin, clock by clock ([sound.sv](src/sound.sv)).
+- Collisions are found in the picture itself. When the beam draws a ball pixel over a brick or
+  the paddle, the ball has hit it. The pixel's position in the brick shows which side the ball
+  came from. Autoplay works the same way: it notes which part of the paddle is under the ball
+  as the beam goes past, which takes two 2-bit comparisons instead of an adder
+  ([autoplay.sv](src/autoplay.sv)).
+- The bricks live in a ring of flip-flops that turns with the beam, so the brick being drawn is
+  always in the same flip-flop. That saves a 48-way multiplexer and halves the brick wall's
+  logic ([brick_wall.sv](src/brick_wall.sv)).
+- The walls are computed as the ring fills. The bottom row, built first, comes from a 5-bit
+  LFSR, and each row after it grows from the one before by an elementary, one-dimensional
+  cellular automaton (Wolfram's rule 150 or 182). This gives 21 different walls in under 1% of
+  the tile.
+- Positions are whole pixels, with no fractional bits. The ball's step never changes; its speed,
+  from 1x to 3x in half steps, comes from how many steps it takes each frame (none, one or two,
+  all in vertical blanking).
+- The sound effects are square waves timed by the video's line clock, so a 7-bit counter is
+  enough for a note's pitch. Each of the two voices keeps only which sound it is playing and
+  for how many frames, and works out the note and volume from those. Volume is pulse-width
+  modulation, and the voices share the one audio pin by taking turns every clock. The bass is a
+  single flip-flop that divides the tune's square wave by two, an octave down
+  ([sound.sv](src/sound.sv)).
 
 [![The hardened tile](docs/img/layout.png)](https://gds-explorer.tinytapeout.com/viewer?file=https://zvea.github.io/tiny-breakout/tinytapeout.oas&pdk=sky130A)
 
