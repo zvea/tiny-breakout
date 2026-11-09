@@ -109,6 +109,19 @@ async def the_tone_has_the_pitch_of_its_note(dut):
 
 
 @cocotb.test()
+async def the_chords_upper_voice_has_the_pitch_of_its_notes(dut):
+    """Voice B's square wave: G5 (N = 20) for the new game's first 8 frames, then E6 (N = 12)."""
+    await start(dut)
+    await frame(dut, "new_game")
+    flips = await toggles(dut, "b_square", 400)
+    assert flips in (19, 20, 21), f"G5: {flips} flips in 400 lines (expected 20 for N = 20)"
+    for _ in range(8):
+        await frame(dut)
+    flips = await toggles(dut, "b_square", 360)
+    assert flips in (29, 30, 31), f"E6: {flips} flips in 360 lines (expected 30 for N = 12)"
+
+
+@cocotb.test()
 async def a_lost_ball_sighs_and_the_last_one_plays_game_over(dut):
     """Nothing else interrupts either on voice A; the sigh is E-flat, D, then C."""
     await start(dut)
