@@ -14,6 +14,7 @@ use the project's `.venv` (for LibreLane and yowasp-yosys), and keep their worki
 | `lec.sh RUN_DIR [SRC_DIR]` | Formal equivalence of the RTL vs a hardened run's final netlist | ~1 min |
 | `warnings.sh RUN_DIR [--update]` | A hardened run's warnings: counts, hard failures, kinds of message not in `warnings.ref` | seconds |
 | `walls.sh [--png FILE] [SRC_DIR]` | Every wall `wall_pattern.sv` builds after a game's first, with counts; `--png` draws them | ~15 s |
+| `movie.sh [-o FILE] [--extra SECONDS] [SRC_DIR]` | A movie of the demo with its sound, from reset into the second level (`build/demo.mp4`; needs ffmpeg) | ~11 min |
 
 Notes:
 
