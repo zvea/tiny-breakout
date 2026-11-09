@@ -77,7 +77,7 @@ addEventListener('blur',()=>{keys=0;sendKeys()});
 // stall), or a burst that would overrun it, jumps to the target, and a dry one pauses until
 // refilled.
 const worklet=`const T=2880;class Feed extends AudioWorkletProcessor{
- constructor(){super();this.buf=new Float32Array(48000);this.r=0;this.w=0;this.lo=0;this.playing=false;
+ constructor(){super();this.buf=new Float32Array(48000);this.r=0;this.w=0;this.lo=0;this.playing=false;this.q=0;
   this.base=48000/sampleRate;
   this.port.onmessage=e=>{const s=e.data,N=this.buf.length,f=this.fill();
    if(s==='clear'){this.r=this.w=0;this.playing=false;return}  // muted: drop what is left
@@ -92,7 +92,8 @@ const worklet=`const T=2880;class Feed extends AudioWorkletProcessor{
    if(this.playing&&this.fill()>2){const i0=Math.floor(this.r),a=this.buf[i0],b=this.buf[(i0+1)%N];
     o[i]=a+(b-a)*(this.r-i0);this.r+=step;if(this.r>=N)this.r-=N}
    else{o[i]=0;this.playing=false}}
-  this.port.postMessage(this.fill());return true}}
+  if(++this.q>=32){this.q=0;this.port.postMessage(this.fill())}  // for the status line: ~11 a second
+  return true}}
 registerProcessor('feed',Feed);`;
 let actx=null,node=null,gain=null,soundOn=false,soundBusy=null,soundErr='',buffered=0;
 const sb=document.getElementById('sb'),vol=document.getElementById('vol');
