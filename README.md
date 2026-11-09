@@ -38,7 +38,7 @@ drawn.
 
 [![The hardened tile](docs/img/layout.png)](https://gds-explorer.tinytapeout.com/viewer?file=https://zvea.github.io/tiny-breakout/tinytapeout.oas&pdk=sky130A)
 
-The layout can also be [explored in 3D](https://gds-explorer.tinytapeout.com/viewer?file=https://zvea.github.io/tiny-breakout/tinytapeout.oas&pdk=sky130A).
+*The hardened tile: click it to explore the layout in 3D.*
 
 ## Trying it without hardware
 
@@ -53,15 +53,20 @@ cd sim/play
 ./obj_serve/Vtt_um_tiny_breakout    # then open http://localhost:8765/
 ```
 
-The page starts muted; the speaker button or <kbd>M</kbd> turns the sound on.
+The arrow keys move the paddle, <kbd>Space</kbd> launches the ball (or starts a new game after
+game over), <kbd>A</kbd> switches autoplay on and off (an arrow key also switches it off) and
+<kbd>R</kbd> resets the chip. The page starts muted; the speaker button or <kbd>M</kbd> turns
+the sound on and off. The player always acts as a connected controller, so the demo never
+runs there; [tools/movie.sh](tools/movie.sh) records the demo as a movie (see
+[tools/README.md](tools/README.md)).
 
 ## Hardware
 
 - A Tiny Tapeout chip with this design selected, clocked at 25.175 MHz.
 - A [TinyVGA PMOD](https://github.com/mole99/tiny-vga) on the outputs, and a VGA monitor.
 - A [Gamepad PMOD](https://github.com/psychogenic/gamepad-pmod) and an SNES-compatible
-  controller on the inputs, or buttons on `ui[0]` to `ui[2]` and a switch on `ui[3]` for
-  autoplay.
+  controller on the inputs, or active-high buttons on `ui[0]` to `ui[2]` and a switch on
+  `ui[3]` for autoplay.
 - Optionally, an [Audio Pmod](https://github.com/MichaelBell/tt-audio-pmod) on `uio[7]` for
   sound.
 
