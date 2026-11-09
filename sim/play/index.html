@@ -13,7 +13,6 @@
  #sb{display:inline-flex;padding:4px 8px}
  #sb[aria-pressed=true] .on,#sb[aria-pressed=false] .off{display:none}
  #snd.muted label{color:#666}
- #lag{color:#888;font-variant-numeric:tabular-nums;min-width:10em}
  input:disabled{opacity:.4;cursor:default}
 </style></head><body>
 <canvas id="c" width="640" height="480"></canvas>
@@ -23,7 +22,7 @@
   <path d="M3 9v6h4l5 4V5L7 9z" fill="currentColor"/>
   <path class="on" d="M15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12"/>
   <path class="off" d="M16 9l6 6M22 9l-6 6"/></svg></button>
- <label for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.3" disabled><span id="lag"></span></div>
+ <label for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.3" disabled></div>
 <div id="help"><kbd>←</kbd>/<kbd>→</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> autoplay (arrows stop it) &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> <span id="mk">unmute</span></div>
 <script>
 // The server runs the RTL model at 60 fps and streams frames:
@@ -87,7 +86,7 @@ const worklet=`const T=2880;class Feed extends AudioWorkletProcessor{
   this.port.postMessage(this.fill());return true}}
 registerProcessor('feed',Feed);`;
 let actx=null,node=null,gain=null,soundOn=false,buffered=0;
-const sb=document.getElementById('sb'),vol=document.getElementById('vol'),lag=document.getElementById('lag');
+const sb=document.getElementById('sb'),vol=document.getElementById('vol');
 async function toggleSound(){
  if(!actx){
   actx=new AudioContext({latencyHint:'interactive'});
@@ -104,7 +103,6 @@ async function toggleSound(){
  sb.title=soundOn?'Mute (M)':'Unmute (M)';
  document.getElementById('mk').textContent=soundOn?'mute':'unmute';
  document.getElementById('snd').classList.toggle('muted',!soundOn);
- if(!soundOn)lag.textContent='';
  vol.disabled=!soundOn;
 }
 sb.addEventListener('click',toggleSound);
@@ -153,8 +151,7 @@ async function stream(){
     const t=performance.now();
     // Every frame is simulated, none skipped: below 60 fps the game runs in slow motion, and
     // the server stretches the sound to match, at its true pitch
-    if(t-t0>1000){const fps=n*1000/(t-t0);st.textContent=`${fps.toFixed(1)} fps · running at ${Math.round(fps/60*100)}% of real speed${auto?' · AUTOPLAY':''}`;
-     lag.textContent=soundOn?`sound buffer ${Math.round(buffered/48)} ms`:'';n=0;t0=t}
+    if(t-t0>1000){const fps=n*1000/(t-t0);st.textContent=`${fps.toFixed(1)} fps · running at ${Math.round(fps/60*100)}% of real speed${auto?' · AUTOPLAY':''}${soundOn?` · sound buffer ${Math.round(buffered/48)} ms`:''}`;n=0;t0=t}
    }
   }catch(e){}
   if(taken){st.textContent='taken over by another tab – reload to watch here';return}
