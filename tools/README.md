@@ -1,8 +1,9 @@
 # Tools
 
 Scripts for measuring and checking the design. They find the repo from their own location,
-use the project's `.venv` (for LibreLane and yowasp-yosys), and keep their working files in
-`build/` (git-ignored) and `runs/`.
+use the project's `.venv` (for Python, LibreLane and yowasp-yosys), and keep their working
+files in `build/` and `runs/`; `flow.sh` also copies the sources into `.exp_src_TAG/` in the
+repo root while it runs. All three are git-ignored.
 
 | Script | What it does | Time |
 |---|---|---|
@@ -14,7 +15,7 @@ use the project's `.venv` (for LibreLane and yowasp-yosys), and keep their worki
 | `lec.sh RUN_DIR [SRC_DIR]` | Formal equivalence of the RTL vs a hardened run's final netlist | ~1 min |
 | `warnings.sh RUN_DIR [--update]` | A hardened run's warnings: counts, hard failures, kinds of message not in `warnings.ref` | seconds |
 | `walls.sh [--png FILE] [SRC_DIR]` | Every wall `wall_pattern.sv` builds after a game's first, with counts; `--png` draws them | ~15 s |
-| `movie.sh [-o FILE] [--extra SECONDS] [SRC_DIR]` | A movie of the demo with its sound, from reset into the second level (`build/demo.mp4`; needs ffmpeg) | ~11 min |
+| `movie.sh [-o FILE] [--extra SECONDS] [SRC_DIR]` | A movie of the demo with its sound, from reset into the second level (`build/demo.mp4`; needs Verilator 4 and ffmpeg) | ~11 min |
 
 Notes:
 
@@ -43,11 +44,13 @@ Notes:
   The local scripts need the sky130 PDK, found via `$PDK_ROOT` or ciel's default `~/.ciel`.
   `walls.sh` needs Verilator, from `.tools/env` (as in test/README.md) or `PATH`; its `--png`
   needs Pillow, which is not in `test/requirements.txt` but comes into `.venv` with LibreLane.
+  `movie.sh` needs Verilator 4 (like the player), from `.tools/v4` (as in test/README.md) or
+  `PATH`, and ffmpeg.
 - **Experiments:** `EXTRA_CFG='{"KEY": value}'` overrides flow settings for one run, and
   `GOLD_RENAMES='rename old new'` (several separated by `;`) lets `equiv.sh` pair up renamed
   registers.
 - **Trying a new wall layout:** edit `src/wall_pattern.sv` (its header says what brick_wall
-  expects of it), then `walls.sh --png walls.png` to see every wall it builds, and
+  expects of it), then `walls.sh --png build/walls.png` to see every wall it builds, and
   `local_area.sh` for its cost. `.venv/bin/pytest test/unit/test_wall_pattern.py` checks the
   rules any layout must keep (no empty wall), plus the current layout exactly, which a new one
   replaces.
