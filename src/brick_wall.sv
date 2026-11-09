@@ -18,8 +18,9 @@
  * not matter.
  *
  * Refill shifts a new wall in with the row turns of the next frame, and the bricks stay
- * hidden until the last turn: for one frame after reset and after each refill, only the
- * bottom row shows. Hiding them also keeps the unreset bits from showing as X in simulation.
+ * hidden until the end of the wall (line 160), after the last turn: the frame after reset and
+ * after each refill shows no bricks, rather than the half-built ring's bottom row. Hiding them
+ * also keeps the unreset bits from showing as X in simulation.
  *
  * The first wall of a game is full; every later one comes from wall_pattern, which gives the
  * wall's rows one at a time: each row turn of the fill loads one row. The fill's first turn
@@ -98,11 +99,11 @@ module brick_wall (
     end
   end
 
-  // Filling ends at the last row turn (line 144) of the next frame; refill must come after
-  // line 144, as it does at frame_tick (line 480)
+  // Filling ends at the end of the wall (line 160) of the next frame, after its last row turn
+  // (line 144); refill must come after line 160, as it does at frame_tick (line 480)
   always_ff @(posedge clk) begin
     if (!rst_n || refill) filling <= 1;
-    else if (row_turn && row == FIRST_ROW + 6'(ROWS - 1)) filling <= 0;
+    else if (row == FIRST_ROW + 6'(ROWS)) filling <= 0;
   end
 
   assign brick_px = in_cols & in_rows & ~gap & bricks[0][0] & ~filling;

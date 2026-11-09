@@ -647,7 +647,9 @@ void level_cleared() {
     g.autoplay = pause >= 8;
     g.buttons = pause < 8 ? LEFT : 0;
     if (pause == 10) held_x = v.paddle_x;
-    if (pause > 10)
+    // Only while the rainbow shows: the frame the next wall fills in has no bricks either, but
+    // play has resumed (autoplay launches the ball and steers)
+    if (pause > 10 && rainbow())
       CHECK(v.paddle_x == held_x, "pause frame %d: with autoplay, the paddle moved from %d to %d",
             pause, held_x, v.paddle_x);
     v = run(g, 1, false);

@@ -77,9 +77,9 @@ async def standing(dut) -> set[tuple[int, int]]:
     return {(r, c) for r, c in ALL if (await probe(dut, *centre(r, c)))["brick_px"]}
 
 
-# While the wall fills (the frame after reset or refill), only its bottom row shows: it is
-# full by the time the beam gets there.
-FILLING = {(ROWS - 1, c) for c in range(COLS)}
+# While the wall fills (the frame after reset or refill), no brick shows, not even the bottom
+# row, which is full by the time the beam gets there: the bricks stay hidden to line 160.
+FILLING: set = set()
 
 
 @cocotb.test()
@@ -145,7 +145,7 @@ async def empty_below_the_wall_after_the_last_brick_then_refill(dut):
         assert (await probe(dut, x, y))["empty"] == 1, f"not empty at y {y}"
     assert await standing(dut) == set()
     await pulse(dut, "refill", 0, 480)
-    assert await standing(dut) == FILLING, "the wall shows only its bottom row while it fills"
+    assert await standing(dut) == FILLING, "the wall shows no brick while it fills"
     assert (await probe(dut, 0, 200))["empty"] == 0, "a filling wall is not empty"
     assert await standing(dut) == set(ALL)
 
