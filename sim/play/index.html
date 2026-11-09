@@ -50,12 +50,16 @@ async function sendNextKeys(){
 }
 const map={ArrowLeft:1,ArrowRight:2,' ':4};
 addEventListener('keydown',e=>{
- if(map[e.key]){e.preventDefault();if(e.key!==' ')auto=0;  // steering takes over from autoplay
-  if(!(keys&map[e.key])){keys|=map[e.key];sendKeys()}}
- else if(e.key==='a'||e.key==='A'){auto^=1;sendKeys()}
- else if(e.key==='r'||e.key==='R'){sendKeys(16)}
- else if(e.key==='m'||e.key==='M'){toggleSound()}});
-addEventListener('keyup',e=>{if(map[e.key]){keys&=~map[e.key];sendKeys()}});
+ if(e.ctrlKey||e.metaKey||e.altKey)return;  // browser shortcuts: Ctrl/Cmd+R reloads, Cmd+M minimises
+ const k=e.key;
+ if(k==='m'||k==='M'){if(!e.repeat)toggleSound();return}  // a held A, R or M acts once
+ if(e.target.closest?.('input,button'))return;  // a focused slider or button keeps its keys
+ if(map[k]){e.preventDefault();if(k!==' ')auto=0;  // steering takes over from autoplay
+  if(!(keys&map[k])){keys|=map[k];sendKeys()}}
+ else if(e.repeat)return;
+ else if(k==='a'||k==='A'){auto^=1;sendKeys()}
+ else if(k==='r'||k==='R'){sendKeys(16)}});
+addEventListener('keyup',e=>{if(keys&map[e.key]){keys&=~map[e.key];sendKeys()}});
 addEventListener('blur',()=>{keys=0;sendKeys()});
 
 // --- Sound: the frames' samples (48 kHz, from the server) go into an AudioWorklet ring buffer.
@@ -106,6 +110,8 @@ async function toggleSound(){
  vol.disabled=!soundOn;
 }
 sb.addEventListener('click',toggleSound);
+// Used with the mouse, the controls hand the keys back to the game (Tab still reaches them)
+addEventListener('pointerup',()=>{const a=document.activeElement;if(a===sb||a===vol)a.blur()});
 // The volume is remembered across reloads, where the browser allows storage
 try{const v=localStorage.getItem('tb-volume');if(v!==null)vol.value=v}catch(e){}
 vol.addEventListener('input',()=>{
