@@ -7,7 +7,8 @@
  * whatever the game is doing, and cycles through all 31 non-zero values. Autoplay picks
  * where to aim from it, and the wall picks the shape of each new wall. Both read it when
  * something in play happens (a paddle hit, a cleared wall), so the value they get depends
- * on the exact frame of that event.
+ * on the exact frame of that event. The sound mixes the low four bits into its noise, a new
+ * value every frame.
  */
 
 `default_nettype none

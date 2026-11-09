@@ -32,14 +32,16 @@
 
   "//": "Tiny Breakout: let synthesis use sky130's drive-strength-1 cells (nand2_1, dfxtp_1, ...).",
   "//": "The PDK's default list excludes them for routability, so every gate was a _2 cell. This",
-  "//": "list, without them, gave 22% less cell area (80.5% -> 61% utilisation), better timing and",
-  "//": "a clean route; synthesis still honours the PDK's list of cells with layout problems.",
+  "//": "list, without them, gave 22% less cell area, better timing and a clean route (measured",
+  "//": "before the sound was added: 80.5% -> 61% utilisation); synthesis still honours the PDK's",
+  "//": "list of cells with layout problems.",
   "SYNTH_EXCLUDED_CELL_FILE": "dir::synth_excluded.cells",
 
   "//": "Tiny Breakout: keep the resizer from using sky130's clock delay cells as ordinary buffers.",
-  "//": "Only two of them are excluded by default, and it picked clkdlybuf4s25_1 (10 um2, slow by",
-  "//": "design) for 51 fanout and input buffers; with these excluded it uses buf_1 (3.75 um2),",
-  "//": "saving ~290 um2. Hold repair uses dlygate4sd3_1, which stays available.",
+  "//": "Only two of them are excluded by default. Measured before the sound was added, it picked",
+  "//": "clkdlybuf4s25_1 (10 um2, slow by design) for 51 fanout and input buffers; with these",
+  "//": "excluded it used buf_1 (3.75 um2), saving ~290 um2. Hold repair uses dlygate4sd3_1, which",
+  "//": "stays available.",
   "EXTRA_EXCLUDED_CELLS": [
     "sky130_fd_sc_hd__clkdlybuf4s15_1", "sky130_fd_sc_hd__clkdlybuf4s15_2",
     "sky130_fd_sc_hd__clkdlybuf4s18_1", "sky130_fd_sc_hd__clkdlybuf4s18_2",
@@ -47,10 +49,11 @@
     "sky130_fd_sc_hd__clkdlybuf4s50_1", "sky130_fd_sc_hd__clkdlybuf4s50_2"
   ],
 
-  "//": "Tiny Breakout: small clock buffers. The leaf buffers take the root buffer's type, so the",
-  "//": "default clkbuf_16 root gave 32 clkbuf_16 leaves driving 5-6 flip-flops each (1,076 um2 of",
-  "//": "clock tree). clkbuf_4/2 gives ~400 um2, no clock-pin slew violations, +0.01-0.02 ns skew.",
-  "//": "clkbuf_2 throughout was smaller still but left clock pins over their slew limit.",
+  "//": "Tiny Breakout: small clock buffers. The leaf buffers take the root buffer's type. Measured",
+  "//": "before the sound was added, the default clkbuf_16 root gave 32 clkbuf_16 leaves driving",
+  "//": "5-6 flip-flops each (1,076 um2 of clock tree); clkbuf_4/2 gave ~400 um2, no clock-pin slew",
+  "//": "violations and +0.01-0.02 ns skew. clkbuf_2 throughout was smaller still but left clock",
+  "//": "pins over their slew limit.",
   "CTS_ROOT_BUFFER": "sky130_fd_sc_hd__clkbuf_4",
   "CTS_CLK_BUFFERS": ["sky130_fd_sc_hd__clkbuf_4", "sky130_fd_sc_hd__clkbuf_2"],
 

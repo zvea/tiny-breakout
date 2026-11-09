@@ -9,8 +9,9 @@
 # (OpenLane discussion #2179), not because of a fault in the cells; cells with layout problems
 # are in its separate drc_exclude.cells (PNR_EXCLUDED_CELL_FILE), which synthesis also
 # honours. Upstream open_pdks has since stopped excluding the _1 cells (commit 2347071, May
-# 2026). Without them every gate was a _2 cell; with them this design measured 22% less cell
-# area (TT utilisation 80.5% -> 61%), with better timing, fewer slew warnings and a clean route.
+# 2026). Without them every gate was a _2 cell; with them this design had 22% less cell
+# area, with better timing, fewer slew warnings and a clean route (measured before the sound
+# was added: TT utilisation 80.5% -> 61%).
 #
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
