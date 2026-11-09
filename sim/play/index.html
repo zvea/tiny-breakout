@@ -6,6 +6,7 @@
  body{background:#111;color:#ccc;font:14px system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;margin:16px}
  canvas{image-rendering:pixelated;width:960px;max-width:100%;border:1px solid #333}
  #s{margin:8px;font-variant-numeric:tabular-nums}
+ .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
  kbd{background:#333;border-radius:3px;padding:1px 5px}
  #snd{display:flex;gap:10px;align-items:center;margin:8px}
  button{background:#333;color:#ddd;border:1px solid #555;border-radius:4px;padding:4px 10px;font:inherit;cursor:pointer}
@@ -16,7 +17,8 @@
  input:disabled{opacity:.4;cursor:default}
 </style></head><body>
 <canvas id="c" width="640" height="480" role="img" aria-label="Tiny Breakout game screen"></canvas>
-<div id="s" role="status">connecting…</div>
+<div id="s">connecting…</div>
+<div id="say" class="sr" role="status"></div>
 <div id="snd" class="muted"><button id="sb" aria-label="Mute" aria-pressed="true" title="Unmute (M)">
  <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M3 9v6h4l5 4V5L7 9z" fill="currentColor"/>
@@ -32,9 +34,13 @@
 // Key changes are sent separately, so the frame rate does not depend on the network round trip.
 const c=document.getElementById('c'),ctx=c.getContext('2d'),img=ctx.createImageData(640,480),st=document.getElementById('s');
 const lv=[0,85,170,255];
-let keys=0,auto=0,n=0,t0=performance.now(),latest=null,taken=false;
+let keys=0,auto=0,n=0,t0=performance.now(),latest=null,taken=false,online=null;
 // The status line: the stream's state, then a sound problem if there is one
 let line=st.textContent;
+// The status line is a meter, updated every second: screen readers can read it on demand. Changes
+// of state are announced instead, in a live region that isn't shown.
+const say=document.getElementById('say');
+function announce(m){say.textContent='';setTimeout(()=>{say.textContent=m},50)}  // a repeat too
 function showStatus(){st.textContent=line+(soundErr?` · ${soundErr}`:'')}
 
 // Key changes go one request at a time, so they reach the server in order; changes made while
@@ -57,10 +63,10 @@ addEventListener('keydown',e=>{
  const k=e.key;
  if(k==='m'||k==='M'){if(!e.repeat)toggleSound();return}  // a held A, R or M acts once
  if(e.target.closest?.('input,button'))return;  // a focused slider or button keeps its keys
- if(map[k]){e.preventDefault();if(k!==' ')auto=0;  // steering takes over from autoplay
+ if(map[k]){e.preventDefault();if(k!==' '&&auto){auto=0;announce('autoplay off')}  // steering takes over
   if(!(keys&map[k])){keys|=map[k];sendKeys()}}
  else if(e.repeat)return;
- else if(k==='a'||k==='A'){auto^=1;sendKeys()}
+ else if(k==='a'||k==='A'){auto^=1;announce(auto?'autoplay on':'autoplay off');sendKeys()}
  else if(k==='r'||k==='R'){sendKeys(16)}});
 addEventListener('keyup',e=>{if(keys&map[e.key]){keys&=~map[e.key];sendKeys()}});
 addEventListener('blur',()=>{keys=0;sendKeys()});
@@ -120,9 +126,11 @@ async function setSound(on){
   if(on){await actx.resume();soundOn=true}
   else{soundOn=false;node.port.postMessage('clear');await actx.suspend()}  // an unmute plays only new sound
   soundErr='';
+  announce(soundOn?'sound on':'sound off');
  }catch(e){
   console.warn('sound:',e);
   soundErr=on?'sound failed to start':'sound failed to stop';
+  announce(soundErr);
  }
  showStatus();
  // The button shows the state (crossed out when muted); the slider is off while muted
@@ -178,6 +186,7 @@ async function stream(){
      if(len===0xFFFFFFFF){taken=true;break read}
      if(buf.length<8+len+2*ns)break;
      latest=buf.subarray(8,8+len);
+     if(!online){online=true;announce('connected')}
      playAudio(buf.subarray(8+len,8+len+2*ns));
      buf=buf.slice(8+len+2*ns);n++;
     }
@@ -188,8 +197,9 @@ async function stream(){
    }
   }catch(e){}
   clearInterval(watchdog);
-  if(taken){line='taken over by another tab – reload to watch here';showStatus();return}
+  if(taken){line='taken over by another tab – reload to watch here';showStatus();announce(line);return}
   line='disconnected – retrying…';showStatus();
+  if(online!==false){online=false;announce('disconnected, retrying')}  // once, not every retry
   await new Promise(r=>setTimeout(r,1000));
  }
 }
