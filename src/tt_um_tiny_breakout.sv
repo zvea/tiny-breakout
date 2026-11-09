@@ -20,9 +20,15 @@
  *   uio_out[7] : Audio Pmod (sound.sv); the other uio pins are unused inputs
  * With no controller connected the game plays itself (demo); see "Demo" below.
  *
- * Known risk: ui_in[0..3] are used without synchronisers (2 flip-flops each would cost 8).
- * A pin changing at a frame update could reach some flip-flops and not others, e.g. a
- * restart could reset the lives but not refill the wall. The gamepad pins are synchronised.
+ * Input timing: ui_in[0..3] go through one register (direct_q, below), and the game reads
+ * only that. The pins can change at any moment, and each feeds many flip-flops through logic
+ * of different lengths, so a change just before a clock edge could reach some of them and not
+ * others: a restart could reset the lives but not refill the wall, or the paddle's 8 bits
+ * could mix its position and the next. Behind the register they all see one value per clock.
+ * One stage is enough, since the danger is that disagreement rather than metastability: should
+ * the register go metastable, it has the slack of the paths from it to settle before anything
+ * samples it (the design's worst setup slack is about 25 ns of the 40 ns clock), far longer
+ * than a flip-flop needs. The gamepad pins are synchronised in gamepad_rx.
  *
  * Collisions with bricks and the paddle are found by pixel overlap during scan-out: a ball
  * pixel on a brick or paddle pixel sets a flag (and clears the brick at once). The flags
@@ -64,8 +70,16 @@ module tt_um_tiny_breakout (
     logic left;      // [0]
   } inputs_t;
 
+  // The direct pins, registered (see "Input timing" in the header). No reset: it would never
+  // be seen, as the register is loaded on every clock and the game reads the buttons only at
+  // a frame update (frame_tick and move_tick, at line 480), the first 480 lines after reset.
+  logic [3:0] direct_q;
+  always_ff @(posedge clk) direct_q <= ui_in[3:0];
+
+  // The pins as the game reads them: the gamepad's as they are (gamepad_rx synchronises
+  // them), the direct ones registered
   inputs_t ui;
-  assign ui = ui_in;
+  assign ui = {ui_in[7:4], direct_q};
 
   // ---------------------------------------------------------------------------
   // Video timing
