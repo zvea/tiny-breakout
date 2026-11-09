@@ -30,9 +30,9 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   reset; unplugging the controller instead resumes the demo, in the current game. With a
   controller connected at reset, the game waits with the ball on the paddle.
 - **Sound:** effects through the Audio Pmod on `uio[7]`: a note for each brick (higher rows,
-  higher notes), a thock for the paddle, a low rumble for the walls, a sigh for a lost ball and
-  a sad trombone at game over; a rising call for a new game and a fanfare for a cleared wall,
-  each doubled an octave below.
+  higher notes), a thock for the paddle, a low rumble for the side and top walls, a sigh for a
+  lost ball and a sad trombone at game over; a rising call for a new game and a fanfare for a
+  cleared brick wall, each doubled an octave below.
 
 ## How to test
 
