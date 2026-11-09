@@ -4,6 +4,18 @@ on:
   push:
   workflow_dispatch:
 
+# Tiny Tapeout's template, plus these two settings. The viewer job widens its own permissions.
+permissions:
+  contents: read
+
+# A newer push to the same branch replaces a run still going, so back-to-back pushes don't
+# queue up 15-minute hardens (or precheck runs, which TT's servers rate-limit). Cancelling
+# can stop the viewer mid-deploy; deploy-pages then cancels that Pages deployment, the site
+# keeps the one before, and the newer run deploys its own.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gds:
     runs-on: ubuntu-24.04

@@ -1,5 +1,11 @@
 name: test
 on: [push, workflow_dispatch]
+permissions:
+  contents: read
+# A newer push to the same branch replaces a run still going
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   # Lint the design: any Verilator warning fails the job. A job of its own, so the tests
   # still run (and report) when it fails.

@@ -4,6 +4,14 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# A newer push to the same branch replaces a run still going
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   docs:
     runs-on: ubuntu-24.04
