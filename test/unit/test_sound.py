@@ -14,6 +14,7 @@ from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 
 from cocotb_run import run
 
+# In the order of sound.sv's enums a_kind_t and b_kind_t: change these with them
 A_NONE, A_BRICK, A_PADDLE, A_LOST, A_OVER, A_CLEAR, A_START = range(7)
 B_NONE, B_THUMP, B_RUMBLE, B_BASS = range(4)
 SCALE = [60, 54, 48, 40, 36, 30, 27, 24]  # half-periods in lines: C4 D4 E4 G4 A4 C5 D5 E5
