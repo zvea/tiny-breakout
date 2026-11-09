@@ -37,7 +37,8 @@ async def start(dut):
 
 
 async def drive(dut, r, g, b, visible, h_sync_n=1, v_sync_n=1) -> int:
-    """Applies inputs for one clock and returns uo_out after that clock edge."""
+    """Applies inputs and returns uo_out as registered at the next clock edge. The inputs
+    stay applied through the edge after that too: each call takes two clocks."""
     dut.colour.value = r << 4 | g << 2 | b  # colour_pkg::rgb_t is {r, g, b}
     dut.visible.value = visible
     dut.h_sync_n.value, dut.v_sync_n.value = h_sync_n, v_sync_n
