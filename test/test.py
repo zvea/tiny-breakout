@@ -7,7 +7,7 @@ They use only the chip's pins, as internal signal names don't survive synthesis.
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, FallingEdge, RisingEdge, Timer
+from cocotb.triggers import ClockCycles, Edge, FallingEdge, First, RisingEdge, Timer
 from cocotb.utils import get_sim_time
 
 # Pins, by bit number. uo_out is the TinyVGA PMOD (src/tiny_vga_out.sv): each colour's high
@@ -196,6 +196,18 @@ async def paddle_and_ball(dut):
     return paddle, ball
 
 
+async def audio_changes(dut, enough, clocks):
+    """How often the audio pin changes within `clocks` clocks, counting up to `enough`."""
+    end = now_ps() + clocks * CLOCK_NS * 1000
+    changes = 0
+    while changes < enough and now_ps() < end:
+        fired = await First(Edge(dut.uio_out), Timer(end - now_ps(), unit="ps"))
+        if isinstance(fired, Timer):
+            break
+        changes += 1
+    return changes
+
+
 @cocotb.test()
 async def test_gamepad_and_paddle(dut):
     """Holding LEFT on the gamepad moves the paddle left, a 4-px step every two frames.
@@ -209,6 +221,10 @@ async def test_gamepad_and_paddle(dut):
     # reports on every change, and at least once a second in Tiny Tapeout's configuration.
     await send_gamepad(dut, PAD_LEFT)
     await send_gamepad(dut, PAD_LEFT)
+    # That first game starts with the new game's call, as when a controller ends the demo:
+    # within a frame the audio pin, silent until then, changes over and over
+    changes = await audio_changes(dut, 100, FRAME * LINE)
+    assert changes == 100, f"the audio pin changed {changes} times in the first game's first frame"
     # At the base speed the paddle moves every other frame: compare frames two apart
     (x1, w1), (ball1, ball_w1) = await paddle_and_ball(dut)
     await vsync_start(dut)
