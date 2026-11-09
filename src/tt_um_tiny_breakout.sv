@@ -125,7 +125,8 @@ module tt_um_tiny_breakout (
   // 16. Every ball starts at 1x; the levels get harder through a narrower paddle instead.
   //
   // In the pause after a cleared wall, speed_level is the timer: 16..31, one step every 4
-  // frames (about a second). After game over it is the curtain's line: 0..31, one per frame.
+  // frames (about a second), and the paddle moves at 1x (see moves). After game over it is
+  // the curtain's line: 0..31, one per frame.
   logic [4:0] speed_level;
   logic [1:0] frame_phase;  // counts frames: the pattern of moves over 4 frames
   wire        odd_frame = frame_phase[0];
@@ -417,16 +418,6 @@ module tt_um_tiny_breakout (
   // builds this smaller than an adder whose step changes sign, so keep this form.
   wire [7:0] ball_y_half_moved = ((ball_y_half ^ {8{next_up}}) + 1) ^ {8{next_up}};
 
-  // Moves per frame over the 4-frame phase 0, 1, 2, 3: one on even frames; one on odd frames
-  // too if speed_level[3] (2x); one more in phase 1 if speed_level[2] (a half step); and
-  // from speed_level 16 (and in the pause) 1, 2, 1, 2. Line 480 + k moves if k < moves (line
-  // 480 is frame_tick). Each term is a 1-bit condition, zero-extended by {1'b0, ...}: a cast
-  // such as 2'(a & b) would widen a and b before the AND, which lint rightly flags.
-  wire [1:0] moves = speed_level[4] ? 2'd1 + {1'b0, odd_frame}
-                   : {1'b0, !odd_frame} + {1'b0, speed_level[3] & odd_frame} +
-                     {1'b0, speed_level[2] & (frame_phase == 1)};
-  wire move_tick = (h_pos == 0) && (v_pos[9:2] == SCREEN_HEIGHT[9:2]) && (v_pos[1:0] < moves);
-
   // What the frame update does. restart needs game over; otherwise exactly one of on_paddle,
   // lose_ball and fly holds. new_game (end_demo) can coincide with any of them and wins.
   // speed_level reaching 31 ends both the pause after a cleared wall and the game-over
@@ -440,6 +431,20 @@ module tt_um_tiny_breakout (
   wire fly        = ~game_over & ~on_paddle & ~ball_lost;  // ball in flight
   wire paused     = on_paddle & bricks_empty;              // the wall was cleared ...
   wire level_done = paused & timer_done;                   // ... and the pause is over
+
+  // Moves per frame over the 4-frame phase 0, 1, 2, 3: one on even frames; one on odd frames
+  // too if speed_level[3] (2x); one more in phase 1 if speed_level[2] (a half step); and
+  // from speed_level 16 1, 2, 1, 2 (3x). In the pause after a cleared wall speed_level is the
+  // timer, not a speed: there the paddle, with the ball resting on it, moves at 1x, as the next
+  // ball will. (paused holds through the move lines: the wall's emptiness is read off the
+  // picture above them.) Line 480 + k moves if k < moves (line 480 is frame_tick). Each term is
+  // a 1-bit condition, zero-extended by {1'b0, ...}: a cast such as 2'(a & b) would widen a and
+  // b before the AND, which lint rightly flags.
+  wire [1:0] moves = paused         ? {1'b0, !odd_frame}
+                   : speed_level[4] ? 2'd1 + {1'b0, odd_frame}
+                   : {1'b0, !odd_frame} + {1'b0, speed_level[3] & odd_frame} +
+                     {1'b0, speed_level[2] & (frame_phase == 1)};
+  wire move_tick = (h_pos == 0) && (v_pos[9:2] == SCREEN_HEIGHT[9:2]) && (v_pos[1:0] < moves);
 
   // Paddle: one 4-px step per move, stopping at the walls, where its centre is half a width
   // from x 64 or x 576: centre / 4 = 16 + 2 x paddle_w16 or 144 - 2 x paddle_w16. A narrower

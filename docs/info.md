@@ -12,7 +12,8 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   back sideways; a hit on its top or bottom sends it back vertically.
 - **Speed:** every ball starts at 1x and goes up to 1.5x, 2x, 2.5x and 3x as it clears 4, 8,
   12 and 16 bricks. The speed goes back to 1x for each new ball and after a cleared brick wall.
-  The paddle moves 4 px each time the ball moves, so it speeds up with the ball.
+  The paddle moves 4 px each time the ball moves, so it speeds up with the ball (in the
+  pause after a cleared brick wall it moves at 1x).
 - **Lives and score:** you have 2 spare balls, shown top left; the score, top right, counts
   10 per brick, up to 9990. Losing the last ball ends the game: a black curtain comes down over
   everything but the score, and once it is down (about half a second) fire starts a new game. Once a ball has fallen past the paddle, the black

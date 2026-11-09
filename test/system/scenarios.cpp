@@ -996,8 +996,9 @@ void opening() {
 // about a second, with rainbow bands over the field and the border, and the fanfare (C, E, G,
 // then a held high C, over its bass), which has ended by the time the next wall comes in.
 // Autoplay leaves the paddle where it is while the ball waits on it: to see that wherever the
-// paddle is (autoplay often has it at a wall by now), it is steered away by hand for the first
-// frames of the pause, then handed back to autoplay. Returns the first frame of the next wall.
+// paddle is (autoplay often has it at a wall by now), it is steered away from the nearer wall by
+// hand for the first frames of the pause, which it does at 1x (the speed counter is the pause's
+// timer there), then handed back to autoplay. Returns the first frame of the next wall.
 View pause_after_clear(Follow &f) {
   Game &g = f.g;
   // The rainbow: the field and the border show the same band colour on a line
@@ -1010,17 +1011,28 @@ View pause_after_clear(Follow &f) {
   int pause = 0, celebrated = 0, held_x = -1;
   std::vector<int> fanfare;  // voice A's notes in the pause, in order
   int unaccompanied = 0;     // frames of the fanfare without its bass
+  // Steered away from the nearer wall for the first frames: at 1x, a 4-px step every other frame
+  uint8_t away = f.v.paddle_x + f.v.paddle_w / 2 < 320 ? RIGHT : LEFT;
+  int too_fast = 0, steered = 0;
+  bool moved = false;
   View v = f.v;
   for (; pause < 100 && v.bricks == 0; pause++) {
     g.autoplay = pause >= 8;
-    g.buttons = pause < 8 ? LEFT : 0;
+    g.buttons = pause < 8 ? away : 0;
     if (pause == 10) held_x = v.paddle_x;
     // Only while the rainbow shows: the frame the next wall fills in has no bricks either, but
     // play has resumed (autoplay launches the ball and steers)
     if (pause > 10 && rainbow())
       CHECK(v.paddle_x == held_x, "pause frame %d: with autoplay, the paddle moved from %d to %d",
             pause, held_x, v.paddle_x);
+    int x = v.paddle_x;
     v = f.step();
+    if (pause >= 1 && pause < 8) {  // steered by hand: at 1x, never in two frames running
+      int dx = std::abs(v.paddle_x - x);
+      too_fast += dx > 4 || (dx > 0 && moved);
+      moved = dx > 0;
+      steered += dx;
+    }
     celebrated += rainbow();
     Sound s = listen(g);
     if (s.a.vol && (fanfare.empty() || fanfare.back() != s.a.half)) fanfare.push_back(s.a.half);
@@ -1033,6 +1045,8 @@ View pause_after_clear(Follow &f) {
   CHECK(fanfare == std::vector<int>({30, 24, 20, 15}), "fanfare of %zu notes, the last %d",
         fanfare.size(), fanfare.empty() ? 0 : fanfare.back());
   CHECK(unaccompanied == 0, "%d frames of the fanfare without its bass", unaccompanied);
+  CHECK(too_fast == 0 && steered >= 8, "in the pause the paddle moved %d px by hand, %d times "
+        "faster than 1x", steered, too_fast);
   Voice after = hear(g, 1);
   CHECK(after.vol == 0, "the new wall comes in with a note of %d lines at volume %d", after.half,
         after.vol);
