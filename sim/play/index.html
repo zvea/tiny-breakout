@@ -47,14 +47,16 @@ addEventListener('blur',()=>{keys=0;sendKeys()});
 // kHz on a Mac), resampling with linear interpolation, and holds its buffer near 60 ms: it
 // plays up to 1% faster or slower (too little to hear) as the buffer runs over or under, so
 // the delay can't creep up with clock drift. Playback starts once 60 ms is in; a far
-// overfull buffer (a stall) jumps to the target, and a dry one pauses until refilled.
-const worklet=`class Feed extends AudioWorkletProcessor{
+// overfull buffer (a stall), or a burst that would overrun it, jumps to the target, and a dry
+// one pauses until refilled.
+const worklet=`const T=2880;class Feed extends AudioWorkletProcessor{
  constructor(){super();this.buf=new Float32Array(48000);this.r=0;this.w=0;this.playing=false;
   this.base=48000/sampleRate;
-  this.port.onmessage=e=>{const s=e.data,N=this.buf.length;
-   for(let i=0;i<s.length;i++){this.buf[this.w]=s[i];this.w=(this.w+1)%N}}}
+  this.port.onmessage=e=>{const s=e.data,N=this.buf.length,over=this.fill()+s.length>=N-1;
+   for(let i=0;i<s.length;i++){this.buf[this.w]=s[i];this.w=(this.w+1)%N}
+   if(over)this.r=(this.w-T+N)%N}}
  fill(){const N=this.buf.length;return (this.w-Math.floor(this.r)+N)%N}
- process(_,outs){const o=outs[0][0],N=this.buf.length,T=2880;let f=this.fill();
+ process(_,outs){const o=outs[0][0],N=this.buf.length;let f=this.fill();
   if(f>4*T){this.r=(this.w-T+N)%N;f=T}
   if(!this.playing&&f>=T)this.playing=true;
   const step=this.base*(1+0.01*Math.max(-1,Math.min(1,(f-T)/T)));
