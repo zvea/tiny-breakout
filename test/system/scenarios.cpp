@@ -10,6 +10,12 @@
 // names, so refactoring the RTL cannot break these tests; the per-module unit tests cover
 // the internals.
 //
+// Each expensive stretch of play is simulated once and carries every check that needs it, in
+// two tiers (the table at the end): controls, demo, losing_every_ball and opening are cheap and
+// run all the time; long_game plays a game from a new game to the third wall, at milestones.
+// The comment before each scenario lists its parts and what each checks; every failure names
+// its part and frame.
+//
 // Usage: scenarios <name>   (exit status 0 = pass)
 //        scenarios list
 // Normally built and run by test_scenarios.py (pytest).
@@ -124,6 +130,48 @@ bool resting(const View &v) {
          v.ball_x == v.paddle_x + v.paddle_w / 2 - 4;
 }
 
+// The black border (the status line and the strips beside the walls) as one colour, from
+// three spots; -1 if they differ.
+int border_colour(const Game &g) {
+  auto at = [&](int x, int y) { return colour(g.fb[y * 640 + x]); };
+  int top = at(300, 8), left = at(20, 300), right = at(620, 470);
+  return top == left && left == right ? top : -1;
+}
+
+// Lines from the top that are black at x 300, a column the status line, top wall, bricks,
+// field and paddle all cross (none of them black) and the score does not.
+int black_from_top(const Game &g) {
+  int y = 0;
+  while (y < 480 && colour(g.fb[y * 640 + 300]) == BLACK) y++;
+  return y;
+}
+
+// The walls after the first are grown from a seed row chosen by the LFSR (brick_wall.sv): the
+// bottom row is the seed, 4 bits mirrored into 8 columns, and each row from the top down is
+// grown from the one before it by rule 150, or rule 182 when bit 4 is set. As `standing`.
+uint64_t pattern_wall(int value) {
+  int rule_182 = value >> 4 & 1;
+  int half = (value & 0b1110) | (value & 1) | rule_182;  // bit c: column c, for c = 0..3
+  auto row_bits = [](int h) {
+    uint64_t row = 0;
+    for (int c = 0; c < 8; c++) row |= uint64_t((h >> (c < 4 ? c : 7 - c)) & 1) << c;
+    return row;
+  };
+  uint64_t wall = row_bits(half) << (5 * 8);
+  for (int r = 0; r < 5; r++) {
+    int left = ((half << 1) | (half & 1)) & 0xF, right = (half >> 1) | (half & 8);
+    half = (left ^ half ^ right) | (left & right & -rule_182);
+    wall |= row_bits(half & 0xF) << (r * 8);
+  }
+  return wall;
+}
+
+bool is_pattern_wall(uint64_t standing) {
+  for (int value = 1; value < 32; value++)
+    if (pattern_wall(value) == standing) return true;
+  return false;
+}
+
 // ---- Checks ------------------------------------------------------------------------------
 
 // A failed check is reported and counted, and the scenario goes on, so that one failure does
@@ -233,522 +281,6 @@ Sound listen(const Game &g) { return {hear(g, 1), hear(g, 0)}; }
 
 // ---- Scenarios ---------------------------------------------------------------------------
 
-// A new game shows the full wall, two spare balls and the ball resting on the paddle; it
-// stays there until FIRE launches it upwards.
-void launch() {
-  Game g;
-  power_up(g);
-  View v = start_game(g);
-  CHECK(v.bricks == 48, "bricks %d", v.bricks);
-  CHECK(v.lives == 2, "life markers %d", v.lives);
-  CHECK(resting(v), "ball at (%d, %d), paddle at %d", v.ball_x, v.ball_y, v.paddle_x);
-  v = run(g, 60);
-  CHECK(resting(v), "ball left the paddle without FIRE: (%d, %d)", v.ball_x, v.ball_y);
-  g.buttons = FIRE;
-  run(g, 1);
-  g.buttons = 0;
-  v = run(g, 20);
-  CHECK(v.ball && v.ball_y < 440 - 10, "ball not launched upwards: y %d", v.ball_y);
-}
-
-// The paddle moves 4 px every other frame (at the base speed) while LEFT or RIGHT is held,
-// from either the direct pins or the gamepad; both together cancel out. The resting ball
-// moves with it.
-void steering() {
-  for (int source = 0; source < 2; source++) {
-    const char *name = source ? "gamepad" : "direct pins";
-    auto press = [&](Game &g, bool l, bool r) {
-      if (source) g.pad_bits = (l ? GP_LEFT : 0) | (r ? GP_RIGHT : 0);
-      else g.buttons = (l ? LEFT : 0) | (r ? RIGHT : 0);
-    };
-    Game g;
-    power_up(g);
-    start_game(g);
-    int x0 = run(g, 2).paddle_x;
-    press(g, false, true);
-    View v;
-    for (int i = 0; i < 10; i++) {  // the resting ball stays centred on the moving paddle
-      v = run(g, 1);
-      CHECK(resting(v), "%s: moving right, frame %d: ball at x %d, paddle %d", name, i, v.ball_x,
-            v.paddle_x);
-    }
-    int x1 = v.paddle_x;
-    CHECK(x1 >= x0 + 16 && x1 <= x0 + 24, "%s: right moved the paddle %d -> %d", name, x0, x1);
-    press(g, true, false);
-    int x2 = run(g, 10).paddle_x;
-    CHECK(x2 <= x1 - 16 && x2 >= x1 - 24, "%s: left moved the paddle %d -> %d", name, x1, x2);
-    press(g, true, true);
-    int x3 = run(g, 2).paddle_x;
-    int x4 = run(g, 10).paddle_x;
-    CHECK(x4 == x3, "%s: left + right moved the paddle %d -> %d", name, x3, x4);
-    press(g, false, false);
-    CHECK(resting(run(g, 2)), "%s: the resting ball did not follow the paddle", name);
-  }
-}
-
-// A new game's paddle is 96 px wide and stops at the walls: its left end at x 64, its
-// right end at x 575 (left end at x 480).
-void paddle_limits() {
-  Game g;
-  power_up(g);
-  View v = start_game(g);
-  CHECK(v.paddle_w == 96, "the first level's paddle is %d px wide", v.paddle_w);
-  g.buttons = LEFT;
-  v = run(g, 200);
-  CHECK(v.paddle_x == 64, "left limit %d", v.paddle_x);
-  g.buttons = RIGHT;
-  v = run(g, 300);
-  CHECK(v.paddle_x == 480 && v.paddle_w == 96, "right limit %d (%d px wide)", v.paddle_x,
-        v.paddle_w);
-}
-
-// Letting the ball fall uses up the spare balls one by one, then the game is over: no
-// ball and no markers. FIRE starts a new game with a full wall and two spare balls.
-// The black border (the status line and the strips beside the walls) as one colour, from
-// three spots; -1 if they differ.
-int border_colour(const Game &g) {
-  auto at = [&](int x, int y) { return colour(g.fb[y * 640 + x]); };
-  int top = at(300, 8), left = at(20, 300), right = at(620, 470);
-  return top == left && left == right ? top : -1;
-}
-
-// A ball that has fallen below the paddle (top at y >= 456) is lost: the border turns red,
-// brighter in each 8-px band it falls through (maroon, dark red, red), and black again once
-// the ball has left the screen. Black at every other time, game over included.
-void falling_ball_lights_the_border() {
-  Game g;
-  power_up(g);
-  View v = start_game(g);
-  int frame = 0, lit = 0, missing = 0;
-  bool shades[4] = {};
-  for (; frame < 20000; frame++) {
-    g.buttons = LEFT | (resting(v) ? FIRE : 0);  // paddle against the left wall
-    v = run(g, 1);
-    // Red channel = the ball's 8-px band below the paddle; black while it is higher, and once
-    // it has left the screen (then it is not visible)
-    int expected = v.ball && v.ball_y >= 456 ? ((v.ball_y >> 3) & 3) << 4 : BLACK;
-    CHECK(border_colour(g) == expected, "frame %d: ball at y %d, border %#x, expected %#x", frame,
-          v.ball ? v.ball_y : -1, border_colour(g), expected);
-    if (expected != BLACK) {
-      lit++;
-      shades[expected >> 4] = true;
-    }
-    missing = v.ball ? 0 : missing + 1;
-    if (missing == 3) {  // game over: in play the ball is never hidden for more than a frame
-      run(g, 30);
-      CHECK(border_colour(g) == BLACK, "after game over: border %#x", border_colour(g));
-      break;
-    }
-  }
-  CHECK(missing == 3, "no game over within %d frames", frame);
-  CHECK(lit > 0 && shades[1] && shades[2] && shades[3],
-        "the border never showed all three shades (%d lit frames)", lit);
-  printf("frame %5d: game over; border lit for %d frames as the balls fell\n", frame, lit);
-}
-
-// Lines from the top that are black at x 300, a column the status line, top wall, bricks,
-// field and paddle all cross (none of them black) and the score does not.
-int black_from_top(const Game &g) {
-  int y = 0;
-  while (y < 480 && colour(g.fb[y * 640 + 300]) == BLACK) y++;
-  return y;
-}
-
-// Game over brings a black curtain down from the top, 16 px a frame, until only the score is
-// left; the next game brings the picture back.
-void game_over_curtain() {
-  Game g;
-  power_up(g);
-  View v = start_game(g);
-  int frame = 0, score = -1, missing = 0;
-  // Until the curtain shows (more than the 24-line status line is black), or the ball has
-  // been gone for 10 frames: game over, with no curtain
-  for (; frame < 20000 && black_from_top(g) <= 24 && missing < 10; frame++) {
-    score = v.score;
-    g.buttons = LEFT | (resting(v) ? FIRE : 0);  // paddle against the left wall
-    v = run(g, 1);
-    missing = v.ball ? 0 : missing + 1;
-  }
-  CHECK(black_from_top(g) > 24, "no curtain by frame %d (ball gone for %d frames)", frame, missing);
-  if (black_from_top(g) <= 24) return;
-  printf("frame %5d: the curtain starts, score %d\n", frame, score);
-  // The first frame that shows it has it 32 lines down (game over, then 16, then 32: the first
-  // 16 are the black status line anyway), then 16 more each frame until it reaches the bottom
-  g.buttons = 0;
-  for (int line = 32; line <= 480 + 32; line += 16) {
-    int expected = line < 480 ? line : 480;
-    CHECK(black_from_top(g) == expected, "curtain at %d lines, expected %d", black_from_top(g),
-          expected);
-    v = run(g, 1);
-  }
-  int others = 0;
-  for (int y = 0; y < 480; y++)
-    for (int x = 0; x < 640; x++)
-      if (!(x >= 512 && x < 576 && y >= 3 && y < 19) && colour(g.fb[y * 640 + x]) != BLACK)
-        others++;  // the score's cells: x 512..575, y 3..18
-  CHECK(others == 0, "after the curtain: %d pixels besides the score are not black", others);
-  CHECK(v.score == score, "after the curtain: score %d, was %d", v.score, score);
-  // A new game brings the picture back
-  g.buttons = FIRE;
-  run(g, 1);
-  g.buttons = 0;
-  v = settle(g, run(g, 2));
-  CHECK(black_from_top(g) == 24, "after restart: %d black lines from the top", black_from_top(g));
-  CHECK(v.bricks == 48 && v.lives == 2 && v.score == 0 && resting(v),
-        "after restart: %d bricks, %d markers, score %d, ball at (%d, %d)", v.bricks, v.lives,
-        v.score, v.ball_x, v.ball_y);
-}
-
-void game_over_and_restart() {
-  Game g;
-  power_up(g);
-  int expected_lives = 2, frame = 0, missing = 0, since_launch = 1000, prev_y = -1, prev_dy = 0;
-  View v = start_game(g);
-  for (; frame < 20000; frame++) {
-    // Keep the paddle against the left wall, and launch whenever the ball is resting.
-    bool launch = resting(v);
-    g.buttons = LEFT | (launch ? FIRE : 0);
-    since_launch = launch ? 0 : since_launch + 1;
-    v = run(g, 1);
-    // Every new ball starts at the base speed, a 2-px move every other frame, however fast
-    // the last one was.
-    int dy = std::abs(v.ball_y - prev_y);
-    if (since_launch >= 3 && since_launch < 12)
-      CHECK(v.ball && (dy == 0 || dy == 2) && dy + prev_dy == 2,
-            "frame %d: new ball moved %d then %d px", frame, prev_dy, dy);
-    prev_y = v.ball_y;
-    prev_dy = dy;
-    if (v.lives != expected_lives) {
-      CHECK(v.lives == expected_lives - 1, "frame %d: life markers %d -> %d", frame,
-            expected_lives, v.lives);
-      printf("frame %5d: %d spare balls left\n", frame, v.lives);
-      expected_lives = v.lives;
-    }
-    missing = v.ball ? 0 : missing + 1;
-    if (missing == 3) break;  // the ball is never hidden for more than a frame in play
-  }
-  CHECK(missing == 3, "no game over within %d frames", frame);
-  CHECK(v.lives == 0, "game over with %d markers left", v.lives);
-  CHECK(v.score == 10 * (48 - v.bricks), "game over: score %d with %d bricks cleared", v.score,
-        48 - v.bricks);
-  printf("frame %5d: game over with %d bricks standing, score %d\n", frame, v.bricks, v.score);
-
-  g.buttons = 0;
-  v = run(g, 30);
-  CHECK(!v.ball, "ball reappeared without FIRE");
-  g.buttons = FIRE;
-  run(g, 1);
-  g.buttons = 0;
-  // From the first frame of the new game nothing of the old one shows: the border is black
-  // (it once flashed the level-clear rainbow, as the curtain's count carried over)
-  for (int i = 0; i < 3; i++) {
-    v = run(g, 1);
-    CHECK(border_colour(g) == BLACK, "frame %d after restart: border %#x", i,
-          border_colour(g));
-  }
-  v = settle(g, v);
-  CHECK(v.lives == 2, "after restart: life markers %d", v.lives);
-  CHECK(v.score == 0, "after restart: score %d", v.score);
-  CHECK(v.bricks == 48, "after restart: bricks %d", v.bricks);
-  CHECK(resting(v), "after restart: ball at (%d, %d)", v.ball_x, v.ball_y);
-}
-
-// Autoplay keeps the ball in play and clears a whole level (the wall comes back) without
-// settling into a loop that never reaches the last bricks.
-void autoplay_clears_a_level() {
-  Game g;
-  power_up(g);
-  g.autoplay = true;
-  int fewest = 48, frame = 0, lives_lost = 0, lives = 2, prev_bricks = 48;
-  bool cleared = false;
-  View v = start_game(g);
-  for (; frame < 80000 && !cleared; frame++) {
-    v = run(g, 1, false);
-    if (v.lives < lives) lives_lost += lives - v.lives;
-    lives = v.lives;
-    if (v.bricks < fewest) fewest = v.bricks;
-    cleared = fewest == 0 && v.bricks > 0;  // the next wall has come in
-    // The score (10 per brick) is drawn above the wall: compare once the count is steady
-    if (v.bricks == prev_bricks && v.bricks > 0 && fewest > 0)
-      CHECK(v.score == 10 * (48 - v.bricks), "frame %d: score %d with %d bricks cleared", frame,
-            v.score, 48 - v.bricks);
-    prev_bricks = v.bricks;
-    if (frame % 2000 == 0) printf("frame %5d: %2d bricks, %d lost\n", frame, v.bricks, lives_lost);
-  }
-  printf("frame %5d: %s, %d spare balls lost\n", frame, cleared ? "level cleared" : "stuck",
-         lives_lost);
-  CHECK(cleared, "level not cleared in %d frames (fewest bricks %d)", frame, fewest);
-  CHECK(v.score == 480, "score %d after clearing the level", v.score);
-}
-
-// The ball speeds up a half step every 4 bricks it clears: vertically it moves 4 px per 4
-// frames at first (1x), then 6 (1.5x), 8 (2x), 10 (2.5x), and 12 px (3x) once it has
-// cleared 16.
-void ball_speeds_up() {
-  Game g;
-  power_up(g);
-  g.autoplay = true;
-  View v = start_game(g);
-  int prev_y = v.ball_y, prev_bricks = v.bricks, frame = 0, checked[5] = {};
-  int run_step = -1, run_len = 0, window[4] = {};  // vertical moves of the last 4 frames
-  for (; frame < 20000 && v.lives == 2 && v.bricks > 28; frame++) {
-    v = run(g, 1);
-    int dy = std::abs(v.ball_y - prev_y), cleared = 48 - v.bricks;
-    bool steady = v.bricks == prev_bricks;  // the picture's count lags a brick cleared mid-frame
-    prev_y = v.ball_y;
-    prev_bricks = v.bricks;
-    if (!v.ball || !steady || resting(v)) {
-      run_len = 0;  // no window across a gap
-      continue;
-    }
-    int step = cleared / 4 < 4 ? cleared / 4 : 4;  // 0..4: 1x, 1.5x, 2x, 2.5x, 3x
-    if (step != run_step) run_len = 0;
-    run_step = step;
-    window[run_len++ % 4] = dy;
-    if (run_len >= 4) {
-      int sum = window[0] + window[1] + window[2] + window[3];
-      CHECK(sum == 4 + 2 * step, "frame %d: %d bricks cleared, moved %d px in 4 frames (expected %d)",
-            frame, cleared, sum, 4 + 2 * step);
-      checked[step]++;
-    }
-  }
-  printf("frame %5d: frames checked at 1x/1.5x/2x/2.5x/3x: %d/%d/%d/%d/%d\n", frame, checked[0],
-         checked[1], checked[2], checked[3], checked[4]);
-  for (int i = 0; i < 5; i++) CHECK(checked[i] > 0, "speed step %d was never reached", i);
-}
-
-// A brick turns the ball back through the edge it came in by: hit on a side, the ball
-// reverses horizontally; on the top or bottom, vertically. Of the two edges its direction
-// allows, it came in by the one its 8x8 box is less far past (ties: top or bottom).
-void brick_bounces() {
-  Game g;
-  power_up(g);
-  g.autoplay = true;
-  constexpr int N = 15000;
-  static View v[N];
-  start_game(g);
-  for (int t = 0; t < N; t++) v[t] = run(g, 1);
-  int checked[2] = {};  // side, top/bottom
-  for (int s = 2; s + 2 < N; s++) {
-    uint64_t gone = v[s - 1].standing & ~v[s].standing;
-    if (gone == 0 || (gone & (gone - 1)) != 0 || v[s].bricks == 48) continue;  // one brick
-    int b = __builtin_ctzll(gone), bx = 64 * (b % 8 + 1) + 2, by = 16 * (b / 8 + 4) + 2;
-    // The brick (at bx..bx+61, by..by+13) vanished while frame s or s - 1 was drawn: the
-    // first of them in which the ball's box overlaps it.
-    auto overlaps = [&](const View &w) {
-      return w.ball && w.ball_x < bx + 62 && w.ball_x + 8 > bx && w.ball_y < by + 14 &&
-             w.ball_y + 8 > by;
-    };
-    int c = overlaps(v[s - 1]) ? s - 1 : s;
-    // Some frames have no move: compare with the nearest frames where the ball moved
-    auto moved = [&](int i) { return v[i].ball_x != v[c].ball_x || v[i].ball_y != v[c].ball_y; };
-    int pi = c - 1, ni = c + 1;
-    while (pi > 0 && !moved(pi)) pi--;
-    while (ni + 1 < N && !moved(ni)) ni++;
-    const View &p = v[pi], &h = v[c], &n = v[ni];
-    if (!p.ball || !h.ball || !n.ball || !overlaps(h) || !moved(pi) || !moved(ni)) continue;
-    if (h.ball_x < 80 || h.ball_x > 560 || h.ball_y < 48) continue;  // walls could interfere
-    bool left = h.ball_x < p.ball_x, up = h.ball_y < p.ball_y;
-    int past_side = left ? bx + 62 - h.ball_x : h.ball_x + 8 - bx;
-    int past_flat = up ? by + 14 - h.ball_y : h.ball_y + 8 - by;
-    bool side = past_side < past_flat;
-    bool turned_x = (n.ball_x < h.ball_x) != left, turned_y = (n.ball_y < h.ball_y) != up;
-    CHECK(turned_x == side && turned_y == !side,
-          "frame %d: brick %d hit from (%d, %d) moving %s-%s: expected a %s bounce, got x %s, y %s",
-          c, b, h.ball_x, h.ball_y, left ? "left" : "right", up ? "up" : "down",
-          side ? "side" : "top/bottom", turned_x ? "turned" : "kept", turned_y ? "turned" : "kept");
-    checked[side ? 0 : 1]++;
-  }
-  printf("bounces checked: %d side, %d top/bottom\n", checked[0], checked[1]);
-  CHECK(checked[0] > 0 && checked[1] > 0, "did not see both kinds of bounce");
-}
-
-// Waits for the launch, then returns whether the ball rises at 1x for `frames` frames:
-// moves of 2 px, 4 px in every 4 frames.
-bool launch_at_1x(Game &g, View &v, int frames) {
-  for (int i = 0; i < 2000 && resting(v); i++) v = run(g, 1);  // wait for the launch
-  int prev_y = v.ball_y, dys[64] = {};
-  bool ok = true;
-  for (int i = 0; i < frames && i < 64; i++) {
-    v = run(g, 1);
-    dys[i] = prev_y - v.ball_y;
-    prev_y = v.ball_y;
-    if (dys[i] != 0 && dys[i] != 2) ok = false;
-    if (i >= 3 && dys[i] + dys[i - 1] + dys[i - 2] + dys[i - 3] != 4) ok = false;
-    if (!ok) {
-      printf("  launch frame %d: moved %d px up\n", i, dys[i]);
-      return false;
-    }
-  }
-  return ok;
-}
-
-// The walls after the first are grown from a seed row chosen by the LFSR (brick_wall.sv): the
-// bottom row is the seed, 4 bits mirrored into 8 columns, and each row from the top down is
-// grown from the one before it by rule 150, or rule 182 when bit 4 is set. As `standing`.
-uint64_t pattern_wall(int value) {
-  int rule_182 = value >> 4 & 1;
-  int half = (value & 0b1110) | (value & 1) | rule_182;  // bit c: column c, for c = 0..3
-  auto row_bits = [](int h) {
-    uint64_t row = 0;
-    for (int c = 0; c < 8; c++) row |= uint64_t((h >> (c < 4 ? c : 7 - c)) & 1) << c;
-    return row;
-  };
-  uint64_t wall = row_bits(half) << (5 * 8);
-  for (int r = 0; r < 5; r++) {
-    int left = ((half << 1) | (half & 1)) & 0xF, right = (half >> 1) | (half & 8);
-    half = (left ^ half ^ right) | (left & right & -rule_182);
-    wall |= row_bits(half & 0xF) << (r * 8);
-  }
-  return wall;
-}
-
-bool is_pattern_wall(uint64_t standing) {
-  for (int value = 1; value < 32; value++)
-    if (pattern_wall(value) == standing) return true;
-  return false;
-}
-
-// Where the ball lands on the paddle sets its bounce: left from the left half, right from the
-// right half, at the flatter angle (2 px across per 2 px up) from the last 16 px at each end,
-// else the steeper one (1 px across). The zone is the one under the last ball pixel to touch
-// the paddle, the right end of the ball's bottom row (ball x + 5), in the last frame it
-// touches. Autoplay aims at all four zones in turn; the first level's paddle is 96 px.
-void paddle_zones_set_the_angle() {
-  Game g;
-  power_up(g);
-  g.autoplay = true;
-  View v = start_game(g), prev, touch, from;
-  int checked[4] = {}, tracking = -1;  // tracking: frames since the ball left the paddle
-  auto done = [&] {
-    return checked[0] && checked[1] && checked[2] && checked[3] &&
-           checked[0] + checked[1] + checked[2] + checked[3] >= 16;
-  };
-  auto on_paddle_row = [](const View &w) {
-    return w.ball && w.ball_y + 7 >= 448 && w.ball_y <= 455;
-  };
-  for (int frame = 0; frame < 12000 && !done(); frame++) {
-    prev = v;
-    v = run(g, 1);
-    bool left_paddle = on_paddle_row(prev) && !on_paddle_row(v) && v.ball && v.ball_y < prev.ball_y;
-    if (tracking < 0 && left_paddle) {
-      touch = prev;  // the last frame the ball touched the paddle: it decided the bounce
-      from = v;
-      tracking = 0;  // follow the ball up for 8 frames
-    } else if (tracking >= 0 && ++tracking == 8) {
-      tracking = -1;
-      int dx = v.ball_x - from.ball_x, dy = from.ball_y - v.ball_y;
-      // Only bounces with the ball's bottom row wholly over the paddle, clear of the walls
-      bool clean = v.ball && dy > 0 && touch.paddle_x <= touch.ball_x + 2 &&
-                   touch.ball_x + 5 < touch.paddle_x + touch.paddle_w && from.ball_x >= 80 &&
-                   from.ball_x <= 552 && v.ball_x >= 80 && v.ball_x <= 552;
-      if (!clean) continue;
-      int half = touch.paddle_w / 2, d = touch.ball_x + 5 - (touch.paddle_x + half);
-      bool right = d >= 0, outer = d < 16 - half || d >= half - 16;
-      int zone = right ? (outer ? 3 : 2) : (outer ? 0 : 1);
-      CHECK((dx > 0) == right && std::abs(dx) * (outer ? 1 : 2) == dy,
-            "frame %d: zone %d (pixel %+d px from the centre of a %d-px paddle): then %+d px "
-            "across for %d up", frame, zone, d, touch.paddle_w, dx, dy);
-      checked[zone]++;
-    }
-  }
-  printf("bounces checked by zone: %d %d %d %d\n", checked[0], checked[1], checked[2], checked[3]);
-  CHECK(done(), "too few bounces seen in some zone");
-}
-
-// Clearing a level: the empty wall stays for about a second, with rainbow bands over the
-// field and the border, a spare ball comes back (one is lost first, as there are at most 2),
-// the next wall comes in as one of the patterns with a narrower paddle (96 px, then 80), and
-// the next level's balls start at 1x, as every ball does, also after a ball is lost.
-void level_cleared() {
-  Game g;
-  power_up(g);
-  View v = start_game(g);
-  CHECK(v.paddle_w == 96, "level 1 paddle is %d px wide", v.paddle_w);
-  int frame = 0;
-  for (; frame < 5000 && v.lives == 2; frame++) {  // lose a ball: paddle against the left wall
-    g.buttons = LEFT | (resting(v) ? FIRE : 0);
-    v = run(g, 1);
-  }
-  CHECK(v.lives == 1, "frame %d: still %d spare balls", frame, v.lives);
-  g.buttons = 0;
-  g.autoplay = true;
-  for (; frame < 60000 && v.bricks > 0; frame++) v = run(g, 1, false);
-  CHECK(v.bricks == 0, "frame %d: level not cleared (%d bricks)", frame, v.bricks);
-  // The rainbow: the field and the border show the same band colour on a line
-  auto rainbow = [&] {
-    int field = colour(g.fb[300 * 640 + 300]), border = colour(g.fb[300 * 640 + 20]);
-    for (int k : {0x30, 0x38, 0x3c, 0x0c, 0x0b, 0x23, 0x33, 0x31})  // red .. violet, magenta, rose
-      if (field == k && border == k) return true;
-    return false;
-  };
-  // Autoplay leaves the paddle where it is while the ball waits on it. To see that wherever
-  // the paddle is (autoplay often has it at a wall by now), steer it away by hand for the
-  // first frames of the pause, then hand it back to autoplay.
-  int pause = 0, celebrated = 0, held_x = -1;
-  std::vector<int> fanfare;  // voice A's notes in the pause, in order
-  for (; pause < 100 && v.bricks == 0; pause++) {
-    g.autoplay = pause >= 8;
-    g.buttons = pause < 8 ? LEFT : 0;
-    if (pause == 10) held_x = v.paddle_x;
-    // Only while the rainbow shows: the frame the next wall fills in has no bricks either, but
-    // play has resumed (autoplay launches the ball and steers)
-    if (pause > 10 && rainbow())
-      CHECK(v.paddle_x == held_x, "pause frame %d: with autoplay, the paddle moved from %d to %d",
-            pause, held_x, v.paddle_x);
-    v = run(g, 1, false);
-    celebrated += rainbow();
-    Voice a = hear(g, 1);
-    if (a.vol && (fanfare.empty() || fanfare.back() != a.half)) fanfare.push_back(a.half);
-  }
-  printf("frame %5d: level cleared, empty wall for %d frames, rainbow in %d\n", frame, pause,
-         celebrated);
-  CHECK(pause >= 60 && pause <= 68, "empty wall for %d frames (expected about 64)", pause);
-  CHECK(celebrated >= pause - 8, "rainbow in only %d of the pause's %d frames", celebrated, pause);
-  CHECK(!rainbow(), "the rainbow stays after the pause");
-  // The fanfare: C, E, G, then a held high C; it has ended by the time the new wall is in
-  CHECK(fanfare == std::vector<int>({30, 24, 20, 15}), "fanfare of %zu notes, the last %d",
-        fanfare.size(), fanfare.empty() ? 0 : fanfare.back());
-  Voice after = hear(g, 1);
-  CHECK(after.vol == 0, "the new wall comes in with a note of %d lines at volume %d", after.half,
-        after.vol);
-  v = run(g, 1);  // past the filling frame
-  CHECK(is_pattern_wall(v.standing), "level 2 wall (%d bricks, %016llx) is not a pattern wall",
-        v.bricks, (unsigned long long)v.standing);
-  CHECK(v.lives == 2, "%d spare balls after the level (expected one back)", v.lives);
-  CHECK(v.paddle_w == 80, "level 2 paddle is %d px wide (expected 80)", v.paddle_w);
-  CHECK(launch_at_1x(g, v, 16), "level 2 ball did not start at 1x");
-  // Lose a ball in level 2: the next one starts at 1x again
-  g.autoplay = false;
-  for (int i = 0; i < 10000 && v.lives == 2; i++) {
-    g.buttons = LEFT;
-    v = run(g, 1);
-  }
-  CHECK(v.lives == 1, "no ball lost in level 2");
-  for (int i = 0; i < 100 && !resting(v); i++) v = run(g, 1);
-  g.buttons = FIRE;
-  v = run(g, 1);
-  g.buttons = 0;
-  CHECK(launch_at_1x(g, v, 16), "level 2 ball after a loss did not start at 1x");
-  // Lose the remaining balls, then restart: the new game's paddle is 96 px again, centred
-  int missing = 0;  // game over: no spare balls, and the ball gone for more than a frame
-  for (int i = 0; i < 20000 && !(v.lives == 0 && missing == 3); i++) {
-    g.buttons = LEFT | (resting(v) ? FIRE : 0);
-    v = run(g, 1);
-    missing = v.ball ? 0 : missing + 1;
-  }
-  CHECK(v.lives == 0 && missing == 3, "no game over in level 2 (%d spare balls)", v.lives);
-  g.buttons = 0;
-  run(g, 40);  // the curtain
-  g.buttons = FIRE;
-  run(g, 1);
-  g.buttons = 0;
-  v = settle(g, run(g, 2));
-  CHECK(v.paddle_w == 96 && v.paddle_x == 272 && resting(v),
-        "after a restart from level 2: paddle %d px at x %d, ball at (%d, %d)", v.paddle_w,
-        v.paddle_x, v.ball_x, v.ball_y);
-}
-
 // With no controller connected the game plays itself (demo): with no Gamepad PMOD at all,
 // or with the PMOD reporting no controller (all ones). The demo ends, starting a new game,
 // when a direct button is pressed or a controller is connected; after that nothing moves
@@ -819,136 +351,6 @@ void demo() {
       if (v.paddle_x != x0) moved_after = i + 1;
     }
     CHECK(moved_after > 0, "the demo did not steer the paddle in 30 frames (still at %d)", x0);
-  }
-}
-
-// SELECT on the gamepad switches autoplay on: it launches the ball and steers. Left, right
-// or fire switches it off, after which the paddle only moves when told to.
-void select_turns_autoplay_on() {
-  Game g;
-  power_up(g);
-  start_game(g);
-  g.pad_bits = GP_SELECT;
-  run(g, 3);
-  g.pad_bits = 0;
-  View v = run(g, 30);
-  CHECK(v.ball && v.ball_y < 440, "autoplay did not launch the ball: y %d", v.ball_y);
-  g.pad_bits = GP_LEFT;
-  run(g, 2);
-  g.pad_bits = 0;
-  int x0 = run(g, 1).paddle_x;
-  v = run(g, 60);
-  CHECK(v.paddle_x == x0, "paddle moved with autoplay off: %d -> %d", x0, v.paddle_x);
-}
-
-// The sound, from the audio pin: a new game's two chords on both voices (C5 with G5 for 8
-// frames, C6 with E6 for 24), then quiet; at each paddle bounce the thock (a low C dropping
-// over 3 frames) over the thump; a rumble at the walls; at each brick its row's note an
-// octave down (red highest); a sigh for each lost ball and the sad trombone for the last.
-void sound() {
-  Game g;
-  power_up(g);
-  Sound s;
-  int frame = 0;
-  for (; frame < 10 && !(s.a.half == 30 && s.b.half == 20); frame++) {  // the demo ends
-    run(g, 1, false);
-    s = listen(g);
-  }
-  int low = 0, high = 0;
-  for (; s.a.half == 30 && s.b.half == 20 && s.a.vol && s.b.vol; low++, frame++) {
-    run(g, 1, false);
-    s = listen(g);
-  }
-  for (; s.a.half == 15 && s.b.half == 12 && s.a.vol && s.b.vol; high++, frame++) {
-    run(g, 1, false);
-    s = listen(g);
-  }
-  CHECK(low == 8 && high == 24, "new game: %d frames of C5 + G5 and %d of C6 + E6 (expected 8, 24)",
-        low, high);
-  for (int i = 0; i < 30; i++, frame++) {  // the ball waits on the paddle: quiet
-    CHECK(s.a.vol == 0 && s.b.vol == 0,
-          "frame %d, %d after the chords: volumes %d, %d (notes %d, %d)", frame, i, s.a.vol,
-          s.b.vol, s.a.half, s.b.half);
-    run(g, 1, false);
-    s = listen(g);
-  }
-
-  // Autoplay: paddle bounces, walls and the first 4 bricks (the ball reaches 2x at 8)
-  static const int scale[8] = {30, 27, 24, 20, 18, 15, 13, 12};  // C5 D5 E5 G5 A5 C6 D6 E6
-  g.autoplay = true;
-  View v = run(g, 1);
-  std::vector<Sound> heard;
-  std::vector<int> brick_rows, brick_frames;
-  int bounces = 0, dir = 0;  // paddle bounces in the picture: the ball turning up near the paddle
-  for (int i = 0; i < 3000 && brick_rows.size() < 4; i++) {
-    View before = v;
-    v = run(g, 1);
-    heard.push_back(listen(g));
-    if (v.ball && before.ball && v.ball_y != before.ball_y) {
-      int d = v.ball_y > before.ball_y ? 1 : -1;
-      bounces += dir == 1 && d == -1 && before.ball_y >= 400;
-      dir = d;
-    }
-    uint64_t gone = before.standing & ~v.standing;
-    if (gone && v.bricks == before.bricks - 1) {
-      brick_rows.push_back(__builtin_ctzll(gone) / 8);
-      brick_frames.push_back(heard.size() - 1);
-    }
-  }
-  CHECK(brick_rows.size() == 4, "only %zu single bricks hit", brick_rows.size());
-  int thocks = 0, rumbles = 0;
-  for (size_t f = 0; f + 3 < heard.size(); f++) {
-    const Sound &h = heard[f];
-    if (h.a.half == 60 && h.a.vol == 5 && h.b.vol == 4 && !h.b.coarse) {  // a thock over a thump
-      thocks++;
-      size_t k = f + 1;  // once per bounce: straight on to the next notes
-      CHECK(heard[k].a.half == 66 && heard[k].a.vol == 3 && heard[k + 1].a.half == 72 &&
-                heard[k + 1].a.vol == 1,
-            "thock at frame %zu: then %d (volume %d), %d (volume %d)", f, heard[k].a.half,
-            heard[k].a.vol, heard[k + 1].a.half, heard[k + 1].a.vol);
-    }
-    if (h.b.coarse && h.b.vol == 3) {  // a rumble, once per bounce: it fades
-      rumbles++;
-      CHECK(!(heard[f + 1].b.coarse && heard[f + 1].b.vol == 3), "frame %zu: the rumble restarts",
-            f);
-    }
-    if (h.b.coarse) CHECK(h.b.vol <= 3, "frame %zu: the rumble at volume %d", f, h.b.vol);
-  }
-  for (size_t i = 0; i < brick_rows.size(); i++) {
-    int n = 2 * scale[5 - brick_rows[i]];
-    bool ok = false;  // the brick leaves the picture as its note starts, give or take a frame
-    for (int f = brick_frames[i] - 1; f <= brick_frames[i] + 1; f++)
-      ok |= f >= 0 && f < (int)heard.size() && heard[f].a.half == n && heard[f].a.vol == 5;
-    CHECK(ok, "brick in row %d at frame %d: no note of %d lines", brick_rows[i], brick_frames[i],
-          n);
-  }
-  printf("%zu frames of autoplay: %d paddle bounces, %d thocks, %d rumbles, %zu bricks\n",
-         heard.size(), bounces, thocks, rumbles, brick_rows.size());
-  CHECK(thocks >= 2 && rumbles >= 1, "%d thocks and %d rumbles", thocks, rumbles);
-  // One thock per bounce (one in the last 3 frames isn't counted as a thock)
-  CHECK(thocks == bounces || thocks == bounces - 1, "%d thocks for %d paddle bounces", thocks,
-        bounces);
-
-  // Lose every ball: a sigh (E-flat, 25 lines) for each spare, the trombone (G4, 40) for the last
-  g.autoplay = false;
-  std::vector<int> starts;  // the first note of each new sound on voice A
-  int prev = 0;
-  for (int i = 0; i < 20000; i++) {
-    g.buttons = LEFT | (resting(v) ? FIRE : 0);  // paddle against the left wall
-    v = run(g, 1);
-    s = listen(g);
-    int note = s.a.vol == 6 ? s.a.half : 0;  // bricks play at 5 at most
-    if ((note == 25 || note == 40) && note != prev) starts.push_back(note);
-    prev = note;
-    if (starts.size() == 3 && s.a.vol == 0) break;
-  }
-  CHECK(starts == std::vector<int>({25, 25, 40}), "lost balls: %zu sounds, the first %d",
-        starts.size(), starts.empty() ? 0 : starts[0]);
-  g.buttons = 0;
-  for (int i = 0; i < 30; i++) {  // game over, once the trombone has ended: quiet
-    run(g, 1, false);
-    s = listen(g);
-    CHECK(s.a.vol == 0 && s.b.vol == 0, "game over, frame %d: volumes %d, %d", i, s.a.vol, s.b.vol);
   }
 }
 
@@ -1680,21 +1082,8 @@ struct Scenario {
 };
 
 const Scenario scenarios[] = {
-    {"launch", launch},
-    {"steering", steering},
-    {"paddle_limits", paddle_limits},
-    {"falling_ball_lights_the_border", falling_ball_lights_the_border},
-    {"game_over_and_restart", game_over_and_restart},
-    {"game_over_curtain", game_over_curtain},
-    {"demo", demo},
-    {"select_turns_autoplay_on", select_turns_autoplay_on},
-    {"ball_speeds_up", ball_speeds_up},
-    {"brick_bounces", brick_bounces},
-    {"paddle_zones_set_the_angle", paddle_zones_set_the_angle},
-    {"level_cleared", level_cleared},
-    {"autoplay_clears_a_level", autoplay_clears_a_level},
-    {"sound", sound},
     {"controls", controls},
+    {"demo", demo},
     {"losing_every_ball", losing_every_ball},
     {"opening", opening},
     {"long_game", long_game, MILESTONE},
