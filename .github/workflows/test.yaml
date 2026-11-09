@@ -1,6 +1,27 @@
 name: test
 on: [push, workflow_dispatch]
 jobs:
+  # Lint the design: any Verilator warning fails the job. A job of its own, so the tests
+  # still run (and report) when it fails.
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install verilator
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y verilator
+
+      - name: Lint
+        shell: bash
+        run: |
+          verilator --version
+          SOURCES=$(sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p' info.yaml | sed 's|^|src/|')
+          verilator --lint-only -Wall --top-module tt_um_tiny_breakout $SOURCES
+
   test:
     runs-on: ubuntu-24.04
     steps:
@@ -9,17 +30,9 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install iverilog and verilator
+      - name: Install iverilog
         shell: bash
-        run: sudo apt-get update && sudo apt-get install -y iverilog verilator
-
-      # Lint the design: any Verilator warning fails the job
-      - name: Lint
-        shell: bash
-        run: |
-          verilator --version
-          SOURCES=$(sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p' info.yaml | sed 's|^|src/|')
-          verilator --lint-only -Wall --top-module tt_um_tiny_breakout $SOURCES
+        run: sudo apt-get update && sudo apt-get install -y iverilog
 
       # Set Python up and install cocotb
       - name: Setup python
@@ -28,6 +41,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Python packages
+        id: python-packages
         shell: bash
         run: pip install -r test/requirements.txt
 
@@ -39,15 +53,19 @@ jobs:
           # make will return success even if the tests fail, so check results.xml for failed tests
           python -m cocotb_tools.check_results results.xml
 
+      # Also when the full-chip tests failed, but not without the Python packages
       - name: Run unit tests
-        if: success() || failure()
+        if: (success() || failure()) && steps.python-packages.outcome == 'success'
         run: SIM=icarus pytest test/unit --junitxml=test/unit/results.xml
 
+      # The unit tests' cocotb cases are in test/unit/*.result.xml (one file per module);
+      # pytest's results.xml has one entry per module, which also catches a build failure
       - name: Test Summary
         uses: test-summary/action@v2.4
         with:
           paths: |
             test/results.xml
+            test/unit/*.result.xml
             test/unit/results.xml
         if: always()
 
@@ -59,4 +77,4 @@ jobs:
           path: |
             test/tb.fst
             test/results.xml
-            test/output/*
+            test/unit/*.xml
