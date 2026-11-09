@@ -23,6 +23,14 @@
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
   "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.05,
 
+  "//": "Tiny Breakout: settings for the build with sound (the define TB_SOUND), at ~81% utilisation.",
+  "//": "With the defaults its detailed routing got stuck at ~4,600 violations. The global router",
+  "//": "reserves 10% of each layer's tracks instead of 30%, and synthesis uses ABC's AREA 1",
+  "//": "script instead of AREA 0: with both it routed with 0 DRC, LVS and antenna errors at",
+  "//": "80.4% (AREA 0 also routed, at 81.2%).",
+  "GRT_ADJUSTMENT": 0.1,
+  "SYNTH_STRATEGY": "AREA 1",
+
   "//": "Tiny Breakout: let synthesis use sky130's drive-strength-1 cells (nand2_1, dfxtp_1, ...).",
   "//": "The PDK's default list excludes them for routability, so every gate was a _2 cell. This",
   "//": "list, without them, gave 22% less cell area (80.5% -> 61% utilisation), better timing and",
