@@ -698,7 +698,8 @@ void lost_at_speed() {
             std::count(delays.begin(), delays.end(), delays.front()) < int(delays.size()),
         "losses seen on only one frame parity (delays:%s)", seen.c_str());
 
-  // Reset in the middle of the game (score, fewer bricks, balls lost): a new game as at power-up
+  // Reset in the middle of the game (score, fewer bricks, balls lost): a new game as at power-up,
+  // which, with the controller in, starts with the call
   part = "reset mid-game";
   CHECK(v.score > 0 && v.bricks < 48, "before the reset: score %d, %d bricks", v.score, v.bricks);
   g.autoplay = false;
@@ -710,7 +711,8 @@ void lost_at_speed() {
         "spare balls", v.bricks, v.score, v.lives);
   CHECK(v.paddle_w == 96 && v.paddle_x == 272 && resting(v), "after reset: paddle at %d, %d px "
         "wide, ball at (%d, %d)", v.paddle_x, v.paddle_w, v.ball_x, v.ball_y);
-  CHECK(s.a.vol == 0 && s.b.vol == 0, "after reset: volumes %d, %d", s.a.vol, s.b.vol);
+  CHECK(bass(s) && s.a.half == 40, "after reset: not the call's G4 over its bass (voice A %d "
+        "lines at volume %d, voice B %d at %d)", s.a.half, s.a.vol, s.b.half, s.b.vol);
 }
 // ---- Following play frame by frame -------------------------------------------------------
 
