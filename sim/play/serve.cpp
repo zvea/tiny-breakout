@@ -28,6 +28,7 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cerrno>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -195,7 +196,14 @@ static void streamer() {
 }
 
 int main(int argc, char **argv) {
-  int port = argc > 1 ? atoi(argv[1]) : 8765;
+  int port = 8765;
+  char *end = nullptr;
+  long p = argc > 1 ? strtol(argv[1], &end, 10) : port;
+  if (argc > 3 || (argc > 1 && (end == argv[1] || *end || p < 1 || p > 65535))) {
+    fprintf(stderr, "usage: %s [port (default 8765)] [index.html]\n", argv[0]);
+    return 1;
+  }
+  port = (int)p;
   std::string html_path = "index.html", page;
   if (argc > 2) {
     html_path = argv[2];
@@ -210,13 +218,21 @@ int main(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);  // a client disconnecting mid-write must not kill the server
 
   int s = socket(AF_INET, SOCK_STREAM, 0), one = 1;
+  if (s < 0) {
+    perror("socket");
+    return 1;
+  }
   setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   sockaddr_in a{};
   a.sin_family = AF_INET;
   a.sin_port = htons(port);
   a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  if (bind(s, (sockaddr *)&a, sizeof a) || listen(s, 16)) {
-    perror("bind");
+  if (bind(s, (sockaddr *)&a, sizeof a)) {
+    fprintf(stderr, "Can't use port %d: %s\n", port, strerror(errno));
+    return 1;
+  }
+  if (listen(s, 16)) {
+    perror("listen");
     return 1;
   }
   printf("Tiny Breakout RTL sim: http://localhost:%d/\n", port);
