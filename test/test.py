@@ -50,10 +50,6 @@ async def reset(dut):
     dut.rst_n.value = 1
 
 
-def bit(dut, n):
-    return (int(dut.uo_out.value) >> n) & 1
-
-
 def colour(dut):
     """The pixel colour on uo_out, as 6 bits {r, g, b} (see the colours above)."""
     pins = int(dut.uo_out.value)
@@ -237,11 +233,22 @@ async def test_sound(dut):
     """Silent after reset; a new game makes a sound on uio[7], whatever its tune.
 
     Holding a direct button through the first frame update (line 480) ends the demo at the
-    second, a frame later, which starts a new game, and its sound. The pin carries two voices
-    on alternate clocks, each high on at most 7 of every 8 of its clocks (volume 7 of 7), so at
-    most 7/8 of the clocks are high. Over 160 lines, a whole period of any note down to G3,
-    a sound of any tune is high on some of them and changes often. (The unit and system tests
-    check which notes it plays.)
+    second, a frame later, which starts a new game, and its sound. The pin carries two voices on
+    alternate clocks, each a square wave or noise, its volume (0..7) set by pulse-width
+    modulation: high on the first `volume` of every 8 of its clocks. Over 160 lines, a whole
+    period of any note down to G3, the pin must be
+      - high on at most 7/8 of the clocks, as a voice's volume is at most 7;
+      - high on more than 1/16 of them: a voice's square wave is high for half its period, and
+        then on volume/8 of its half of the clocks, so one voice gives volume/32 of them, more
+        than 1/16 from volume 3 up (the new game's call is both voices at volume 6: 3/8).
+        Silence or a few stray pulses fail;
+      - changing more than 1000 times: the modulation cuts a voice's high half-period into
+        pulses, at least one every 16 clocks (8 steps, each one clock of each voice): 8000
+        changes or so in 160 lines at the least (the call makes about 52000, as a voice high on
+        its own flips the pin every clock). A pin that followed only the notes would flip
+        about 10 times (C6, the highest, flips every 15 lines), and noise at most 160 (once a
+        line): this checks the fast switching that the Pmod's filter averages into a level.
+    (The unit and system tests check which notes it plays.)
     """
     await reset(dut)
     for _ in range(800):  # a line: nothing plays yet
@@ -251,11 +258,8 @@ async def test_sound(dut):
     dut.ui_in.value = 1 << LEFT
     # To line 469 of the next frame in one wait (cheaper than a Python step every clock),
     # then to the end of its vsync pulse, line 492: 12 lines into the new game
-    await Timer((420_000 + 468 * 800) * 40, unit="ns")
-    while bit(dut, VSYNC) == 1:
-        await RisingEdge(dut.clk)
-    while bit(dut, VSYNC) == 0:
-        await RisingEdge(dut.clk)
+    await Timer((FRAME + 468) * LINE * CLOCK_NS, unit="ns")
+    await RisingEdge(dut.vsync_n)
     clocks = 160 * 800
     high = changes = 0
     prev = 0
