@@ -15,7 +15,7 @@ project:
 
   # List your project's source files here.
   # Source files must be in ./src and you must list each source file separately, one per line.
-  # test/Makefile, the system tests, sim/play and tools/ read this list.
+  # test/Makefile, CI's lint step, the system tests, sim/play and tools/ read this list.
   source_files:
     - "colour_pkg.sv"       # packages first
     - "gamepad_pkg.sv"

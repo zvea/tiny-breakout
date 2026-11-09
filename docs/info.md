@@ -29,7 +29,8 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 
 1. Set the clock to 25.175 MHz.
 2. Connect a VGA monitor through the TinyVGA PMOD on the output pins, and an SNES controller
-   through the Gamepad PMOD on the input pins.
+   through the Gamepad PMOD on the input pins. For sound, also connect the Audio Pmod to the
+   bidirectional pins (`uio[7]`); it is optional.
 3. Reset. With no controller connected the demo runs; connecting one starts a new game.
 
 | Control | Gamepad | Direct input |

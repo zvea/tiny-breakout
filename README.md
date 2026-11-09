@@ -23,9 +23,9 @@ drawn.
 - The bricks are kept in a ring of flip-flops that turns with the beam, so the brick under the
   beam is always in the same flip-flop. This avoids a 48-way multiplexer and halves the wall's
   logic ([brick_wall.sv](src/brick_wall.sv)).
-- Each wall after the first is generated as the ring fills. Its first row comes from a 5-bit
-  LFSR, and each later row from the row before it, by an elementary cellular automaton
-  (Wolfram's rules 150 and 182). This gives 21 brick patterns in under 1% of the tile.
+- Each wall after the first is generated as the ring fills. Its bottom row, built first, comes
+  from a 5-bit LFSR, and each later row from the row before it, by an elementary cellular
+  automaton (Wolfram's rules 150 and 182). This gives 21 brick patterns in under 1% of the tile.
 - Collisions are read off the picture: a ball pixel drawn over a brick or the paddle is a hit.
   The ball's offset within its own 8×8 box at that pixel tells which edge of the brick it came
   through, so it bounces the right way.
@@ -65,7 +65,8 @@ The page starts muted; the speaker button or <kbd>M</kbd> turns the sound on.
 - Optionally, an [Audio Pmod](https://github.com/MichaelBell/tt-audio-pmod) on `uio[7]` for
   sound.
 
-Pinout and controls are in [docs/info.md](docs/info.md).
+The controls and which pins each Pmod uses are in [docs/info.md](docs/info.md); the pinout, bit
+by bit, is in [info.yaml](info.yaml).
 
 ## Licence
 
