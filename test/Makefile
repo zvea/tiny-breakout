@@ -30,6 +30,17 @@ VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/sky130_f
 # this gets copied in by the GDS action workflow
 VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
 
+# Locally, a netlist left over from an earlier design would be tested without a word: say so.
+# (A warning, not an error: in CI the netlist comes from an artifact, whose time isn't certain.)
+NETLIST = $(PWD)/gate_level_netlist.v
+ifeq ($(wildcard $(NETLIST)),)
+$(error no gate_level_netlist.v here: copy in a hardened run's netlist, e.g. runs/<run>/final/pnl/tt_um_tiny_breakout.pnl.v)
+endif
+NEWER_SOURCES = $(shell for f in $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES)); do [ $$f -nt $(NETLIST) ] && echo $$f; done)
+ifneq ($(NEWER_SOURCES),)
+$(warning warning: gate_level_netlist.v is older than src/$(notdir $(firstword $(NEWER_SOURCES))) (and $(words $(NEWER_SOURCES)) sources in all): it may not be their design)
+endif
+
 endif
 
 # Allow sharing configuration between design and testbench via `include`:
