@@ -724,24 +724,36 @@ void level_cleared() {
 // With no controller connected the game plays itself (demo): with no Gamepad PMOD at all,
 // or with the PMOD reporting no controller (all ones). The demo ends, starting a new game,
 // when a direct button is pressed or a controller is connected; after that nothing moves
-// without input.
-void demo_until_a_controller_or_button() {
+// without input. Three runs, one for each way of ending it:
+// - no PMOD, then a button: the demo plays, launching the ball and clearing a brick
+// - PMOD without controller, then one connected: the demo launches the ball. Then the
+//   controller's fire (A here; X, L and R are the same to the game) launches the new game's
+//   ball, and unplugging the controller resumes the demo in that game: the ball flies on, and
+//   the paddle, still with the controller in, steers itself.
+// - PMOD without controller, reports across the frame update, then a button: the demo
+//   launches the ball. A report with no controller is all ones, so the receiver sees SELECT
+//   (bit 14) pressed until LEFT (bit 18) comes in; here the frame update falls in between.
+void demo() {
   const char *names[] = {"no PMOD, then a button", "PMOD without controller, then one connected",
                          "PMOD without controller, reports across the frame update, then a button"};
   for (int how = 0; how < 3; how++) {
-    const char *name = names[how];
+    part = names[how];
     Game g;
     power_up(g);
-    if (how) g.pad_bits = 0x0fff;  // the PMOD reports no controller
+    if (how) g.pad_bits = GP_NONE;
     else g.pmod_plugged = false;
-    // A report with no controller is all ones, so the receiver sees SELECT (bit 14) pressed
-    // until LEFT (bit 18) comes in. Here the frame update (clock 480 x 800) falls in between.
-    if (how == 2) g.pmod_start = 480 * 800 - 16 * 40;
+    if (how == 2) g.pmod_start = 480 * 800 - 16 * 40;  // the frame update is at clock 480 x 800
     View v = run(g, 4);
     int bricks0 = v.bricks;
-    v = run(g, 900);
-    CHECK(v.bricks < bricks0, "%s: demo cleared no bricks in 900 frames (%d left)", name, v.bricks);
-    CHECK(!resting(v), "%s: in the demo the ball is resting on the paddle", name);
+    if (how == 0) {
+      for (int i = 0; i < 900 && v.bricks >= bricks0; i++) v = run(g, 1, false);
+      CHECK(v.bricks < bricks0, "demo cleared no bricks in 900 frames (%d left)", v.bricks);
+      v = look(g);
+      CHECK(!resting(v), "in the demo the ball is resting on the paddle");
+    } else {
+      v = run(g, 20);
+      CHECK(v.ball && v.ball_y < 440 - 10, "the demo did not launch the ball: y %d", v.ball_y);
+    }
     if (how == 1) {
       g.pad_bits = 0;  // a controller is connected, nothing pressed
       v = settle(g, run(g, 3));
@@ -751,14 +763,34 @@ void demo_until_a_controller_or_button() {
       g.buttons = 0;
       v = settle(g, run(g, 3));  // the new game starts at the next frame update, then its wall fills
     }
-    CHECK(v.bricks == 48 && v.lives == 2, "%s: then %d bricks, %d spare balls", name, v.bricks,
-          v.lives);
-    CHECK(resting(v), "%s: then the ball is at (%d, %d), paddle %d", name, v.ball_x, v.ball_y,
-          v.paddle_x);
+    CHECK(v.bricks == 48 && v.lives == 2, "then %d bricks, %d spare balls", v.bricks, v.lives);
+    CHECK(resting(v), "then the ball is at (%d, %d), paddle %d", v.ball_x, v.ball_y, v.paddle_x);
     int x0 = v.paddle_x;
     v = run(g, 60);
-    CHECK(resting(v) && v.paddle_x == x0, "%s: without input, ball (%d, %d), paddle %d -> %d",
-          name, v.ball_x, v.ball_y, x0, v.paddle_x);
+    CHECK(resting(v) && v.paddle_x == x0, "without input, ball (%d, %d), paddle %d -> %d",
+          v.ball_x, v.ball_y, x0, v.paddle_x);
+    if (how != 1) continue;
+
+    part = "controller's fire, then unplugged";
+    g.pad_bits = GP_A;
+    run(g, 1);
+    g.pad_bits = 0;
+    v = run(g, 20);
+    CHECK(v.ball && v.ball_y < 440 - 10, "A did not launch the ball: y %d", v.ball_y);
+    CHECK(v.paddle_x == x0, "the paddle moved from %d to %d without input", x0, v.paddle_x);
+    // A new game would put the ball back on the paddle; the demo carries on with it
+    g.pad_bits = GP_NONE;
+    int y0 = v.ball_y, moved_after = -1;
+    for (int i = 0; i < 30 && moved_after < 0; i++) {
+      v = run(g, 1);
+      CHECK(v.ball && !resting(v) && std::abs(v.ball_y - y0) <= 4 * (i + 1),
+            "%d frames after unplugging: ball at (%d, %d), was at y %d", i + 1, v.ball_x, v.ball_y,
+            y0);
+      CHECK(v.bricks == 48 && v.lives == 2, "%d frames after unplugging: %d bricks, %d markers",
+            i + 1, v.bricks, v.lives);
+      if (v.paddle_x != x0) moved_after = i + 1;
+    }
+    CHECK(moved_after > 0, "the demo did not steer the paddle in 30 frames (still at %d)", x0);
   }
 }
 
@@ -1162,7 +1194,7 @@ const Scenario scenarios[] = {
     {"falling_ball_lights_the_border", falling_ball_lights_the_border},
     {"game_over_and_restart", game_over_and_restart},
     {"game_over_curtain", game_over_curtain},
-    {"demo_until_a_controller_or_button", demo_until_a_controller_or_button},
+    {"demo", demo},
     {"select_turns_autoplay_on", select_turns_autoplay_on},
     {"ball_speeds_up", ball_speeds_up},
     {"brick_bounces", brick_bounces},
