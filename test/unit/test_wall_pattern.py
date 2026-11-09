@@ -45,11 +45,22 @@ async def no_wall_is_empty(dut):
             assert bricks(await build_wall(dut, level, value)) > 0, f"level {level}, random {value}"
 
 
+@cocotb.test()
+async def no_wall_repeats_the_first(dut):
+    """Any layout: no wall is full, or a later level would look just like the first."""
+    for level in LEVELS:
+        for value in VALUES:
+            rows = await build_wall(dut, level, value)
+            assert bricks(rows) < 48, f"level {level}, random {value}"
+
+
 def aliens(value: int) -> list[int]:
-    """The current layout (see wall_pattern.sv): a mirrored seed row from `random`, then each
-    row grown from the one before by rule 150, or 182 when random[4] is set."""
+    """The current layout (see wall_pattern.sv): a mirrored seed row from `random`, never all
+    four bricks, then each row grown from the one before by rule 150, or 182 when random[4] is
+    set."""
     rule_182 = value >> 4 & 1
     half = [(value >> c & 1) | (c == 0 and rule_182) for c in range(4)]  # columns 0..3
+    half[0] &= not (half[1] and half[2] and half[3])
     full = lambda h: sum(h[min(c, 7 - c)] << c for c in range(8))  # mirrored into 8 columns
     rows = [0] * 6
     rows[5] = full(half)
@@ -63,7 +74,7 @@ def aliens(value: int) -> list[int]:
 @cocotb.test()
 async def the_walls_follow_the_aliens_rule(dut):
     """The current layout, exactly: the same walls at every level, 21 different ones over the
-    31 values of `random`, of 20 to 48 bricks."""
+    31 values of `random`, of 20 to 32 bricks."""
     walls = set()
     for level in LEVELS:
         for value in VALUES:
@@ -71,7 +82,7 @@ async def the_walls_follow_the_aliens_rule(dut):
             assert rows == aliens(value), f"level {level}, random {value}: {rows}"
             walls.add(tuple(rows))
     assert len(walls) == 21
-    assert min(map(bricks, walls)) == 20 and max(map(bricks, walls)) == 48
+    assert min(map(bricks, walls)) == 20 and max(map(bricks, walls)) == 32
 
 
 def test_wall_pattern():

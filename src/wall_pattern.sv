@@ -25,7 +25,7 @@
  * above it (left, centre, right) stand, Wolfram's rule 150; with random[4] set, also where
  * both neighbours stand, rule 182. The rows stay mirror-symmetric: column 3's right neighbour
  * is column 4, which mirrors column 3, and column 0's left neighbour is column 7, which
- * mirrors column 0. The 31 values of `random` give 21 different walls of 20 to 48 bricks.
+ * mirrors column 0. The 31 values of `random` give 21 different walls of 20 to 32 bricks.
  */
 
 `default_nettype none
@@ -41,7 +41,9 @@ module wall_pattern (
   wire [3:0] half  = prev[3:0];               // columns 0 .. 3; columns 4 .. 7 mirror them
   wire [3:0] left  = {half[2:0], half[0]};    // each column's left neighbour (column 0's: 7)
   wire [3:0] right = {half[3], half[3:1]};    // each column's right neighbour (column 3's: 4)
-  wire [3:0] seed  = {random[3:1], random[0] | random[4]};  // never 0, as random is never 0
+  // Never 0, as random is never 0, and never all four: from 1111 every row grows full, which
+  // would repeat the first wall
+  wire [3:0] seed  = {random[3:1], (random[0] | random[4]) & ~&random[3:1]};
   wire [3:0] grown = (left ^ half ^ right) | (left & right & {4{random[4]}});
   wire [3:0] q     = (r == 5) ? seed : grown;  // row 5 comes first: the seed
 

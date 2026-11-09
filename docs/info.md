@@ -4,7 +4,7 @@ Tiny Breakout is a brick-breaker game with 640x480 VGA output at 60 Hz. There is
 buffer: every pixel is worked out from the beam position as the picture is drawn.
 
 - **Wall:** 8 x 6 bricks, coloured by row from red at the top to violet at the bottom. The
-  first wall of a game is full; each later one is a symmetric pattern of 20 to 48 bricks, one
+  first wall of a game is full; each later one is a symmetric pattern of 20 to 32 bricks, one
   of 21, picked at random.
 - **Ball:** bounces off the walls, the paddle and the bricks. Where it lands on the paddle
   sets its angle (flatter on the last 16 px at each end). A brick hit on its side sends the
