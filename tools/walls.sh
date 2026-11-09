@@ -4,7 +4,8 @@
 # level and each value of the LFSR, built the way brick_wall builds it (row 5 first, from an
 # empty ring, then rows 0..4, each given the row before). Prints each different wall once,
 # with the inputs that give it and its brick count, then a summary; fails if any is empty.
-# --png also draws them as the top of the game screen. A few seconds; needs Verilator.
+# --png also draws them as the top of the game screen. About 15 s (mostly building the model);
+# needs Verilator.
 # For a layout's cost, run tools/local_area.sh.
 #
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
