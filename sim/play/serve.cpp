@@ -15,7 +15,9 @@
 //               stream ends, so it knows not to reconnect.
 // GET /keys?k=K sets the controls. K bits: 1 left, 2 right, 4 fire (gamepad A), 8 autoplay,
 //               16 reset.
-// Anything else returns index.html.
+// Anything else returns the page: the path given as the second argument, by default
+//               index.html in the directory above the executable's (sim/play, above
+//               obj_serve), so the server runs from anywhere. It is read for each request.
 //
 // Streaming (rather than request/response per frame) keeps the frame rate independent of the
 // network round-trip time, e.g. through an SSH port forward.
@@ -51,12 +53,20 @@ static bool send_all(int fd, const void *p, size_t n) {
   }
   return true;
 }
-static void reply(int fd, const char *type, const std::string &body) {
+// The whole file, or false if it can't be read (or is empty).
+static bool read_file(const std::string &path, std::string &out) {
+  std::ifstream f(path, std::ios::binary);
+  std::stringstream ss;
+  if (f) ss << f.rdbuf();
+  out = ss.str();
+  return !out.empty();
+}
+static void reply(int fd, const char *status, const char *type, const std::string &body) {
   char hdr[256];
   int h = snprintf(hdr, sizeof hdr,
-                   "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %zu\r\n"
+                   "HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\n"
                    "Cache-Control: no-store\r\nConnection: close\r\n\r\n",
-                   type, body.size());
+                   status, type, body.size());
   send_all(fd, hdr, h);
   send_all(fd, body.data(), body.size());
 }
@@ -184,7 +194,17 @@ static void streamer() {
 
 int main(int argc, char **argv) {
   int port = argc > 1 ? atoi(argv[1]) : 8765;
-  std::string html_path = argc > 2 ? argv[2] : "index.html";
+  std::string html_path = "index.html", page;
+  if (argc > 2) {
+    html_path = argv[2];
+  } else if (const char *slash = strrchr(argv[0], '/')) {  // obj_serve/.. holds the page
+    html_path = std::string(argv[0], slash - argv[0]) + "/../index.html";
+  }
+  if (!read_file(html_path, page)) {
+    fprintf(stderr, "Can't read the page %s: give its path as the second argument\n",
+            html_path.c_str());
+    return 1;
+  }
   signal(SIGPIPE, SIG_IGN);  // a client disconnecting mid-write must not kill the server
 
   int s = socket(AF_INET, SOCK_STREAM, 0), one = 1;
@@ -225,7 +245,7 @@ int main(int argc, char **argv) {
       int k = atoi(buf + 12);
       if (k & 16) reset_req = true;
       keys = k & 15;
-      reply(c, "text/plain", "ok");
+      reply(c, "200 OK", "text/plain", "ok");
       close(c);
     } else if (!strncmp(buf, "GET /stream", 11)) {
       const char *hdr = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
@@ -242,12 +262,14 @@ int main(int argc, char **argv) {
       pending_fd = c;
       cv.notify_one();
     } else {
-      std::ifstream f(html_path);
-      std::stringstream ss;
-      ss << f.rdbuf();
       timeval tv1{0, 500000};
       setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &tv1, sizeof tv1);
-      reply(c, "text/html", ss.str());
+      if (read_file(html_path, page)) {
+        reply(c, "200 OK", "text/html", page);
+      } else {
+        fprintf(stderr, "Can't read the page %s\n", html_path.c_str());
+        reply(c, "500 Internal Server Error", "text/plain", "Can't read " + html_path + "\n");
+      }
       close(c);
     }
   }

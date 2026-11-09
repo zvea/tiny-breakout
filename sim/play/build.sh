@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the interactive player. Needs Verilator 4.x, in .tools/v4 or on PATH (see
 # test/README.md): sim.h relies on its internals (and 5.x is ~2x slower here). Run it from
-# anywhere; then, from this directory, ./obj_serve/Vtt_um_tiny_breakout [port] [index.html].
+# anywhere; then, e.g. from this directory, ./obj_serve/Vtt_um_tiny_breakout [port] [index.html].
 #
 # SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
