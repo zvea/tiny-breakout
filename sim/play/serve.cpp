@@ -10,7 +10,9 @@
 //               640x480. Audio is the Audio Pmod's output (uio[7], see sim.h) as s16 at
 //               48 kHz, stretched to the time the frame really took, at its true pitch (see
 //               stretch.h), so it plays continuously down to 3.75 fps (a stretch of 16). Only
-//               one viewer at a time: a new /stream takes over from the previous one.
+//               one viewer at a time: a new /stream takes over from the previous one, which
+//               gets a last header with video length 0xFFFFFFFF (and no samples) before its
+//               stream ends, so it knows not to reconnect.
 // GET /keys?k=K sets the controls. K bits: 1 left, 2 right, 4 fire (gamepad A), 8 autoplay,
 //               16 reset.
 // Anything else returns index.html.
@@ -107,7 +109,11 @@ static void streamer() {
         next = clk::now();
       }
       if (pending_fd >= 0) {  // newest viewer wins: its audio starts afresh
-        if (fd >= 0) close(fd);
+        if (fd >= 0) {  // tell the old one why its stream ends (best effort: never block)
+          const uint32_t taken_over[2] = {0xFFFFFFFFu, 0};
+          send(fd, taken_over, sizeof taken_over, MSG_DONTWAIT | MSG_NOSIGNAL);
+          close(fd);
+        }
         fd = pending_fd;
         pending_fd = -1;
         stretcher.reset();
