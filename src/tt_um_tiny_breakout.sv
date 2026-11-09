@@ -146,6 +146,7 @@ module tt_um_tiny_breakout (
     logic brick_top_bottom, brick_side, paddle;
   } hits_t;
   hits_t      hit;
+  logic [2:0] hit_row;   // PROTOTYPE (sound): the row of the last brick hit
   logic [1:0] hit_zone;  // paddle zone (0..3 from the left, see paddle_px) under the last ball
                          // pixel to touch the paddle: the right end of the ball's bottom row
 
@@ -361,11 +362,13 @@ module tt_um_tiny_breakout (
     if (!rst_n) begin
       hit         <= '0;
       hit_zone    <= 0;
+      hit_row     <= 0;
     end else if (frame_tick) begin
       hit <= '0;
     end else if (touch) begin
       if (brick_px && !side_hit) hit.brick_top_bottom <= 1;
       if (brick_px && side_hit)  hit.brick_side       <= 1;
+      if (brick_px)              hit_row              <= brick_row;
       if (paddle_px) begin
         hit.paddle  <= 1;
         hit_zone    <= paddle_zone;
@@ -614,8 +617,32 @@ module tt_um_tiny_breakout (
       .uo_out  (uo_out)
   );
 
-  assign uio_out = 0;
-  assign uio_oe  = 0;
+  // ---------------------------------------------------------------------------
+  // Sound, for the Audio Pmod on uio[7]
+  // ---------------------------------------------------------------------------
+  logic audio;
+
+  sound u_sound (
+      .clk       (clk),
+      .rst_n     (rst_n),
+      .frame_tick(frame_tick),
+      .lost      (lose_ball),
+      .brick     (hit.brick_top_bottom | hit.brick_side),
+      .paddle    (hit.paddle),
+      .wall      (fly & (touch_wall_l | touch_wall_r | touch_wall_t)),
+      .h_pos     (h_pos),
+      .v_pos     (v_pos),
+      .brick_row (hit_row),
+      .speed_level(speed_level),
+      .frame_phase(frame_phase),
+      .celebrate (celebrate),
+      .game_over (game_over),
+      .new_game  (new_game),
+      .audio     (audio)
+  );
+
+  assign uio_out = {audio, 7'b0};
+  assign uio_oe  = 8'b1000_0000;
 
   // Unused inputs and signal bits, listed to silence lint warnings
   wire _unused = &{ena, uio_in, ui.unused, paddle_dx[2:0], band_y[4:0], 1'b0};

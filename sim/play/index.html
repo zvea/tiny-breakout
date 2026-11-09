@@ -7,12 +7,18 @@
  canvas{image-rendering:pixelated;width:960px;max-width:100%;border:1px solid #333}
  #s{margin:8px;font-variant-numeric:tabular-nums}
  kbd{background:#333;border-radius:3px;padding:1px 5px}
+ #snd{display:flex;gap:10px;align-items:center;margin:8px}
+ button{background:#333;color:#ddd;border:1px solid #555;border-radius:4px;padding:4px 10px;font:inherit;cursor:pointer}
+ button:focus-visible,input:focus-visible{outline:2px solid #6af}
 </style></head><body>
 <canvas id="c" width="640" height="480"></canvas>
 <div id="s">connecting…</div>
-<div><kbd>←</kbd>/<kbd>→</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> toggle autoplay &nbsp; <kbd>R</kbd> reset</div>
+<div id="snd"><button id="sb">Turn sound on</button>
+ <label for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.3"></div>
+<div><kbd>←</kbd>/<kbd>→</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> toggle autoplay &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> sound on / off</div>
 <script>
-// The server runs the RTL model at 60 fps and streams frames: [u32 LE length][RLE (count, RRGGBB) pairs].
+// The server runs the RTL model at 60 fps and streams frames:
+// [u32 video length][u32 audio samples][video: RLE (count, RRGGBB) pairs][audio: s16 at 48 kHz].
 // Key changes are sent separately, so the frame rate does not depend on the network round trip.
 const c=document.getElementById('c'),ctx=c.getContext('2d'),img=ctx.createImageData(640,480),st=document.getElementById('s');
 const lv=[0,85,170,255];
@@ -23,9 +29,48 @@ const map={ArrowLeft:1,ArrowRight:2,' ':4};
 addEventListener('keydown',e=>{
  if(map[e.key]){e.preventDefault();if(!(keys&map[e.key])){keys|=map[e.key];sendKeys()}}
  else if(e.key==='a'||e.key==='A'){auto^=1;sendKeys()}
- else if(e.key==='r'||e.key==='R'){sendKeys(16)}});
+ else if(e.key==='r'||e.key==='R'){sendKeys(16)}
+ else if(e.key==='m'||e.key==='M'){toggleSound()}});
 addEventListener('keyup',e=>{if(map[e.key]){keys&=~map[e.key];sendKeys()}});
 addEventListener('blur',()=>{keys=0;sendKeys()});
+
+// --- Sound: the frames' samples go into an AudioWorklet ring buffer. Playback starts once
+// ~80 ms is buffered (absorbing network and scheduling jitter); if the buffer runs dry it
+// pauses and refills, and if it grows past ~250 ms (clock drift) it drops the excess.
+const worklet=`class Feed extends AudioWorkletProcessor{
+ constructor(){super();this.buf=new Float32Array(48000);this.r=0;this.w=0;this.playing=false;
+  this.port.onmessage=e=>{const s=e.data,N=this.buf.length;
+   for(let i=0;i<s.length;i++){this.buf[this.w]=s[i];this.w=(this.w+1)%N}
+   let fill=(this.w-this.r+N)%N;if(fill>12000)this.r=(this.w-3840+N)%N}}
+ process(_,outs){const o=outs[0][0],N=this.buf.length;let fill=(this.w-this.r+N)%N;
+  if(!this.playing&&fill>=3840)this.playing=true;
+  for(let i=0;i<o.length;i++){if(this.playing&&fill>0){o[i]=this.buf[this.r];this.r=(this.r+1)%N;fill--}
+   else{o[i]=0;this.playing=false}}
+  this.port.postMessage(fill);return true}}
+registerProcessor('feed',Feed);`;
+let actx=null,node=null,gain=null,soundOn=false,buffered=0;
+const sb=document.getElementById('sb'),vol=document.getElementById('vol');
+async function toggleSound(){
+ if(!actx){
+  actx=new AudioContext({sampleRate:48000});
+  await actx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet],{type:'text/javascript'})));
+  node=new AudioWorkletNode(actx,'feed',{outputChannelCount:[1]});
+  gain=actx.createGain();gain.gain.value=+vol.value;
+  node.connect(gain).connect(actx.destination);
+  node.port.onmessage=e=>{buffered=e.data};
+ }
+ soundOn=!soundOn;
+ if(soundOn)await actx.resume();else await actx.suspend();
+ sb.textContent=soundOn?'Turn sound off':'Turn sound on';
+}
+sb.addEventListener('click',toggleSound);
+vol.addEventListener('input',()=>{if(gain)gain.gain.value=+vol.value});
+function playAudio(bytes){
+ if(!soundOn||!node)return;
+ const s=new Int16Array(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.length));
+ const f=new Float32Array(s.length);for(let i=0;i<s.length;i++)f[i]=s[i]/32768;
+ node.port.postMessage(f,[f.buffer]);
+}
 
 function draw(b){
  const d=img.data;let p=0;
@@ -49,14 +94,17 @@ async function stream(){
    for(;;){
     const {value,done}=await rd.read();if(done)break;
     const nb=new Uint8Array(buf.length+value.length);nb.set(buf);nb.set(value,buf.length);buf=nb;
-    while(buf.length>=4){
-     const len=buf[0]|buf[1]<<8|buf[2]<<16|buf[3]<<24;
-     if(buf.length<4+len)break;
-     latest=buf.subarray(4,4+len);buf=buf.slice(4+len);n++;
+    while(buf.length>=8){
+     const len=(buf[0]|buf[1]<<8|buf[2]<<16|buf[3]<<24)>>>0,ns=(buf[4]|buf[5]<<8|buf[6]<<16|buf[7]<<24)>>>0;
+     if(buf.length<8+len+2*ns)break;
+     latest=buf.subarray(8,8+len);
+     playAudio(buf.subarray(8+len,8+len+2*ns));
+     buf=buf.slice(8+len+2*ns);n++;
     }
     const t=performance.now();
-    // Every frame is simulated, none skipped: below 60 fps the game runs in slow motion
-    if(t-t0>1000){const fps=n*1000/(t-t0);st.textContent=`${fps.toFixed(1)} fps · running at ${Math.round(fps/60*100)}% of real speed${auto?' · AUTOPLAY':''}`;n=0;t0=t}
+    // Every frame is simulated, none skipped: below 60 fps the game runs in slow motion, and
+    // the server stretches the sound to match, at its true pitch
+    if(t-t0>1000){const fps=n*1000/(t-t0);st.textContent=`${fps.toFixed(1)} fps · running at ${Math.round(fps/60*100)}% of real speed${auto?' · AUTOPLAY':''}${soundOn?` · sound buffer ${Math.round(buffered/48)} ms`:''}`;n=0;t0=t}
    }
   }catch(e){}
   st.textContent='disconnected – retrying…';

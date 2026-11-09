@@ -16,7 +16,8 @@ case "$(uname -s)" in
   *)      CFLAGS="-O3 -march=native -fno-plt -fomit-frame-pointer -pthread" ;;
 esac
 rm -rf obj_serve
-verilator --cc --build -O3 --inline-mult -1 --output-split 0 -Wno-fatal \
+# SOUND_TIER=1..4 picks the prototype sound design (src/sound.sv); 4 if unset
+verilator --cc --build -O3 +define+SOUND_TIER=${SOUND_TIER:-4} --inline-mult -1 --output-split 0 -Wno-fatal \
   --x-assign fast --x-initial fast \
   -CFLAGS "$CFLAGS" -LDFLAGS "-pthread" \
   --exe serve.cpp $SOURCES --top-module tt_um_tiny_breakout -Mdir obj_serve -j 8 >/dev/null

@@ -5,9 +5,12 @@
 //
 // GET /stream   long-lived response; the server runs the game at up to 60 fps (the real
 //               hardware rate; on a slower CPU it simulates every frame anyway, in slow
-//               motion) and pushes every frame as [u32 little-endian length][RLE payload].
-//               RLE payload is (count, RRGGBB) byte pairs covering 640x480. Only one viewer
-//               at a time: a new /stream takes over from the previous one.
+//               motion) and pushes every frame as [u32 video length][u32 audio sample count]
+//               [video][audio], little-endian. Video is (count, RRGGBB) byte pairs covering
+//               640x480. Audio is the Audio Pmod's output (uio[7], see sim.h) as s16 at
+//               48 kHz, stretched to the time the frame really took, at its true pitch (see
+//               stretch.h), so it plays continuously however fast the CPU. Only one viewer at
+//               a time: a new /stream takes over from the previous one.
 // GET /keys?k=K sets the controls. K bits: 1 left, 2 right, 4 fire (gamepad A), 8 autoplay,
 //               16 reset.
 // Anything else returns index.html.
@@ -15,9 +18,11 @@
 // Streaming (rather than request/response per frame) keeps the frame rate independent of the
 // network round-trip time, e.g. through an SSH port forward.
 #include "sim.h"
+#include "stretch.h"
 #include <arpa/inet.h>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <csignal>
 #include <cstdio>
@@ -71,7 +76,15 @@ static void streamer() {
   }
   Game g;
   g.reset();
+  g.capture_audio = true;
+  // Audio: each frame's 800 samples are stretched so the output keeps pace with real time.
+  // The output owed is 48 kHz x the time since audio started, less what has been sent; the
+  // stretch ratio is the frame time over 1/60 s, smoothed, between 1 (full speed) and 8.
+  Stretcher stretcher;
+  long sent = 0;
+  double ratio = 1;
   using clk = std::chrono::steady_clock;
+  auto audio_start = clk::now(), last_frame = clk::now();
   const auto period = std::chrono::nanoseconds(1000000000 / 60);
   auto next = clk::now();
   auto t_stat = clk::now();
@@ -85,10 +98,14 @@ static void streamer() {
         cv.wait(lk, [] { return pending_fd >= 0; });
         next = clk::now();
       }
-      if (pending_fd >= 0) {  // newest viewer wins
+      if (pending_fd >= 0) {  // newest viewer wins: its audio starts afresh
         if (fd >= 0) close(fd);
         fd = pending_fd;
         pending_fd = -1;
+        stretcher.reset();
+        sent = 0;
+        ratio = 1;
+        audio_start = last_frame = clk::now();
       }
     }
     if (reset_req.exchange(false)) g.reset();
@@ -97,7 +114,20 @@ static void streamer() {
     g.autoplay = k & 8;
     g.frame();
 
-    msg.assign(4, '\0');
+    auto t = clk::now();
+    double dt = std::chrono::duration<double>(t - last_frame).count();
+    last_frame = t;
+    ratio += 0.1 * (std::min(8.0, std::max(1.0, dt * 60)) - ratio);
+    long owed = std::lround(48000 * std::chrono::duration<double>(t - audio_start).count()) - sent;
+    if (owed > 24000) {  // half a second behind (a stall): don't try to catch up
+      audio_start = t - std::chrono::nanoseconds(sent * 1000000000L / 48000);
+      owed = 0;
+    }
+    stretcher.push(g.audio.data(), Game::AUDIO_PER_FRAME);
+    std::vector<float> audio = stretcher.pull(ratio, (int)std::max(0L, owed));
+    sent += audio.size();
+
+    msg.assign(8, '\0');
     const auto &fb = g.fb;
     for (size_t i = 0; i < fb.size();) {
       size_t j = i;
@@ -107,8 +137,14 @@ static void streamer() {
       msg += (char)v;
       i = j;
     }
-    uint32_t len = msg.size() - 4;
+    uint32_t len = msg.size() - 8, nsamp = audio.size();
     memcpy(&msg[0], &len, 4);
+    memcpy(&msg[4], &nsamp, 4);
+    for (float x : audio) {
+      int v = (int)lrintf(x * 32767.0f);
+      int16_t q = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+      msg.append((const char *)&q, 2);
+    }
     if (!send_all(fd, msg.data(), msg.size())) {  // viewer went away
       close(fd);
       fd = -1;
