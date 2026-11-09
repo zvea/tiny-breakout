@@ -22,8 +22,7 @@ EVENTS = ["new_game", "paused", "lost", "last", "brick", "paddle", "wall"]
 
 async def start(dut):
     cocotb.start_soon(Clock(dut.clk, 40, unit="ns").start())
-    for name in EVENTS + ["frame_tick", "fast", "brick_row", "pause_step", "frame_phase", "v_pos",
-                          "random"]:
+    for name in EVENTS + ["frame_tick", "fast", "brick_row", "pause_step", "v_pos", "random"]:
         getattr(dut, name).value = 0
     dut.h_pos.value = 1
     dut.rst_n.value = 0

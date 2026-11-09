@@ -17,6 +17,7 @@
  *   ui_in[3]   : AUTOPLAY (paddle steers itself, auto-launch); on the gamepad, SELECT
  *                switches autoplay on and left, right or fire switches it off
  *   ui_in[4..6]: Gamepad PMOD latch, clock, data (Psychogenic SNES Gamepad PMOD)
+ *   uio_out[7] : Audio Pmod (sound.sv); the other uio pins are unused inputs
  * With no controller connected the game plays itself (demo); see "Demo" below.
  *
  * Known risk: ui_in[0..3] are used without synchronisers (2 flip-flops each would cost 8).
@@ -29,7 +30,7 @@
  * worked out there from the ball's position.
  *
  * Sections: pins, video timing, game state, controls, what is under the
- * beam, collisions, frame update, video output.
+ * beam, collisions, frame update, video output, sound.
  */
 
 `default_nettype none
@@ -198,7 +199,8 @@ module tt_um_tiny_breakout (
   wire btn_right = ui.right | gp_right;
   wire btn_fire  = ui.fire  | gp_fire | autoplay;  // autoplay launches the ball itself
 
-  // Chance: an LFSR that steps every frame, for autoplay's aim and the shape of each wall
+  // Chance: an LFSR that steps every frame, for autoplay's aim, the shape of each wall and the
+  // sound's noise
   logic [4:0] random;
 
   lfsr u_lfsr (
@@ -569,9 +571,10 @@ module tt_um_tiny_breakout (
   assign lost_rgb = {ball_y[4:3], 4'b0000};  // {r, g, b}
 
   // Celebration, in the pause after a cleared wall: rainbow bands rise behind the ball and
-  // paddle, over the field and the border. The pause is while speed_level counts 17..31 (in
-  // play it stops at 16). The bands are 64 px tall and rise 2 px per frame: the band under the
-  // beam is its line in 2-px units plus a count of the pause's frames, in 32s.
+  // paddle, over the field and the border. They show while speed_level counts 17..31 (the
+  // pause starts at 16, where play stops, so 16 alone can't tell the two apart). The bands
+  // are 64 px tall and rise 2 px per frame: the band under the beam is its line in 2-px units
+  // plus a count of the pause's frames, in 32s.
   wire       celebrate = !game_over && speed_level[4] && (speed_level[3:0] != 0);
   wire [7:0] band_y    = v_pos[8:1] + 8'({speed_level[3:0], frame_phase});
 
@@ -642,7 +645,6 @@ module tt_um_tiny_breakout (
       .wall       (fly & ((touch_wall_l & ball_left) | (touch_wall_r & ~ball_left) |
                           (touch_wall_t & ball_up))),
       .pause_step (speed_level[3:0]),  // read only in the pause (16..31)
-      .frame_phase(frame_phase),
       .audio      (audio)
   );
 
