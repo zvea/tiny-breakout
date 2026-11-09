@@ -27,5 +27,8 @@ tb.user_project.uio_out[7:0]
 -Output Pins
 @22
 tb.user_project.uo_out[7:0]
+@28
+tb.hsync_n
+tb.vsync_n
 [pattern_trace] 1
 [pattern_trace] 0

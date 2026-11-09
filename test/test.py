@@ -9,8 +9,26 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge, Timer
 
-HSYNC = 7
-VSYNC = 3
+# Pins, by bit number. uo_out is the TinyVGA PMOD (src/tiny_vga_out.sv): each colour's high
+# bit in the low nibble, its low bit in the high nibble, and the sync pulses (active low).
+R1, G1, B1, VSYNC, R0, G0, B0, HSYNC = range(8)
+# ui_in (src/tt_um_tiny_breakout.sv): the direct buttons and autoplay, then the Gamepad PMOD
+LEFT, RIGHT, FIRE, AUTOPLAY, PAD_LATCH, PAD_CLK, PAD_DATA = range(7)
+PAD_PINS = (1 << PAD_LATCH) | (1 << PAD_CLK) | (1 << PAD_DATA)
+# uio: the Audio Pmod's input is the only output
+AUDIO = 7
+
+# A gamepad report's buttons, as send_gamepad takes them: bit 11 is sent first
+PAD_LEFT = 1 << 5
+
+# Colours as 6 bits {r, g, b}, 2 bits per channel, as in src/colour_pkg.sv
+BLACK = 0b00_00_00
+WHITE = 0b11_11_11  # the ball, the spare-ball markers and the score
+PALE_CYAN = 0b10_11_11  # the paddle
+GREY = 0b01_01_01  # the walls
+NAVY = 0b00_00_01  # the field
+RED = 0b11_00_00  # the top row of bricks
+VIOLET = 0b10_00_11  # the bottom row
 
 
 async def reset(dut):
@@ -26,6 +44,15 @@ async def reset(dut):
 
 def bit(dut, n):
     return (int(dut.uo_out.value) >> n) & 1
+
+
+def colour(dut):
+    """The pixel colour on uo_out, as 6 bits {r, g, b} (see the colours above)."""
+    pins = int(dut.uo_out.value)
+    rgb = 0
+    for n in (R1, R0, G1, G0, B1, B0):
+        rgb = (rgb << 1) | ((pins >> n) & 1)
+    return rgb
 
 
 @cocotb.test()
@@ -51,15 +78,15 @@ async def test_vga_timing(dut):
 async def send_gamepad(dut, buttons12):
     """Emulate one Gamepad PMOD report: 24 bits (2nd controller first), then latch."""
     bits = [0] * 12 + [(buttons12 >> (11 - i)) & 1 for i in range(12)]
-    base = int(dut.ui_in.value) & 0x8F
+    base = int(dut.ui_in.value) & ~PAD_PINS
     for b in bits:
-        dut.ui_in.value = base | (b << 6)
+        dut.ui_in.value = base | (b << PAD_DATA)
         await ClockCycles(dut.clk, 10)
-        dut.ui_in.value = base | (b << 6) | (1 << 5)
+        dut.ui_in.value = base | (b << PAD_DATA) | (1 << PAD_CLK)
         await ClockCycles(dut.clk, 10)
     dut.ui_in.value = base
     await ClockCycles(dut.clk, 10)
-    dut.ui_in.value = base | (1 << 4)
+    dut.ui_in.value = base | (1 << PAD_LATCH)
     await ClockCycles(dut.clk, 10)
     dut.ui_in.value = base
     await ClockCycles(dut.clk, 10)
@@ -84,8 +111,7 @@ async def paddle_left_edge(dut):
         prev = cur
     for d in range(1, 144 + 640):
         await RisingEdge(dut.clk)
-        # paddle colour is R=2, G=3, B=3
-        if d >= 144 and bit(dut, 5) == 1 and bit(dut, 1) == 1 and bit(dut, 2) == 1 and bit(dut, 4) == 0:
+        if d >= 144 and colour(dut) == PALE_CYAN:
             return d - 144
     return None
 
@@ -97,8 +123,8 @@ async def test_gamepad_and_paddle(dut):
     # The first report after reset is ignored (it may be incomplete); the second shows a
     # controller before the first frame update, so the demo never starts. The real PMOD
     # reports on every change, and at least once a second in Tiny Tapeout's configuration.
-    await send_gamepad(dut, 1 << 5)  # LEFT
-    await send_gamepad(dut, 1 << 5)
+    await send_gamepad(dut, PAD_LEFT)
+    await send_gamepad(dut, PAD_LEFT)
     # At the base speed the paddle moves every other frame: compare frames two apart
     x1 = await paddle_left_edge(dut)
     await paddle_left_edge(dut)
@@ -110,8 +136,8 @@ async def test_gamepad_and_paddle(dut):
 
 def check_uio(dut):
     """uio[7] is the only output (audio, for the Audio Pmod); the other uio pins are unused."""
-    assert int(dut.uio_oe.value) == 0x80, f"uio_oe = {int(dut.uio_oe.value):#04x}"
-    assert int(dut.uio_out.value) & 0x7F == 0, f"uio_out = {int(dut.uio_out.value):#04x}"
+    assert int(dut.uio_oe.value) == 1 << AUDIO, f"uio_oe = {int(dut.uio_oe.value):#04x}"
+    assert int(dut.uio_out.value) & ~(1 << AUDIO) == 0, f"uio_out = {int(dut.uio_out.value):#04x}"
 
 
 @cocotb.test()
@@ -129,8 +155,8 @@ async def test_sound(dut):
     for _ in range(800):  # a line: nothing plays yet
         await RisingEdge(dut.clk)
         check_uio(dut)
-        assert int(dut.uio_out.value) >> 7 == 0, "audio after reset"
-    dut.ui_in.value = 1  # LEFT
+        assert (int(dut.uio_out.value) >> AUDIO) & 1 == 0, "audio after reset"
+    dut.ui_in.value = 1 << LEFT
     # To line 469 of the next frame in one wait (cheaper than a Python step every clock),
     # then to the end of its vsync pulse, line 492: 12 lines into the new game
     await Timer((420_000 + 468 * 800) * 40, unit="ns")
@@ -144,7 +170,7 @@ async def test_sound(dut):
     for _ in range(clocks):
         await RisingEdge(dut.clk)
         check_uio(dut)
-        audio = int(dut.uio_out.value) >> 7
+        audio = (int(dut.uio_out.value) >> AUDIO) & 1
         high += audio
         changes += audio != prev
         prev = audio

@@ -22,6 +22,9 @@ module tb ();
   wire [7:0] uo_out;
   wire [7:0] uio_out;
   wire [7:0] uio_oe;
+  // The sync pulses on their own, for edge triggers in test.py and to view in a waveform
+  wire hsync_n = uo_out[7];
+  wire vsync_n = uo_out[3];
 `ifdef GL_TEST
   wire VPWR = 1'b1;
   wire VGND = 1'b0;
