@@ -15,6 +15,8 @@ orderings "$SRC/tt_um_tiny_breakout.sv" 3 "$W/top"
 vals=()
 for i in 0 1 2; do
   mkdir -p "$W/$i"; cp "$SRC"/*.sv "$W/$i/"; cp "$W/top$i.sv" "$W/$i/tt_um_tiny_breakout.sv"
+  # SRC_DIR's own cell list for synthesis, if it has one (else flow.sh uses src's)
+  if [ -f "$SRC/synth_excluded.cells" ]; then cp "$SRC/synth_excluded.cells" "$W/$i/"; fi
   # flow.sh says what failed and where its log is: show that, rather than end here silently
   if ! out=$("$ROOT/tools/flow.sh" place "${NAME}_o$i" "$W/$i"); then
     echo "$NAME: ordering $i failed:"; echo "$out"; exit 1
