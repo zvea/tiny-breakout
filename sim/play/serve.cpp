@@ -72,6 +72,17 @@ static void reply(int fd, const char *status, const char *type, const std::strin
   send_all(fd, body.data(), body.size());
 }
 
+// Ends a viewer's stream with the takeover header (video length 0xFFFFFFFF, no samples), so
+// it knows another viewer has the stream and doesn't reconnect. Its buffer may be full (a
+// stalled tab): wait a little for room, but not long.
+static void end_taken_over(int fd) {
+  const uint32_t taken_over[2] = {0xFFFFFFFFu, 0};
+  timeval tv{0, 200000};
+  setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+  send_all(fd, taken_over, sizeof taken_over);
+  close(fd);
+}
+
 static std::atomic<int> keys{0};
 static std::atomic<bool> reset_req{false};
 static std::mutex mu;
@@ -113,6 +124,8 @@ static void streamer() {
   std::string msg;
   int fd = -1;  // current viewer; owned (and closed) only by this thread
   for (;;) {
+    int old_fd = -1;  // a viewer taken over, told so once the lock is released
+    bool fresh = false;
     {
       std::unique_lock<std::mutex> lk(mu);
       if (fd < 0 && pending_fd < 0) {
@@ -120,18 +133,18 @@ static void streamer() {
         next = clk::now();
       }
       if (pending_fd >= 0) {  // newest viewer wins: its audio starts afresh
-        if (fd >= 0) {  // tell the old one why its stream ends (best effort: never block)
-          const uint32_t taken_over[2] = {0xFFFFFFFFu, 0};
-          send(fd, taken_over, sizeof taken_over, MSG_DONTWAIT | MSG_NOSIGNAL);
-          close(fd);
-        }
+        old_fd = fd;
         fd = pending_fd;
         pending_fd = -1;
-        stretcher.reset();
-        sent = 0;
-        ratio = 1;
-        audio_start = last_frame = clk::now();
+        fresh = true;
       }
+    }
+    if (old_fd >= 0) end_taken_over(old_fd);
+    if (fresh) {
+      stretcher.reset();
+      sent = 0;
+      ratio = 1;
+      audio_start = last_frame = clk::now();
     }
     if (reset_req.exchange(false)) g.reset();
     int k = keys.load();
@@ -275,10 +288,14 @@ int main(int argc, char **argv) {
         close(c);
         continue;
       }
-      std::lock_guard<std::mutex> lk(mu);
-      if (pending_fd >= 0) close(pending_fd);  // never handed over: safe to close here
-      pending_fd = c;
-      cv.notify_one();
+      int stale;
+      {
+        std::lock_guard<std::mutex> lk(mu);
+        stale = pending_fd;  // never handed over: this thread may end it
+        pending_fd = c;
+        cv.notify_one();
+      }
+      if (stale >= 0) end_taken_over(stale);
     } else {
       timeval tv1{0, 500000};
       setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &tv1, sizeof tv1);
