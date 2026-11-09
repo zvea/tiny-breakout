@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -247,7 +248,8 @@ View settle(Game &g, View v) {
 struct Voice {
   int vol = 0;          // 0..7
   int half = 0;         // its square wave's half-period in lines (the median run); 0 if silent
-  bool coarse = false;  // every run a multiple of 8 lines: the rumble's noise
+  bool noise = false;   // its runs differ in length (a tone's are all its half-period)
+  bool coarse = false;  // every run a multiple of 8 lines: with noise, the rumble's
 };
 struct Sound {
   Voice a, b;
@@ -274,6 +276,7 @@ Voice hear(const Game &g, int voice) {
   v.coarse = std::all_of(runs.begin(), runs.end(), [](int r) { return r % 8 == 0; });
   std::sort(runs.begin(), runs.end());
   v.half = runs[runs.size() / 2];
+  v.noise = runs.back() - runs.front() > 1;
   return v;
 }
 
@@ -506,14 +509,37 @@ void losing_every_ball() {
   View v = start_game(g), before = v;
   int expected_lives = 2, since_launch = 1000, prev_y = -1, prev_dy = 0, missing = 0, lit = 0;
   bool shades[4] = {};
-  std::vector<int> starts;  // the first note of each new sound on voice A at volume 6
-  int prev_note = 0;
+  // Each sound on voice A that starts at full volume (6; bricks and the thock play at 5 at
+  // most): the new game's call, known by its bass on voice B, and the others named by their
+  // first two notes: a lost ball's sigh (E-flat, D), the game-over trombone (G4, F#4)
+  std::vector<std::string> sounds;
+  std::vector<int> tune;  // the first two notes of the latest
+  int prev_vol = 0;
+  auto name = [](const std::vector<int> &t) -> std::string {
+    if (t.size() < 2) return "?";
+    if (t[0] == 25 && t[1] == 27) return "sigh";
+    if (t[0] == 40 && t[1] == 42) return "trombone";
+    return "? (" + std::to_string(t[0]) + ", " + std::to_string(t[1]) + ")";
+  };
+  auto losses = [&] {  // the sounds but the call
+    std::vector<std::string> l;
+    for (const auto &n : sounds)
+      if (n != "call") l.push_back(n);
+    return l;
+  };
   Sound s;
   auto listen_for_losses = [&] {
     s = listen(g);
-    int note = s.a.vol == 6 && !bass(s) ? s.a.half : 0;  // bricks play at 5 at most
-    if ((note == 25 || note == 40) && note != prev_note) starts.push_back(note);
-    prev_note = note;
+    if (s.a.vol == 6 && prev_vol != 6) {
+      tune.clear();
+      sounds.push_back(bass(s) ? "call" : "?");
+    }
+    if (!sounds.empty() && sounds.back() != "call" && s.a.vol && tune.size() < 2 &&
+        (tune.empty() || tune.back() != s.a.half)) {
+      tune.push_back(s.a.half);
+      sounds.back() = name(tune);
+    }
+    prev_vol = s.a.vol;
   };
   // Until the curtain shows (more than the 24-line status line is black), or the ball has
   // been gone for 10 frames: game over, with no curtain
@@ -583,14 +609,16 @@ void losing_every_ball() {
 
   // Wait for the trombone to end, then 30 frames of quiet, still with no ball
   part = "game over";
-  for (int i = 0; i < 200 && !(starts.size() >= 3 && s.a.vol == 0); i++) {
+  for (int i = 0; i < 200 && !(losses().size() >= 3 && s.a.vol == 0); i++) {
     v = run(g, 1);
     listen_for_losses();
     CHECK(!v.ball && border_colour(g) == BLACK, "ball %s, border %#x without FIRE",
           v.ball ? "showing" : "gone", border_colour(g));
   }
-  CHECK(starts == std::vector<int>({25, 25, 40}), "lost balls: %zu sounds, the first %d",
-        starts.size(), starts.empty() ? 0 : starts[0]);
+  std::string heard;
+  for (const auto &n : sounds) heard += " " + n;
+  CHECK(losses() == std::vector<std::string>({"sigh", "sigh", "trombone"}), "sounds:%s",
+        heard.c_str());
   for (int i = 0; i < 30; i++) {
     v = run(g, 1);
     s = listen(g);
@@ -812,7 +840,8 @@ void check_paddle_and_wall_sounds(const std::vector<Sound> &heard, int bounces) 
   auto frame_of = [&](size_t f) { return frame_no - int(heard.size() - 1 - f); };
   for (size_t f = 0; f + 3 < heard.size(); f++) {
     const Sound &h = heard[f];
-    if (h.a.half == 60 && h.a.vol == 5 && h.b.vol == 4 && !h.b.coarse) {  // a thock over a thump
+    // a thock over a thump (noise stepped every line)
+    if (h.a.half == 60 && h.a.vol == 5 && h.b.vol == 4 && h.b.noise && !h.b.coarse) {
       thocks++;
       size_t k = f + 1;  // once per bounce: straight on to the next notes
       CHECK(heard[k].a.half == 66 && heard[k].a.vol == 3 && heard[k + 1].a.half == 72 &&
@@ -820,13 +849,13 @@ void check_paddle_and_wall_sounds(const std::vector<Sound> &heard, int bounces) 
             "thock at frame %d: then %d (volume %d), %d (volume %d)", frame_of(f),
             heard[k].a.half, heard[k].a.vol, heard[k + 1].a.half, heard[k + 1].a.vol);
     }
-    if (bass(h)) continue;  // the new game's call: its bass's runs can be multiples of 8 too
-    if (h.b.coarse && h.b.vol == 3) {  // a rumble, once per bounce: it fades
+    auto rumble = [](const Voice &b) { return b.noise && b.coarse; };
+    if (rumble(h.b) && h.b.vol == 3) {  // a rumble, once per bounce: it fades
       rumbles++;
-      CHECK(!(heard[f + 1].b.coarse && heard[f + 1].b.vol == 3),
-            "the rumble at frame %d restarts", frame_of(f));
+      CHECK(!(rumble(heard[f + 1].b) && heard[f + 1].b.vol == 3), "the rumble at frame %d restarts",
+            frame_of(f));
     }
-    if (h.b.coarse)
+    if (rumble(h.b))
       CHECK(h.b.vol <= 3, "the rumble at frame %d at volume %d", frame_of(f), h.b.vol);
   }
   printf("%zu frames: %d paddle bounces, %d thocks, %d rumbles\n", heard.size(), bounces, thocks,
