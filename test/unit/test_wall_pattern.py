@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for wall_pattern: the layout of the walls after a game's first.
 

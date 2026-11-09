@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+// SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 // SPDX-License-Identifier: Apache-2.0
 //
 // Verilator model wrapper: runs one VGA frame at a time, emulating the Gamepad PMOD and

@@ -8,7 +8,7 @@
 # EXTRA_CFG='{"KEY": value}' overrides config values, for experiments.
 # Needs src/user_config.json: ./tt/tt_tool.py --create-user-config
 #
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"

@@ -22,7 +22,7 @@ Notes:
 - **Which number counts:** `flow.sh place` gives TT's utilisation. `local_area.sh` is quick but
   only a guide: its differences have been off from the flow's by up to 2x.
 - **Noise:** synthesis results shift with the order of register declarations alone (about a
-  point of utilisation, or 50-100 µm² locally), so compare means over orderings.
+  point of utilisation, or 50-100 um2 locally), so compare means over orderings.
 - **Routability:** the only real test is `flow.sh harden` (0 DRC, LVS and antenna errors).
 - **Warnings:** the flow passes runs with warnings. `warnings.sh` (run by `flow.sh harden`) fails
   on an inferred latch, a critical disconnected pin, a clock pin over its slew limit or a

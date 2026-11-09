@@ -4,7 +4,7 @@
 # and their mean: synthesis results shift by up to a point with declaration order alone, so
 # compare means. Runs the three in sequence, about 12 minutes.
 #
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"

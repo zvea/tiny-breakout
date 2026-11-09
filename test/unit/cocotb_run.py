@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 """Builds one module and runs a cocotb test module against it.
 

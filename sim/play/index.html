@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- SPDX-FileCopyrightText: © 2026 Alexei Zverovitch -->
+<!-- SPDX-FileCopyrightText: 2026 Alexei Zverovitch -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <html><head><meta charset="utf-8"><title>Tiny Breakout (RTL sim)</title>
 <style>
@@ -17,7 +17,7 @@
  input:disabled{opacity:.4;cursor:default}
 </style></head><body>
 <canvas id="c" width="640" height="480" role="img" aria-label="Tiny Breakout game screen"></canvas>
-<div id="s">connecting…</div>
+<div id="s">connecting...</div>
 <div id="say" class="sr" role="status"></div>
 <div id="snd" class="muted"><button id="sb" aria-label="Mute" aria-pressed="true" title="Unmute (M)">
  <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -25,7 +25,7 @@
   <path class="on" d="M15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12"/>
   <path class="off" d="M16 9l6 6M22 9l-6 6"/></svg></button>
  <label for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.3" disabled></div>
-<div id="help"><kbd>←</kbd>/<kbd>→</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> autoplay (arrows stop it) &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> <span id="mk">unmute</span></div>
+<div id="help"><kbd>Left</kbd>/<kbd>Right</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> autoplay (arrows stop it) &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> <span id="mk">unmute</span></div>
 <script>
 // The server runs the RTL model at 60 fps and streams frames:
 // [u32 video length][u32 audio samples][video: RLE (count, RRGGBB) pairs][audio: s16 at 48 kHz].
@@ -41,7 +41,7 @@ let line=st.textContent;
 // of state are announced instead, in a live region that isn't shown.
 const say=document.getElementById('say');
 function announce(m){say.textContent='';setTimeout(()=>{say.textContent=m},50)}  // a repeat too
-function showStatus(){st.textContent=line+(soundErr?` · ${soundErr}`:'')}
+function showStatus(){st.textContent=line+(soundErr?` | ${soundErr}`:'')}
 
 // Key changes go one request at a time, so they reach the server in order; changes made while
 // one is on its way are sent as one, the newest state (keeping a reset, bit 16, until sent).
@@ -193,12 +193,12 @@ async function stream(){
     const t=performance.now();
     // Every frame is simulated, none skipped: below 60 fps the game runs in slow motion, and
     // the server stretches the sound to match, at its true pitch
-    if(t-t0>1000){const fps=n*1000/(t-t0);line=`${fps.toFixed(1)} fps · running at ${Math.round(fps/60*100)}% of real speed${auto?' · AUTOPLAY':''}${soundOn?` · sound buffer ${Math.round(buffered/48)} ms`:''}`;showStatus();n=0;t0=t}
+    if(t-t0>1000){const fps=n*1000/(t-t0);line=`${fps.toFixed(1)} fps | running at ${Math.round(fps/60*100)}% of real speed${auto?' | AUTOPLAY':''}${soundOn?` | sound buffer ${Math.round(buffered/48)} ms`:''}`;showStatus();n=0;t0=t}
    }
   }catch(e){}
   clearInterval(watchdog);
-  if(taken){line='taken over by another tab – reload to watch here';showStatus();announce(line);return}
-  line='disconnected – retrying…';showStatus();
+  if(taken){line='taken over by another tab - reload to watch here';showStatus();announce(line);return}
+  line='disconnected - retrying...';showStatus();
   if(online!==false){online=false;announce('disconnected, retrying')}  // once, not every retry
   await new Promise(r=>setTimeout(r,1000));
  }

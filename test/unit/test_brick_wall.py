@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for brick_wall: 8 x 6 bricks of 64 x 16 px at x 64..575, y 64..159, refilled
 with the full wall or with a pattern grown from a seed row.

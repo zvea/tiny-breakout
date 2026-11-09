@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+// SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 // SPDX-License-Identifier: Apache-2.0
 //
 // Records the demo for tools/movie.sh: the chip from reset with no controller connected, so it

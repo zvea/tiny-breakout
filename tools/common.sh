@@ -2,7 +2,7 @@
 # Shared by the scripts in tools/: the repo root, the design's sources (in info.yaml order),
 # the sky130 cell library, and the .venv's Python and yosys.
 #
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 PY="$ROOT/.venv/bin/python"  # the project's .venv, for every script

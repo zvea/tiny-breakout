@@ -6,7 +6,7 @@
 # from the sky130 Liberty file; buffers, delay cells and clock buffers become wires. Registers
 # pair up by name, and yosys proves each matched signal (registers and outputs) equivalent.
 #
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"

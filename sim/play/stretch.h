@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+// SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 // SPDX-License-Identifier: Apache-2.0
 //
 // Pitch-preserving time stretch for the player's audio. The model gives 800 samples (16.7 ms)

@@ -6,7 +6,7 @@
 # as the Audio Pmod plays it. Writes FILE (default build/demo.mp4): H.264 and AAC, 640x480 at
 # 60 fps. Takes several minutes; needs Verilator 4 (.tools/v4, else PATH) and ffmpeg.
 #
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"

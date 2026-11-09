@@ -13,7 +13,7 @@
 # area, with better timing, fewer slew warnings and a clean route (measured before the sound
 # was added: TT utilisation 80.5% -> 61%).
 #
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 
 sky130_fd_sc_hd__clkbuf_1

@@ -6,7 +6,7 @@
 # GOLD_RENAMES='rename old new; rename ...' renames signals in REV's design first, so renamed
 # registers still pair up.
 #
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"

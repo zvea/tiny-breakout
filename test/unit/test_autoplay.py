@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for autoplay: paddle steering towards one of the paddle's four angle zones,
 picked anew after every paddle hit from the `random` bits (the game's LFSR, tested in

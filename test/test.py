@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 """Tiny Tapeout full-chip tests (tb.v), on the RTL or the gate-level netlist (GATES=yes).
 

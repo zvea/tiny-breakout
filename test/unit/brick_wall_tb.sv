@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+// SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 // SPDX-License-Identifier: Apache-2.0
 //
 // Test wrapper for brick_wall: the wall needs a beam that scans the screen in order, so

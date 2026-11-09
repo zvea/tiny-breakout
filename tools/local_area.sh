@@ -5,7 +5,7 @@
 # declarations. Noise is about +-50..100 um2, and the real flow often differs: use
 # flow.sh place for the figure that counts.
 #
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"

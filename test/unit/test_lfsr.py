@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for lfsr: the game's 5-bit LFSR (x^5 + x^3 + 1), stepping once per frame."""
 

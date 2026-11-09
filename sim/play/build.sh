@@ -3,7 +3,7 @@
 # test/README.md): sim.h relies on its internals (and 5.x is ~2x slower here). Run it from
 # anywhere; then, e.g. from this directory, ./obj_serve/Vtt_um_tiny_breakout [port] [index.html].
 #
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 set -e
 cd "$(dirname "$0")"  # obj_serve and serve.cpp are relative to this directory

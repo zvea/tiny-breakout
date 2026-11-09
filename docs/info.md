@@ -1,9 +1,9 @@
 ## How it works
 
-Tiny Breakout is a brick-breaker game with 640×480 VGA output at 60 Hz. There is no frame
+Tiny Breakout is a brick-breaker game with 640x480 VGA output at 60 Hz. There is no frame
 buffer: every pixel is worked out from the beam position as the picture is drawn.
 
-- **Bricks:** 8×6, coloured by row from red at the top to violet at the bottom. The first
+- **Bricks:** 8x6, coloured by row from red at the top to violet at the bottom. The first
   brick wall of a game is full; each later one is a symmetric pattern of 20 to 32 bricks, one
   of 21, picked at random.
 - **Ball:** bounces off the side and top walls, the paddle and the bricks. Where it lands on

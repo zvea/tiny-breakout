@@ -6,7 +6,7 @@
 # message in warning.log that tools/warnings.ref does not have, for a person to judge.
 # --update rewrites warnings.ref from this run, once its new messages have been looked at.
 #
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"

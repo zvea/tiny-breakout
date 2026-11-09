@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2026 Alexei Zverovitch
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for sound: which sound each event starts on which voice, the notes it plays and
 how its volume falls, that the tones have the pitch their notes say, how the noise changes,
