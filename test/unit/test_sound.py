@@ -138,6 +138,8 @@ async def a_new_game_plays_chords_on_both_voices(dut):
         assert (a_kind, b_kind) == (A_START, B_CHORD), f"frame {f}: kinds {a_kind}, {b_kind}"
         assert (a_note, b_note) == ((30, 20) if f < 8 else (15, 12)), f"frame {f}"
         assert a_vol > 0 and b_vol > 0, f"frame {f}: volumes {a_vol}, {b_vol}"
+    await frame(dut)  # the frame they end: both silent
+    assert await read(dut, "a_vol", "b_vol") == [0, 0]
     for _ in range(2):
         await frame(dut)
     assert await read(dut, "a_kind", "b_kind") == [A_NONE, B_NONE]

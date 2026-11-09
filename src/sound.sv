@@ -170,7 +170,10 @@ module sound (
     case (b_kind)
       B_THUMP:  b_vol = b_t[2] ? 3'd0 : {b_t[1:0] == 0, -b_t[1:0]};  // 4 - b_t
       B_RUMBLE: b_vol = b_t[2] ? 3'd0 : {1'b0, ~b_t[1:0]};           // 3 - b_t, down to 0
-      B_CHORD:  b_vol = 3'd6 - {1'b0, a_t[4:3]};
+      B_CHORD: begin  // voice A's volume, silent with it on the frame it ends
+        if (a_kind == A_START) b_vol = a_vol;
+        else b_vol = 0;
+      end
       default:  b_vol = 0;
     endcase
   end
