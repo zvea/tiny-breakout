@@ -52,9 +52,11 @@ def scenarios() -> list[tuple[str, bool]]:
 
 # Each scenario's time limit, by tier, only so that one that hangs fails instead of holding up
 # the run (the scenarios' own waits are capped, and their long rounds stop at the first
-# failure). The cheap tier's longest, lost_at_speed, has taken 9 minutes on a busy machine, so
-# 20 is a hang; the long game takes about 25, so 2 hours is.
-CHEAP_TIMEOUT = 20 * 60
+# failure). The cheap tier's longest, lost_at_speed, can play 8 rounds and pass: about 14,000
+# frames, 12 minutes at 50 ms a frame, and up to 20,000 if autoplay is slow to clear its bricks,
+# or more on a busy machine. So 30 minutes may be a slow run as well as a hang. The long game
+# takes about 25, so 2 hours is a hang.
+CHEAP_TIMEOUT = 30 * 60
 MILESTONE_TIMEOUT = 2 * 60 * 60
 
 # Identifies this test run: pytest-xdist gives all its workers the same one
