@@ -87,9 +87,9 @@ by bit, is in [info.yaml](info.yaml).
 
 The same design also runs on two FPGA boards:
 
-- [Tiny Tapeout's iCE40UP5K board](fpga/ice40up5k): the full game, with VGA, an SNES
+- [Tiny Tapeout's iCE40UP5K board](fpga/ice40up5k/README.md): the full game, with VGA, an SNES
   controller and sound.
-- [Sipeed Tang Nano 20K](fpga/tang_nano_20k): the demo, with HDMI picture and sound.
+- [Sipeed Tang Nano 20K](fpga/tang_nano_20k/README.md): the demo, with HDMI picture and sound.
 
 ## Licence
 
