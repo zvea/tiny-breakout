@@ -20,8 +20,8 @@ the game plays itself as a demo.
 There is no frame buffer. Each pixel is computed from the game's state as the beam draws it.
 
 - Collisions are found in the picture itself. When the beam draws a ball pixel over a brick or
-  the paddle, the ball has hit it. The pixel's position in the brick shows which side the ball
-  came from. Autoplay works the same way: it notes which part of the paddle is under the ball
+  the paddle, the ball has hit it. Where the ball overlaps the brick shows which side it came
+  from. Autoplay works the same way: it notes which part of the paddle is under the ball
   as the beam goes past, which takes two 2-bit comparisons instead of an adder
   ([autoplay.sv](src/autoplay.sv)).
 - The bricks live in a ring of flip-flops that turns with the beam, so the brick being drawn is
@@ -33,8 +33,8 @@ There is no frame buffer. Each pixel is computed from the game's state as the be
   of the tile.
 - The ball's velocity is three bits: left or right, up or down, steep or flat. A bounce just
   sets or flips some of them, where signed velocities would need negations and absolute values.
-  The ball always moves by the same step, two to six times every four frames as it speeds up
-  from 1x to 3x.
+  Its step never grows: the ball moves two to six times every four frames as it speeds up from
+  1x to 3x.
 - The sound effects are square waves timed by the video's line clock, so a 7-bit counter is
   enough for a note's pitch. Each of the two voices keeps only which sound it is playing and
   for how many frames, and works out the note and volume from those. The noise for the paddle
