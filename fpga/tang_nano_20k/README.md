@@ -63,7 +63,7 @@ for the scripts.
 | [test/](test) | The simulation test |
 | [tools/build.sh](tools/build.sh), [tools/common.sh](tools/common.sh) | The build, and what it shares with the test |
 | [tools/requirements.txt](tools/requirements.txt) | The build's tools, for this board's `.venv` |
-| [third_party/hdmi](third_party/hdmi) | [hdl-util/hdmi](https://github.com/hdl-util/hdmi), a git submodule, with one fix (below) |
+| [third_party/hdmi](third_party/hdmi) | [hdl-util/hdmi](https://github.com/hdl-util/hdmi), a git submodule |
 
 **Clocks.** The PLL makes 126 MHz from the board's 27 MHz crystal (27 x 14 / 3), and a divider
 makes 25.2 MHz from that. 25.2 MHz is the 60.00 Hz form of 640x480: 0.1% faster than the
@@ -83,16 +83,6 @@ so the board sounds like the player: a 3rd-order CIC filter decimating by 525 (a
 48 kHz sample is exactly 525 clocks), then a 50 Hz high-pass standing in for the Pmod's AC
 coupling, so the sound has no DC. The samples go to hdl-util as 16-bit audio, the same on both
 channels. The board's own speaker amplifier isn't used.
-
-## The fix to hdl-util
-
-yosys's own front end can't read hdl-util (its ports are unpacked arrays), and yosys-slang
-rejects two variables that are assigned both with `=` and `<=` in one block. A two-character
-fix makes each one's reset assignment match its others, with the same behaviour. It is
-proposed upstream ([hdl-util/hdmi#58](https://github.com/hdl-util/hdmi/pull/58)); until it is
-merged, the submodule comes from a fork,
-[zvea/hdmi](https://github.com/zvea/hdmi/commits/nonblocking-assignments): upstream plus that
-one commit.
 
 ## The test
 
