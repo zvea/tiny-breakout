@@ -699,6 +699,12 @@ void lost_at_speed() {
     int lost = 0;
     for (; lost < 2000 && v.lives == lives; lost++) v = run(g, 1);
     if (lives == 0) {  // the last ball: game over, and FIRE starts a new game
+      // That loss ends on the new game's first frame, which shows its markers but not yet its
+      // wall (frame 3, see start_game). The next round counts the bricks cleared from the wall
+      // it starts with, so wait for it.
+      for (int i = 0; i < 6 && v.bricks < 48; i++) v = run(g, 1);
+      CHECK(v.bricks == 48 && v.lives == 2, "round %d: a new game with %d bricks, %d spare balls",
+            round, v.bricks, v.lives);
       printf("frame %5d: round %d: 4 bricks in %d frames, the last ball lost and a new game in "
              "%d\n", frame_no, round, sped, lost);
       continue;
