@@ -36,7 +36,19 @@ echo "Place and route: $BUILD/pnr.log"
   --json "$BUILD/tn20k.json" --write "$BUILD/tn20k_pnr.json" \
   --device GW2AR-LV18QN88C8/I7 --vopt family=GW2A-18C --vopt cst="$REL/src/tn20k.cst" \
   --freq 25.2 --seed "$seed"
-grep -E "Max frequency for clock" "$BUILD/pnr.log" | tail -2 | sed 's/^Info: */  /'
 
 echo "Bitstream: $BUILD/tn20k.fs"
 "$VENV/bin/gowin_pack" -d GW2A-18C -o "$BUILD/tn20k.fs" "$BUILD/tn20k_pnr.json"
+
+# A summary, from nextpnr's log: the chip's resources the design uses (those it uses at all,
+# less the constant drivers and the global set/reset), and each clock's maximum frequency after
+# routing (the log's last report) against its target (--freq)
+echo
+echo "Resources (used / on the chip):"
+sed -n '/Device utilisation:/,/^$/p' "$BUILD/pnr.log" |
+  sed -nE 's/^Info:[[:space:]]+([A-Za-z0-9_]+): +([0-9]+)\/ *([0-9]+) +([0-9]+)%.*/\1 \2 \3 \4/p' |
+  awk '$2 > 0 && $1 !~ /^(VCC|GND|GSR)$/ { printf "  %-10s %6d / %6d  %3d%%\n", $1, $2, $3, $4 }'
+echo "Timing (maximum frequency after routing):"
+grep "Max frequency for clock" "$BUILD/pnr.log" | tail -2 |
+  sed -nE "s/.*clock +'([^']+)': +([0-9.]+) MHz \((PASS|FAIL) at ([0-9.]+) MHz.*/\1 \2 \3 \4/p" |
+  awk '{ printf "  %-22s %7.2f MHz (target %.2f): %s, %.1fx margin\n", $1, $2, $4, $3, $2 / $4 }'
