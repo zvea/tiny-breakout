@@ -10,7 +10,8 @@
  * (`logic x = expr;` would only initialise x). Two exceptions, by need: a signal used before
  * the logic that works it out is declared ahead and given by `assign` there (clear_brick,
  * new_game, refill_bricks), and a struct filled in field by field is `logic` with an `assign`
- * per field (tiny_vga_out's pins).
+ * per field (tiny_vga_out's pins). Output ports, declared in the port list, are given by
+ * `assign` too.
  *
  * Pins (see inputs_t below and tiny_vga_out.sv for the exact bit layout):
  *   uo_out     : TinyVGA PMOD (640x480 @ 60 Hz, 25.175 MHz clock)
@@ -30,7 +31,7 @@
  * could mix its position and the next. Behind the register they all see one value per clock.
  * One stage is enough, since the danger is that disagreement rather than metastability: should
  * the register go metastable, it has the slack of the paths from it to settle before anything
- * samples it (the design's worst setup slack is about 25 ns of the 40 ns clock), far longer
+ * samples it (on the chip, the worst setup slack is about 25 ns of the 40 ns clock), far longer
  * than a flip-flop needs. The gamepad pins are synchronised in gamepad_rx.
  *
  * Collisions with bricks and the paddle are found by pixel overlap during scan-out: a ball
@@ -74,8 +75,9 @@ module tt_um_tiny_breakout (
   } inputs_t;
 
   // The direct pins, registered (see "Input timing" in the header). No reset: it would never
-  // be seen, as the register is loaded on every clock and the game reads the buttons only at
-  // a frame update (frame_tick and move_tick, at line 480), the first 480 lines after reset.
+  // be seen, as the register is loaded on every clock and the game reads the buttons only in
+  // the frame update and the moves (frame_tick and move_tick, lines 480..483), the first of
+  // them 480 lines after reset.
   logic [3:0] direct_q;
   always_ff @(posedge clk) direct_q <= ui_in[3:0];
 
@@ -247,7 +249,7 @@ module tt_um_tiny_breakout (
   logic       bricks_empty;
   logic       refill_bricks;  // decided by the frame update below
   logic       clear_brick;    // decided by the collision logic below
-  logic       clear_brick_q;  // ... and registered there, for the score and speed_level
+  logic       clear_brick_q;  // ... and registered there (see Collisions)
 
   brick_wall u_brick_wall (
       .clk         (clk),
@@ -370,7 +372,8 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   // Collisions: pixel overlap with the ball during scan-out
   // ---------------------------------------------------------------------------
-  // The ball resting on the paddle never collides
+  // The ball resting on the paddle never collides: its box (y 440..447) ends above the paddle
+  // (from y 448), and the serving mask makes sure of it, which the registers below rely on
   wire touch = ball_px & ~serving;
 
   assign clear_brick = touch && brick_px;
@@ -392,8 +395,9 @@ module tt_um_tiny_breakout (
   // on the pixel, as the wall's ring turns with the beam (brick_wall.sv); everything else
   // takes the touch a clock later, from these flip-flops, loaded every clock. A clock late is
   // harmless: the flags are read at frame_tick (line 480; the last touch is on the paddle's
-  // line, 455), and for the score and speed_level see below. No reset: touch is low while
-  // reset holds (serving is set), so zeros come in.
+  // line, 455), the sound's brick note reads hit_row and speed_level only at a line start,
+  // and for the score see its instance above, for speed_level below. No reset: from
+  // reset's second clock touch is low (serving is set), so zeros come in.
   //   clear_brick_q:  a brick was cleared (the flags, the score and speed_level read it)
   //   side_hit_q:     the edge it was hit on, read with clear_brick_q
   //   paddle_touch_q: the paddle was touched
@@ -480,8 +484,9 @@ module tt_um_tiny_breakout (
   // too if speed_level[3] (2x); one more in phase 1 if speed_level[2] (a half step); and
   // from speed_level 16 1, 2, 1, 2 (3x). In the pause after a cleared wall speed_level is the
   // timer, not a speed: there the paddle, with the ball resting on it, moves at 1x, as the next
-  // ball will. (paused holds through the move lines: the wall's emptiness is read off the
-  // picture above them.) Line 480 + k moves if k < moves (line 480 is frame_tick). Each term is
+  // ball will. (paused holds through the move lines, as the wall's emptiness is read off the
+  // picture above them, except in the frame that ends the pause, where it drops as the wall
+  // refills; speed_level is back at 0 then, which gives the same count.) Line 480 + k moves if k < moves (line 480 is frame_tick). Each term is
   // a 1-bit condition, zero-extended by {1'b0, ...}: a cast such as 2'(a & b) would widen a and
   // b before the AND, which lint rightly flags.
   wire [1:0] moves = paused         ? {1'b0, !odd_frame}
@@ -588,8 +593,9 @@ module tt_um_tiny_breakout (
   // speed_level: 0 while the ball is on the paddle and from a lost ball, +1 per brick while
   // it flies (up to 16); in the pause, 16..31, a step every 4th frame; after game over, +1 per
   // frame up to 31. A brick's step comes a clock after it is cleared (see Collisions): the
-  // speed is read at the moves, from line 480, and nothing else reads speed_level while the
-  // ball flies (the curtain, the celebration and timer_done are for game over and the pause).
+  // speed is read at the moves, from line 480, and by the sound's brick note only at a line
+  // start; nothing else reads speed_level while the ball flies (the curtain, the celebration
+  // and timer_done are for game over and the pause).
   always_ff @(posedge clk) begin
     if (!rst_n || (frame_tick && new_game)) begin
       speed_level <= 0;

@@ -23,7 +23,7 @@
   "//": "Tiny Breakout: 0.05 ns after placement, not the template's 0.1. Most of the delay cells",
   "//": "hold repair added were only to reach the extra margin: 135 of them at 0.1 ns, 46 at 0.05.",
   "//": "With 0.1 the design with the sound got stuck in detailed routing (~4,300 violations);",
-  "//": "with 0.05 it routed clean, hold slack +0.028 ns at the worst corner. That slack is on top",
+  "//": "with 0.05 it routes clean, with positive hold slack at the worst corner. That slack is on top",
   "//": "of sign-off's own 0.25 ns clock uncertainty and 5% derate. Don't go below 0.05.",
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.05,
   "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.05,

@@ -40,7 +40,9 @@
 module sound (
     input  logic       clk,
     input  logic       rst_n,
-    input  logic       frame_tick,   // the events below are valid here
+    input  logic       frame_tick,   // the events below are valid here (brick_row and fast
+                                     // are also read while a brick's note plays, and may
+                                     // change mid-frame: inaudibly, for at most a frame)
     input  logic [9:0] h_pos,
     input  logic [9:0] v_pos,        // the beam's line
     input  logic [3:0] random,       // a new random number every frame (for the noise)
