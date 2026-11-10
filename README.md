@@ -9,6 +9,9 @@ A complete VGA brick-breaker game in a single [Tiny Tapeout](https://tinytapeout
 Tiny Breakout consists of some 14,200 transistors in 1,550 standard cells. There is no
 processor or frame buffer; the game keeps its state in about 200 flip-flops.
 
+It has been submitted to Tiny Tapeout's SKY26e shuttle (SkyWater's 130 nm process). It also
+[runs on FPGAs](#on-an-fpga).
+
 ## The game
 
 The rules are in [docs/info.md](docs/info.md). Play with an SNES controller
@@ -79,6 +82,14 @@ runs there; [tools/movie.sh](tools/movie.sh) records the demo as a movie (see
 
 The controls and which pins each Pmod uses are in [docs/info.md](docs/info.md); the pinout, bit
 by bit, is in [info.yaml](info.yaml).
+
+## On an FPGA
+
+The same design also runs on two FPGA boards:
+
+- [Tiny Tapeout's iCE40UP5K board](fpga/ice40up5k): the full game, with VGA, an SNES
+  controller and sound.
+- [Sipeed Tang Nano 20K](fpga/tang_nano_20k): the demo, with HDMI picture and sound.
 
 ## Licence
 
