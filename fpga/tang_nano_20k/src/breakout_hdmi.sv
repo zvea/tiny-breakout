@@ -21,7 +21,11 @@
 
 `default_nettype none
 
-module breakout_hdmi (
+module breakout_hdmi #(
+    // Picture only, with no sound: plain DVI, for monitors that don't take HDMI's audio (and
+    // for simulators that can't evaluate hdl-util's audio parameters)
+    parameter bit DVI_ONLY = 1'b0
+) (
     input  logic       clk_pixel,     // 25.2 MHz: 640x480 at 60.00 Hz
     input  logic       clk_pixel_x5,  // 126 MHz, for the TMDS serialisers (DDR: 252 Mbit/s)
     input  logic       reset_button,  // high while pressed, asynchronous
@@ -108,6 +112,7 @@ module breakout_hdmi (
   // ---------------------------------------------------------------------------
   hdmi #(
       .VIDEO_ID_CODE     (1),     // 640x480
+      .DVI_OUTPUT        (DVI_ONLY),
       .VIDEO_REFRESH_RATE(60.0),  // with the 25.2 MHz clock (59.94 with 25.175)
       .AUDIO_RATE        (48000),
       .AUDIO_BIT_WIDTH   (16)

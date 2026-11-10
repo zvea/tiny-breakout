@@ -30,18 +30,18 @@ module tb_breakout_hdmi;
   logic clk = 0;
   always #1 clk = !clk;
 
-  breakout_hdmi dut (
+  // DVI only (no sound in hdl-util): Verilator can't evaluate hdl-util's audio clock packet's
+  // parameters (a real cast to int in a localparam). The picture path is the same code with or
+  // without sound, and the audio checks below are on breakout_hdmi's side, before hdl-util.
+  breakout_hdmi #(
+      .DVI_ONLY(1'b1)
+  ) dut (
       .clk_pixel   (clk),
       .clk_pixel_x5(1'b0),  // the serialisers aren't simulated (hdl-util leaves them out)
       .reset_button(1'b0),
       .tmds        (),
       .tmds_clock  ()
   );
-
-  // hdl-util as DVI (video only): Verilator can't evaluate its audio clock packet's parameters
-  // (a real cast to int in a localparam). The video path is the same code with or without
-  // audio, and the audio checks below are on breakout_hdmi's side, before hdl-util.
-  defparam dut.u_hdmi.DVI_OUTPUT = 1'b1;
 
   wire [9:0] h_pos = dut.u_game.u_vga_timing.h_pos;
   wire [9:0] v_pos = dut.u_game.u_vga_timing.v_pos;

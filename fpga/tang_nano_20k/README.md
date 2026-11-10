@@ -106,9 +106,9 @@ Drop the patch once hdl-util has an equivalent fix upstream.
    their sum. The demo must make some sound within the run, or the check would prove nothing.
 
 Verilator can't evaluate one of hdl-util's audio parameters (a real cast to int), so the test
-runs hdl-util in its video-only (DVI) form. The picture path is the same code in both forms.
-The sound checks are on this design's side, before hdl-util, so hdl-util's audio packets are
-tested only on a real screen.
+sets `breakout_hdmi`'s `DVI_ONLY`, and hdl-util sends video only (DVI). The picture path is
+the same code in both forms. The sound checks are on this design's side, before hdl-util, so
+hdl-util's audio packets are tested only on a real screen.
 
 ## Limits
 
@@ -116,4 +116,5 @@ tested only on a real screen.
 - The picture is 0.1% fast (25.2 MHz, see Clocks).
 - One audio block a frame, at the start of line 480, may mix the old sound and the new: the
   game's frame update changes the sound a clock into it. It is too short to hear.
-- HDMI audio needs an HDMI screen: a DVI-only monitor may not show the picture either.
+- HDMI audio needs an HDMI screen: a DVI-only monitor may not show the picture either. For
+  one, build with `breakout_hdmi`'s `DVI_ONLY` parameter set: picture only, no sound.
