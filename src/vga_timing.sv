@@ -20,6 +20,7 @@ module vga_timing (
     output logic       h_sync_n,     // sync pulses, active low (combinational)
     output logic       v_sync_n,
     output logic       vblank_start  // one clock: the first clock after the last visible line
+                                     // (registered)
 );
 
   localparam logic [9:0] H_VISIBLE    = 640;
@@ -47,9 +48,16 @@ module vga_timing (
     end
   end
 
-  assign visible      = (h_pos < H_VISIBLE) && (v_pos < V_VISIBLE);
-  assign h_sync_n     = ~((h_pos >= H_SYNC_START) && (h_pos < H_SYNC_END));
-  assign v_sync_n     = ~((v_pos >= V_SYNC_START) && (v_pos < V_SYNC_END));
-  assign vblank_start = (v_pos == V_VISIBLE) && (h_pos == 0);
+  // vblank_start starts the game's frame update, its widest logic, so it comes from a
+  // flip-flop rather than a comparator (the iCE40 FPGA build needs the time). It is decoded a
+  // clock early, at the last clock of the last visible line, which the counters make exact.
+  always_ff @(posedge clk) begin
+    if (!rst_n) vblank_start <= 0;
+    else vblank_start <= (v_pos == V_VISIBLE - 1) && h_end;
+  end
+
+  assign visible  = (h_pos < H_VISIBLE) && (v_pos < V_VISIBLE);
+  assign h_sync_n = ~((h_pos >= H_SYNC_START) && (h_pos < H_SYNC_END));
+  assign v_sync_n = ~((v_pos >= V_SYNC_START) && (v_pos < V_SYNC_END));
 
 endmodule
