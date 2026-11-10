@@ -15,9 +15,10 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   The paddle moves 4 px each time the ball moves, so it speeds up with the ball (in the
   pause after a cleared brick wall it moves at 1x).
 - **Lives and score:** you have 2 spare balls, shown top left; the score, top right, counts
-  10 per brick, up to 9990. Losing the last ball ends the game: a black curtain comes down over
-  everything but the score, and once it is down (about half a second) fire starts a new game. Once a ball has fallen past the paddle, the black
-  margin around the playfield turns red, brightening as the ball drops off the screen.
+  10 per brick, up to 9990. Once a ball has fallen past the paddle, the black margin around the
+  playfield turns red, brightening as the ball drops off the screen. Losing the last ball ends
+  the game: a black curtain comes down over everything but the score, and once it is down
+  (about half a second) fire starts a new game.
 - **Levels:** when the last brick is cleared, the game pauses for about a second while
   rainbow bands rise up the screen, gives back a spare ball (up to 2) and builds a new brick
   wall. Each level's paddle is narrower: 96 px, 80, 64, then 48 from the 4th level.
@@ -51,10 +52,10 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 | Autoplay | SELECT switches it on; left, right or fire switches it off | `ui[3]` high |
 
 The other gamepad buttons (B, Y, START, up and down) do nothing. There is no pause, and a
-game you are playing can't be restarted before game over, except by a reset. Only the first of
-the Gamepad PMOD's two controllers is read (the one Psychogenic's `gamepad_pmod_single` reads:
-the last 12 bits of each report); with only the second one connected, the game sees no
-controller.
+game you are playing can't be restarted before game over, except by a reset or by unplugging
+the controller and plugging it back in. Only the first of the Gamepad PMOD's two controllers is
+read (the one Psychogenic's `gamepad_pmod_single` reads: the last 12 bits of each report); with
+only the second one connected, the game sees no controller.
 
 The direct inputs are active high, for plain buttons or for simulators that can't produce
 the gamepad's serial signal. Pressing left, right or fire (`ui[0]` to `ui[2]`) also ends the
