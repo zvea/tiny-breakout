@@ -16,9 +16,6 @@ jobs:
   fpga:
     runs-on: ubuntu-24.04
     env:
-      # Place and route against the clock the board supplies (640x480 at 60 Hz), not the tool's
-      # 12 MHz default, so a change that slows the design below it fails here
-      TT_FPGA_FREQ: "25.175"
       # tt_fpga.py's default seed, pinned in case that default changes. Rebuilds can still
       # differ: the action installs a nightly oss-cad-suite and tt-support-tools from main.
       TT_FPGA_SEED: "10"
@@ -28,5 +25,40 @@ jobs:
         with:
           submodules: recursive
 
+      # Place and route against the clock the board supplies (640x480 at 60 Hz; info.yaml's
+      # clock_hz), not nextpnr's 12 MHz default, so a change that slows the design below it
+      # fails here. TT_FPGA_FREQ isn't an input of TT's action, only an environment variable
+      # that tt_fpga.py (tt-support-tools main) reads: the timing step checks that it took.
+      - name: clock target from info.yaml
+        run: |
+          hz=$(sed -n 's/^ *clock_hz: *\([0-9][0-9]*\).*/\1/p' info.yaml)
+          [ -n "$hz" ] || { echo "::error::no clock_hz in info.yaml"; exit 1; }
+          echo "TT_FPGA_FREQ=$(awk -v hz="$hz" 'BEGIN { print hz / 1e6 }')" >> "$GITHUB_ENV"
+
       - name: FPGA bitstream for TT ASIC Sim (ICE40UP5K)
         uses: TinyTapeout/tt-gds-action/fpga/ice40up5k@ttsky26e
+
+      # nextpnr's result, which tt_fpga.py reports only as "placement failed": its last Max
+      # frequency line is the one after routing (the one before is placement's estimate)
+      - name: timing
+        if: success() || failure()
+        run: |
+          log=build/02-nextpnr.log
+          # LEVEL MESSAGE [LINE]: an annotation, and the step summary (LINE as code: it has $ signs)
+          report() { echo "::$1::$2${3:+ $3}"; echo "$2${3:+ \`$3\`}" >> "$GITHUB_STEP_SUMMARY"; }
+          line=$(grep -E 'Max frequency for clock .*\((PASS|FAIL) at [0-9.]+ MHz\)' \
+            "$log" 2> /dev/null | tail -1 | sed 's/^[A-Za-z]*: //' || true)
+          if [ -z "$line" ]; then
+            report error "No timing result in $log: nextpnr didn't run, or stopped before timing it"
+            exit 1
+          fi
+          at=$(echo "$line" | sed -E 's/.*\((PASS|FAIL) at ([0-9.]+) MHz\).*/\2/')
+          # nextpnr prints the target to 0.01 MHz
+          if ! awk -v a="$at" -v t="$TT_FPGA_FREQ" 'BEGIN { exit !(a-t < 0.01 && t-a < 0.01) }'; then
+            report error "Timed at $at MHz, not $TT_FPGA_FREQ: TT_FPGA_FREQ was ignored." "$line"
+            exit 1
+          fi
+          case $line in
+            *"(PASS at"*) report notice "Timing met:" "$line" ;;
+            *) report error "Timing missed:" "$line"; exit 1 ;;
+          esac
