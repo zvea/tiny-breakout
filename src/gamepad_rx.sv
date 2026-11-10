@@ -45,7 +45,7 @@ module gamepad_rx (
   logic [4:0] index;  // index of the next bit; 31: waiting for a latch
   logic       up;     // up, held until down arrives
 
-  wire clk_rise = clk_s[1] & ~clk_s[2];
+  wire clk_rise = clk_s[1] && !clk_s[2];
   wire d        = data_s[1];
 
   always_ff @(posedge clk) begin
@@ -68,7 +68,7 @@ module gamepad_rx (
       connected       <= 0;
       select_autoplay <= 0;
     end else if (clk_rise) begin
-      if (index == gamepad_pkg::BIT_DOWN) connected <= ~(up & d);
+      if (index == gamepad_pkg::BIT_DOWN) connected <= !(up && d);
       // A report with no controller (all ones) sets this at SELECT and clears it at LEFT
       if (d && index == gamepad_pkg::BIT_SELECT) select_autoplay <= 1;
       else if (d && index >= gamepad_pkg::BIT_LEFT && index <= gamepad_pkg::BIT_R)
@@ -88,7 +88,7 @@ module gamepad_rx (
         gamepad_pkg::BIT_LEFT:  left  <= d;
         gamepad_pkg::BIT_RIGHT: right <= d;
         gamepad_pkg::BIT_A:     fire  <= d;
-        gamepad_pkg::BIT_X, gamepad_pkg::BIT_L, gamepad_pkg::BIT_R: fire <= fire | d;
+        gamepad_pkg::BIT_X, gamepad_pkg::BIT_L, gamepad_pkg::BIT_R: fire <= fire || d;
         default: ;
       endcase
     end

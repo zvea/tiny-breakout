@@ -106,7 +106,7 @@ module brick_wall (
     else if (row == FIRST_ROW + 6'(ROWS)) filling <= 0;
   end
 
-  assign brick_px = in_cols & in_rows & ~gap & bricks[0][0] & ~filling;
+  assign brick_px = in_cols && in_rows && !gap && bricks[0][0] && !filling;
 
   // Whether a brick was drawn this frame, from the wall's top row on (a filling wall counts)
   logic seen;
@@ -117,7 +117,7 @@ module brick_wall (
 
   assign brick_row    = {~row[2], row[1:0]};  // rows 4..9 have low bits 4,5,6,7,0,1: flip bit 2
   assign over_columns = in_cols;
-  assign empty        = ~seen;
+  assign empty        = !seen;
 
   wire _unused = &{h_pos[0], v_pos[0], 1'b0};  // gaps are 2 px: bit 0 is never needed
 

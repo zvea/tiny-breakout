@@ -11,7 +11,8 @@
  * the logic that works it out is declared ahead and given by `assign` there (clear_brick,
  * new_game, refill_bricks), and a struct filled in field by field is `logic` with an `assign`
  * per field (tiny_vga_out's pins). Output ports, declared in the port list, are given by
- * `assign` too.
+ * `assign` too. Operators: logical (&&, ||, !) on 1-bit flags and conditions, bitwise
+ * (&, |, ^, ~) on vectors and for bit-level work such as masks and XOR.
  *
  * Pins (see inputs_t below and tiny_vga_out.sv for the exact bit layout):
  *   uo_out     : TinyVGA PMOD (640x480 @ 60 Hz, 25.175 MHz clock)
@@ -191,10 +192,10 @@ module tt_um_tiny_breakout (
       .select_autoplay(gp_autoplay_raw)
   );
 
-  wire gp_left  = gp_left_raw  & gp_connected;
-  wire gp_right = gp_right_raw & gp_connected;
-  wire gp_fire  = gp_fire_raw  & gp_connected;
-  wire gp_autoplay = gp_autoplay_raw & gp_connected;
+  wire gp_left  = gp_left_raw  && gp_connected;
+  wire gp_right = gp_right_raw && gp_connected;
+  wire gp_fire  = gp_fire_raw  && gp_connected;
+  wire gp_autoplay = gp_autoplay_raw && gp_connected;
 
   // Demo: autoplay while no controller is connected, until a direct button is pressed
   // (held at a frame update; for simulators that only toggle pins). Ending the demo starts
@@ -204,8 +205,8 @@ module tt_um_tiny_breakout (
   // the call too, while without a controller the demo starts silently.
   logic demo_allowed;  // no direct button pressed since reset
   logic demo_was;      // the demo ran in the previous frame (or reset)
-  wire  demo     = demo_allowed & ~gp_connected;
-  wire  end_demo = demo_was & ~demo;
+  wire  demo     = demo_allowed && !gp_connected;
+  wire  end_demo = demo_was && !demo;
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
@@ -217,10 +218,10 @@ module tt_um_tiny_breakout (
     end
   end
 
-  wire autoplay  = ui.autoplay | gp_autoplay | demo;
-  wire btn_left  = ui.left  | gp_left;
-  wire btn_right = ui.right | gp_right;
-  wire btn_fire  = ui.fire  | gp_fire | autoplay;  // autoplay launches the ball itself
+  wire autoplay  = ui.autoplay || gp_autoplay || demo;
+  wire btn_left  = ui.left  || gp_left;
+  wire btn_right = ui.right || gp_right;
+  wire btn_fire  = ui.fire  || gp_fire || autoplay;  // autoplay launches the ball itself
 
   // Chance: an LFSR that steps every frame, for autoplay's aim, the shape of each wall and the
   // sound's noise
@@ -236,8 +237,8 @@ module tt_um_tiny_breakout (
   logic auto_left, auto_right;  // from autoplay, below: it reads the ball and paddle off the beam
 
   // Paddle steering: from autoplay, or from the buttons (left and right together cancel)
-  wire go_left  = autoplay ? auto_left  : (btn_left & ~btn_right);
-  wire go_right = autoplay ? auto_right : (btn_right & ~btn_left);
+  wire go_left  = autoplay ? auto_left  : (btn_left && !btn_right);
+  wire go_right = autoplay ? auto_right : (btn_right && !btn_left);
 
   // ---------------------------------------------------------------------------
   // What is under the beam
@@ -296,7 +297,7 @@ module tt_um_tiny_breakout (
   wire wall_r_px  = wall_r_col && (cell_y >= WALL_T_CELL);
   // The top wall spans the left wall, the brick columns and the right wall
   wire wall_t_px  = (cell_y == WALL_T_CELL) && (wall_l_col || over_columns || wall_r_col);
-  wire wall_px    = wall_l_px | wall_r_px | wall_t_px;
+  wire wall_px    = wall_l_px || wall_r_px || wall_t_px;
 
   // Playfield interior (dark background): the wall's columns, below the top wall (y >= 32)
   wire field_px = over_columns && (v_pos[9:5] != 0);
@@ -332,8 +333,8 @@ module tt_um_tiny_breakout (
   wire [2:0] ball_dx = h_pos[2:0] - ball_x[2:0];  // beam offset within the ball's box
   wire [2:0] ball_dy = v_pos[2:0] - ball_y[2:0];
   logic in_ball_x_q, in_ball_y_q;
-  wire  in_ball_x = (h_pos == ball_x) | (in_ball_x_q & (ball_dx != 0));
-  wire  in_ball_y = (v_pos == ball_y) | (in_ball_y_q & (ball_dy != 0));
+  wire  in_ball_x = (h_pos == ball_x) || (in_ball_x_q && (ball_dx != 0));
+  wire  in_ball_y = (v_pos == ball_y) || (in_ball_y_q && (ball_dy != 0));
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
@@ -346,7 +347,7 @@ module tt_um_tiny_breakout (
   end
 
   wire ball_px = in_ball_x && in_ball_y &&
-                 in_circle8(ball_dx, ball_dy) && ~game_over;
+                 in_circle8(ball_dx, ball_dy) && !game_over;
 
   // Autoplay's steering (see Controls), from the paddle zone under the ball's columns
   autoplay u_autoplay (
@@ -366,7 +367,7 @@ module tt_um_tiny_breakout (
   // Spare lives: 8-px circles at x 64 (with 1 or 2 spare balls) and x 80 (with 2), y 8..15
   wire life_slot_1 = (h_pos[9:4] == 4) && (lives >= 1) && (lives <= SPARE_LIVES);
   wire life_slot_2 = (h_pos[9:4] == 5) && (lives >= 2) && (lives <= SPARE_LIVES);
-  wire life_px = (cell_y == LIVES_CELL_Y) && ~h_pos[3] && in_circle8(h_pos[2:0], v_pos[2:0]) &&
+  wire life_px = (cell_y == LIVES_CELL_Y) && !h_pos[3] && in_circle8(h_pos[2:0], v_pos[2:0]) &&
                  (life_slot_1 || life_slot_2);
 
   // ---------------------------------------------------------------------------
@@ -374,7 +375,7 @@ module tt_um_tiny_breakout (
   // ---------------------------------------------------------------------------
   // The ball resting on the paddle never collides: its box (y 440..447) ends above the paddle
   // (from y 448), and the serving mask makes sure of it, which the registers below rely on
-  wire touch = ball_px & ~serving;
+  wire touch = ball_px && !serving;
 
   assign clear_brick = touch && brick_px;
 
@@ -453,7 +454,7 @@ module tt_um_tiny_breakout (
   // from the left half and right from the right half, at a flatter angle from the outer
   // zones. A brick turns it back vertically or horizontally, by the edge it hit.
   wire next_up           = hit.paddle ? 1 : touch_wall_t ? 0 : (ball_up ^ hit.brick_top_bottom);
-  wire left_after_bounce = hit.paddle ? ~hit_zone[1] : (ball_left ^ hit.brick_side);
+  wire left_after_bounce = hit.paddle ? !hit_zone[1] : (ball_left ^ hit.brick_side);
   wire next_left         = touch_wall_l ? 0 : touch_wall_r ? 1 : left_after_bounce;
   wire next_flat         = hit.paddle ? (hit_zone[1] ~^ hit_zone[0]) : ball_flat;
   // One move's step: x by -2, -1, 1 or 2 (left or right, flat or steep); y by 2 px up or down,
@@ -472,13 +473,13 @@ module tt_um_tiny_breakout (
   // curtain's descent. A restart waits for the curtain, so FIRE held as the last ball falls
   // (or autoplay, which always holds it) doesn't skip the curtain and cut the trombone at once.
   wire timer_done = (speed_level == 31);
-  wire restart    = game_over & btn_fire & timer_done;     // new game once the curtain is down
-  assign new_game = restart | end_demo;                    // ... or when the demo ends
-  wire on_paddle  = ~game_over & (serving | bricks_empty); // ball waits on the paddle
-  wire lose_ball  = ~game_over & ~on_paddle & ball_lost;   // ball fell off the bottom
-  wire fly        = ~game_over & ~on_paddle & ~ball_lost;  // ball in flight
-  wire paused     = on_paddle & bricks_empty;              // the wall was cleared ...
-  wire level_done = paused & timer_done;                   // ... and the pause is over
+  wire restart    = game_over && btn_fire && timer_done;      // new game once the curtain is down
+  assign new_game = restart || end_demo;                      // ... or when the demo ends
+  wire on_paddle  = !game_over && (serving || bricks_empty);  // ball waits on the paddle
+  wire lose_ball  = !game_over && !on_paddle && ball_lost;    // ball fell off the bottom
+  wire fly        = !game_over && !on_paddle && !ball_lost;   // ball in flight
+  wire paused     = on_paddle && bricks_empty;                // the wall was cleared ...
+  wire level_done = paused && timer_done;                     // ... and the pause is over
 
   // Moves per frame over the 4-frame phase 0, 1, 2, 3: one on even frames; one on odd frames
   // too if speed_level[3] (2x); one more in phase 1 if speed_level[2] (a half step); and
@@ -486,13 +487,13 @@ module tt_um_tiny_breakout (
   // timer, not a speed: there the paddle, with the ball resting on it, moves at 1x, as the next
   // ball will. (paused holds through the move lines, as the wall's emptiness is read off the
   // picture above them, except in the frame that ends the pause, where it drops as the wall
-  // refills; speed_level is back at 0 then, which gives the same count.) Line 480 + k moves if k < moves (line 480 is frame_tick). Each term is
-  // a 1-bit condition, zero-extended by {1'b0, ...}: a cast such as 2'(a & b) would widen a and
-  // b before the AND, which lint rightly flags.
+  // refills; speed_level is back at 0 then, which gives the same count.) Line 480 + k moves if
+  // k < moves (line 480 is frame_tick). Each term is a 1-bit condition, zero-extended by
+  // {1'b0, ...}.
   wire [1:0] moves = paused         ? {1'b0, !odd_frame}
                    : speed_level[4] ? 2'd1 + {1'b0, odd_frame}
-                   : {1'b0, !odd_frame} + {1'b0, speed_level[3] & odd_frame} +
-                     {1'b0, speed_level[2] & (frame_phase == 1)};
+                   : {1'b0, !odd_frame} + {1'b0, speed_level[3] && odd_frame} +
+                     {1'b0, speed_level[2] && (frame_phase == 1)};
   wire move_tick = (h_pos == 0) && (v_pos[9:2] == SCREEN_HEIGHT[9:2]) && (v_pos[1:0] < moves);
 
   // Paddle: one 4-px step per move, stopping at the walls, where its centre is half a width
@@ -508,7 +509,7 @@ module tt_um_tiny_breakout (
   // aim at yet, and as the resting ball moves with the paddle, steering it over an outer zone
   // would never arrive, so in the second's pause after a cleared wall the paddle raced across
   // to a wall. (It launches the ball as soon as it may, and steers once the ball flies.)
-  wire       hold_paddle    = autoplay & on_paddle;
+  wire       hold_paddle    = autoplay && on_paddle;
   wire [7:0] paddle_half4   = {4'b0, paddle_w16, 1'b0};  // half the width, in 4 px
   wire [7:0] paddle_c4_next =
       (go_left  && !hold_paddle && paddle_c4 != 8'd16 + paddle_half4)  ? paddle_c4 - 1 :
@@ -571,7 +572,7 @@ module tt_um_tiny_breakout (
         // Launched only once the ball is on the paddle: after a lost ball it is put there at
         // the next move, and at 1x odd frames have none, so with FIRE held (as autoplay holds
         // it) it would otherwise fly on from below the screen and be lost again, and again
-        serving <= ~btn_fire | ball_lost;
+        serving <= !btn_fire || ball_lost;
         if (level_done && lives != SPARE_LIVES) lives <= lives + 1;  // a spare ball for the level
       end else if (lose_ball) begin
         lives   <= lives - 1;  // from 0 to 3: game over
@@ -669,15 +670,15 @@ module tt_um_tiny_breakout (
   // area, tiny_vga_out blanks the output.)
   colour_pkg::rgb_t rgb;
   always_comb begin
-    if (curtain && !score_px)              rgb = colour_pkg::BLACK;
-    else if (ball_px | life_px | score_px) rgb = BALL_COLOUR;
-    else if (paddle_px)                    rgb = PADDLE_COLOUR;
-    else if (brick_px)                     rgb = brick_rgb;
-    else if (wall_px)                      rgb = WALL_COLOUR;
-    else if (celebrate)                    rgb = brick_rgb;  // the band's colour
-    else if (field_px)                     rgb = FIELD_COLOUR;
-    else if (ball_doomed)                  rgb = lost_rgb;
-    else                                   rgb = colour_pkg::BLACK;
+    if (curtain && !score_px)                rgb = colour_pkg::BLACK;
+    else if (ball_px || life_px || score_px) rgb = BALL_COLOUR;
+    else if (paddle_px)                      rgb = PADDLE_COLOUR;
+    else if (brick_px)                       rgb = brick_rgb;
+    else if (wall_px)                        rgb = WALL_COLOUR;
+    else if (celebrate)                      rgb = brick_rgb;  // the band's colour
+    else if (field_px)                       rgb = FIELD_COLOUR;
+    else if (ball_doomed)                    rgb = lost_rgb;
+    else                                     rgb = colour_pkg::BLACK;
   end
 
   tiny_vga_out u_tiny_vga_out (
@@ -703,17 +704,17 @@ module tt_um_tiny_breakout (
       .v_pos      (v_pos),
       .random     (random[3:0]),
       .new_game   (new_game),
-      .paused     (paused & ~level_done),  // the fanfare ends with the pause
+      .paused     (paused && !level_done),  // the fanfare ends with the pause
       .lost       (lose_ball),
       .last       (lives == 0),
-      .brick      (hit.brick_top_bottom | hit.brick_side),
+      .brick      (hit.brick_top_bottom || hit.brick_side),
       .brick_row  (hit_row),
-      .fast       (speed_level[3] | speed_level[4]),
+      .fast       (speed_level[3] || speed_level[4]),
       // Only bounces: at 1x the ball moves every other frame, so in the frame after a bounce it
       // can still touch the paddle or the wall it is already leaving
-      .paddle     (hit.paddle & ~ball_up),
-      .wall       (fly & ((touch_wall_l & ball_left) | (touch_wall_r & ~ball_left) |
-                          (touch_wall_t & ball_up))),
+      .paddle     (hit.paddle && !ball_up),
+      .wall       (fly && ((touch_wall_l && ball_left) || (touch_wall_r && !ball_left) ||
+                           (touch_wall_t && ball_up))),
       .pause_step (speed_level[3:0]),  // read only in the pause (16..31)
       .audio      (audio)
   );

@@ -65,8 +65,8 @@ module autoplay (
     if (in_ball_x) begin
       case (ball_dx)
         0:       steer_left  <= left_of_paddle;
-        3:       steer_left  <= steer_left | (paddle_zone < aim_zone);
-        7:       steer_right <= right_of_paddle | (paddle_zone > aim_zone);
+        3:       steer_left  <= steer_left || (paddle_zone < aim_zone);
+        7:       steer_right <= right_of_paddle || (paddle_zone > aim_zone);
         default: ;
       endcase
     end

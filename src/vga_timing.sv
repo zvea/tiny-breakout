@@ -57,7 +57,7 @@ module vga_timing (
   end
 
   assign visible  = (h_pos < H_VISIBLE) && (v_pos < V_VISIBLE);
-  assign h_sync_n = ~((h_pos >= H_SYNC_START) && (h_pos < H_SYNC_END));
-  assign v_sync_n = ~((v_pos >= V_SYNC_START) && (v_pos < V_SYNC_END));
+  assign h_sync_n = !((h_pos >= H_SYNC_START) && (h_pos < H_SYNC_END));
+  assign v_sync_n = !((v_pos >= V_SYNC_START) && (v_pos < V_SYNC_END));
 
 endmodule

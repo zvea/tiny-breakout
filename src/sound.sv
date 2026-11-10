@@ -97,7 +97,7 @@ module sound (
       A_BRICK: begin
         a_note = brick_n;
         a_vol  = 3'd5 - a_t[2:0];
-        a_done = a_t[2] & a_t[0];  // a_t counts up from 0: the first 5
+        a_done = a_t[2] && a_t[0];  // a_t counts up from 0: the first 5
       end
       A_PADDLE: begin
         a_note = (a_t[1:0] == 0) ? 7'd60 : (a_t[1:0] == 1) ? 7'd66 : 7'd72;
@@ -136,7 +136,7 @@ module sound (
           default: a_note = 15;
         endcase
         a_vol  = 3'd6 - {1'b0, a_t[5:4]};
-        a_done = a_t[5] & a_t[4];  // frame 48
+        a_done = a_t[5] && a_t[4];  // frame 48
       end
       default: ;
     endcase
@@ -216,14 +216,14 @@ module sound (
       a_sub    <= 0;
     end else if (line) begin
       if (a_count <= 1) begin
-        {a_count, a_square} <= {a_note, ~a_square};
-        if (a_square) a_sub <= ~a_sub;
+        {a_count, a_square} <= {a_note, !a_square};
+        if (a_square) a_sub <= !a_sub;
       end else a_count <= a_count - 1;
     end
   end
 
   wire [2:0] pwm   = h_pos[3:1];
-  wire       a_on  = a_square & (pwm < a_vol);
+  wire       a_on  = a_square && (pwm < a_vol);
   // The noise: a hash of the line number, so a new value every line, and of the frame's random
   // number, so each frame's pattern differs (one repeated every frame would buzz at 60 Hz).
   // Products of the line's bits, each against higher bits and the random number, give it a
@@ -234,7 +234,7 @@ module sound (
                (v_pos[5] & (v_pos[8] ^ random[2])) ^ random[3] ^ (fine & (b_kind != B_RUMBLE));
 
   wire       b_src = (b_kind == B_BASS) ? a_sub : noise;
-  wire       b_on  = b_src & (pwm < b_vol);
+  wire       b_on  = b_src && (pwm < b_vol);
   always_ff @(posedge clk) begin  // registered, so the pin never glitches
     if (!rst_n) audio <= 0;
     else audio <= h_pos[0] ? a_on : b_on;
