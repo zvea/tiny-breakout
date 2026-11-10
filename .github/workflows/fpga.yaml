@@ -17,9 +17,10 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       # Place and route against the clock the board supplies (640x480 at 60 Hz), not the tool's
-      # 12 MHz default, so a change that slows the design below it fails here; and with a fixed
-      # seed, so a bitstream that passed rebuilds the same
+      # 12 MHz default, so a change that slows the design below it fails here
       TT_FPGA_FREQ: "25.175"
+      # tt_fpga.py's default seed, pinned in case that default changes. Rebuilds can still
+      # differ: the action installs a nightly oss-cad-suite and tt-support-tools from main.
       TT_FPGA_SEED: "10"
     steps:
       - name: checkout repo
