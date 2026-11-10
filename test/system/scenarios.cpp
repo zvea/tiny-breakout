@@ -11,8 +11,8 @@
 // the internals.
 //
 // Each expensive stretch of play is simulated once and carries every check that needs it, in
-// two tiers (the table at the end): controls, demo, losing_every_ball and opening are cheap and
-// run all the time; long_game plays a game from a new game to the third wall, at milestones.
+// two tiers (the table at the end): the cheap scenarios run all the time; long_game plays a game
+// from a new game to the third wall, at milestones.
 // The comment before each scenario lists its parts and what each checks; every failure names
 // its part and frame.
 //

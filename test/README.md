@@ -6,7 +6,7 @@ Three layers, from module to whole game:
 |---|---|---|---|
 | [unit/](unit) | Each module on its own, through its ports (cocotb) | `pytest test/unit` | ~70 s (Verilator), ~5.5 min (`SIM=icarus`) |
 | [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~4 min |
-| [system/](system), cheap tier | Short gameplay scenarios (the controls, the demo, lost balls, a game's opening and more), judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~3 min in parallel (the longest scenarios ~2.2 min, plus ~1 min for a first build) |
+| [system/](system), cheap tier | Short gameplay scenarios (the controls, the demo, lost balls, a game's opening and more), judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~8 min in parallel (the longest scenario ~7.5 min, plus ~1 min for a first build) |
 | [system/](system), milestone tier | 1 long game, from a new game to the third brick wall and a restart, judged the same way | `pytest test/system -n auto -m milestone` | ~25 min |
 
 The system scenarios come in two tiers. The cheap one runs by default and is meant to run all
