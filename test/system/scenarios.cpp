@@ -681,10 +681,10 @@ void lost_at_speed() {
   for (int round = 0; round < 8 && !failures; round++) {
     g.autoplay = true;  // speed this ball up: 4 bricks cleared since it was launched
     g.buttons = 0;
-    int base = v.bricks;
+    int base = v.bricks, sped = 0;
     // At 1x a trip from the paddle to the bricks and back takes about 600 frames: autoplay
     // clears 4 bricks in 1500 to 3000, or more now and then as the wall thins (8000 to be safe)
-    for (int i = 0; i < 8000 && base - v.bricks < 4; i++) {
+    for (; sped < 8000 && base - v.bricks < 4; sped++) {
       v = run(g, 1);
       if (resting(v)) base = v.bricks;
     }
@@ -696,15 +696,22 @@ void lost_at_speed() {
     int lives = v.lives;
     // At 1.5x it falls past the paddle and off the screen in about 250 frames, or 650 if the
     // paddle sends it up again (the last ball too, to the new game FIRE starts): 2000 is plenty
-    for (int i = 0; i < 2000 && v.lives == lives; i++) v = run(g, 1);
-    if (lives == 0) continue;  // the last ball: game over, and FIRE starts a new game
+    int lost = 0;
+    for (; lost < 2000 && v.lives == lives; lost++) v = run(g, 1);
+    if (lives == 0) {  // the last ball: game over, and FIRE starts a new game
+      printf("frame %5d: round %d: 4 bricks in %d frames, the last ball lost and a new game in "
+             "%d\n", frame_no, round, sped, lost);
+      continue;
+    }
     CHECK(v.lives == lives - 1, "round %d: %d spare balls after losing one of %d", round, v.lives,
           lives);
-    int d = 1;
-    for (; d <= 4 && !resting(v); d++) v = run(g, 1);
-    CHECK(resting(v), "round %d: no ball on the paddle %d frames after the loss", round, d - 1);
+    int d = 0;
+    for (; d < 4 && !resting(v); d++) v = run(g, 1);
+    CHECK(resting(v), "round %d: no ball on the paddle %d frames after the loss", round, d);
     CHECK(v.lives == lives - 1, "round %d: %d spare balls once the next ball rests (was %d)", round,
           v.lives, lives);
+    printf("frame %5d: round %d: 4 bricks in %d frames, the ball lost in %d, the next resting %d "
+           "later\n", frame_no, round, sped, lost, d);
     delays.push_back(d);
     if (std::count(delays.begin(), delays.end(), delays.front()) < int(delays.size())) break;
   }
