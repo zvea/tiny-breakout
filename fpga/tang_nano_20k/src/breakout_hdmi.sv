@@ -123,9 +123,10 @@ module breakout_hdmi #(
       cic_prev <= cic;
     end
 
-  // The sample: y / 4096 in CIC units (sim.h's value times 525^3 / 4096), so the loudest
-  // swing, +-0.875 * 525^3, is +-30912 of 16-bit signed's 32767
-  wire [15:0] sample = hp[31:16];
+  // The sample: y / 8192 in CIC units (sim.h's value times 525^3 / 8192), so the loudest
+  // possible swing, +-0.875 * 525^3, is +-15456 of 16-bit signed's 32767: half of full
+  // scale, as the game's sounds were loud on a screen at full scale
+  wire [15:0] sample = hp[32:17];
 
   // hdl-util takes a sample on each rising edge of clk_audio, at count 262: half a sample
   // from where it changes, so it is steady then

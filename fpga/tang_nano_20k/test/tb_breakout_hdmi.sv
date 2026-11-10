@@ -114,9 +114,9 @@ module tb_breakout_hdmi;
       hp_x  = real'(d);
     end
     // breakout_hdmi's sample is ready at count 2 (its combs at 0, its high-pass at 1). Its
-    // sample is the high-pass / 4096, rounded down: so expect within a step or two of that.
+    // sample is the high-pass / 8192, rounded down: so expect within a step or two of that.
     if (dut.audio_count == 2) begin
-      automatic real want = hp_y / 4096.0;
+      automatic real want = hp_y / 8192.0;
       automatic int  got = int'($signed(dut.sample));
       if (64'(dut.cic) != cic_d) fail($sformatf("CIC %0d, sim.h's %0d", dut.cic, cic_d));
       if (real'(got) < want - 2.0 || real'(got) > want + 2.0)
