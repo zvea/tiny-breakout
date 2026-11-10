@@ -1,5 +1,10 @@
 # Makefile
 # See https://docs.cocotb.org/en/stable/quickstart.html for more info
+# From Tiny Tapeout's ttsky-verilog-template, adapted.
+#
+# SPDX-FileCopyrightText: 2024 Tiny Tapeout
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
+# SPDX-License-Identifier: Apache-2.0
 
 # defaults
 SIM ?= icarus

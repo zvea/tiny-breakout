@@ -1,3 +1,9 @@
+// From Tiny Tapeout's ttsky-verilog-template, adapted.
+//
+// SPDX-FileCopyrightText: 2024 Tiny Tapeout
+// SPDX-FileCopyrightText: 2026 Alexei Zverovitch
+// SPDX-License-Identifier: Apache-2.0
+
 `default_nettype none
 `timescale 1ns / 1ps
 
