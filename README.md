@@ -1,4 +1,4 @@
-![test](../../workflows/test/badge.svg) ![fpga](../../workflows/fpga/badge.svg) ![gds](../../workflows/gds/badge.svg) ![docs](../../workflows/docs/badge.svg)
+![test](../../actions/workflows/test.yaml/badge.svg) ![fpga ice40up5k](../../actions/workflows/fpga_ice40up5k.yaml/badge.svg) ![fpga tang nano 20k](../../actions/workflows/fpga_tang_nano_20k.yaml/badge.svg) ![gds](../../actions/workflows/gds.yaml/badge.svg) ![docs](../../actions/workflows/docs.yaml/badge.svg)
 
 # Tiny Breakout
 
