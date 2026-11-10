@@ -669,7 +669,8 @@ void losing_every_ball() {
 // once launched it from below the screen, losing it again and again, down to game over (from
 // 1.5x up, where the ball can be lost on either parity). Autoplay speeds each ball up to 1.5x (4
 // bricks), then the paddle is held at the left wall with FIRE until the ball is lost. A ball put
-// on the paddle a frame later shows a loss on the parity that failed; both must be seen.
+// on the paddle a frame later shows a loss on the parity that failed; both must be seen. The last
+// ball's loss ends the game and is not checked, so that ball is lost at 1x, without autoplay.
 void lost_at_speed() {
   Game g;
   power_up(g);
@@ -679,25 +680,29 @@ void lost_at_speed() {
   // A round takes over a minute to simulate: the rounds end at the first failure, as the rest
   // would most likely fail the same way
   for (int round = 0; round < 8 && !failures; round++) {
-    g.autoplay = true;  // speed this ball up: 4 bricks cleared since it was launched
-    g.buttons = 0;
-    int base = v.bricks, sped = 0;
-    // At 1x a trip from the paddle to the bricks and back takes about 600 frames: autoplay
-    // clears 4 bricks in 1500 to 3000, or more now and then as the wall thins (8000 to be safe)
-    for (; sped < 8000 && base - v.bricks < 4; sped++) {
-      v = run(g, 1);
-      if (resting(v)) base = v.bricks;
+    int sped = 0;
+    if (v.lives > 0) {
+      g.autoplay = true;  // speed this ball up: 4 bricks cleared since it was launched
+      g.buttons = 0;
+      int base = v.bricks;
+      // At 1x a trip from the paddle to the bricks and back takes about 600 frames: autoplay
+      // clears 4 bricks in 1500 to 3000, or more now and then as the wall thins (8000 to be safe)
+      for (; sped < 8000 && base - v.bricks < 4; sped++) {
+        v = run(g, 1);
+        if (resting(v)) base = v.bricks;
+      }
+      CHECK(base - v.bricks >= 4, "round %d: the ball cleared %d bricks, not 4", round,
+            base - v.bricks);
+      if (failures) break;
     }
-    CHECK(base - v.bricks >= 4, "round %d: the ball cleared %d bricks, not 4", round,
-          base - v.bricks);
-    if (failures) break;
     g.autoplay = false;  // lose it, with FIRE held
     g.buttons = LEFT | FIRE;
     int lives = v.lives;
     // At 1.5x it falls past the paddle and off the screen in about 250 frames, or 650 if the
-    // paddle sends it up again (the last ball too, to the new game FIRE starts): 2000 is plenty
+    // paddle sends it up again; the last ball, launched at 1x, in about 600, or 1200 if sent up
+    // again, then the curtain comes down and FIRE starts a new game: 3600 is plenty
     int lost = 0;
-    for (; lost < 2000 && v.lives == lives; lost++) v = run(g, 1);
+    for (; lost < 3600 && v.lives == lives; lost++) v = run(g, 1);
     if (lives == 0) {  // the last ball: game over, and FIRE starts a new game
       // That loss ends on the new game's first frame, which shows its markers but not yet its
       // wall (frame 3, see start_game). The next round counts the bricks cleared from the wall
@@ -705,8 +710,8 @@ void lost_at_speed() {
       for (int i = 0; i < 6 && v.bricks < 48; i++) v = run(g, 1);
       CHECK(v.bricks == 48 && v.lives == 2, "round %d: a new game with %d bricks, %d spare balls",
             round, v.bricks, v.lives);
-      printf("frame %5d: round %d: 4 bricks in %d frames, the last ball lost and a new game in "
-             "%d\n", frame_no, round, sped, lost);
+      printf("frame %5d: round %d: the last ball lost at 1x, and a new game, in %d frames\n",
+             frame_no, round, lost);
       continue;
     }
     CHECK(v.lives == lives - 1, "round %d: %d spare balls after losing one of %d", round, v.lives,
