@@ -10,6 +10,7 @@
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
 REV=${1:-HEAD}
+git -C "$ROOT" rev-parse --verify --quiet "$REV^{commit}" > /dev/null || { echo "no such revision: $REV"; exit 2; }
 W="$ROOT/build/local_area"; rm -rf "$W"; mkdir -p "$W"
 LIB=$(liberty); [ -n "$LIB" ] || { echo "sky130 library not found (set PDK_ROOT)"; exit 1; }
 cp "$LIB" "$W/hd.lib"  # yowasp's yosys only sees files under its working directory
