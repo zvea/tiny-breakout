@@ -8,8 +8,8 @@ The game is the Tiny Tapeout design itself, `tt_um_tiny_breakout` from [src/](..
 unchanged. This folder adds what the Tiny Tapeout board would supply (a clock and a reset) and
 turns the game's TinyVGA and Audio Pmod pins into HDMI.
 
-**Status:** it builds, meets timing, and passes its simulation test. It has not been tried on
-a board yet.
+**Status:** it builds, meets timing, passes its simulation test, and works on a board:
+picture and sound.
 
 ## What you need
 
@@ -78,12 +78,12 @@ start on the same clock and stay equal. The game's pins are registered, a clock 
 counter, and hdl-util takes its colour a clock behind its own: they line up. Each 2-bit colour
 level is repeated to fill 8 bits: 00, 55, AA, FF.
 
-**Sound.** The game's audio pin is PWM: two voices taking turns clock by clock, at 8-step
-volumes. The pattern repeats every 16 clocks, in step with the line, so counting the ones in
-each 16-clock block gives the two voices' mix exactly, with no filter (with one exception, see
-Limits). At 25.2 MHz, a 48 kHz sample is exactly 525 clocks. The level is sampled at that rate
-and goes to hdl-util as 16-bit audio, the same on both channels. The board's own speaker
-amplifier isn't used.
+**Sound.** The game's audio pin is PWM, which the Audio Pmod's filter would average. Here it
+becomes 48 kHz samples the way the simulator's player makes them ([sim/play/sim.h](../../sim/play/sim.h)),
+so the board sounds like the player: a 3rd-order CIC filter decimating by 525 (at 25.2 MHz, a
+48 kHz sample is exactly 525 clocks), then a 50 Hz high-pass standing in for the Pmod's AC
+coupling, so the sound has no DC. The samples go to hdl-util as 16-bit audio, the same on both
+channels. The board's own speaker amplifier isn't used.
 
 ## The patch to hdl-util
 
@@ -102,8 +102,9 @@ Drop the patch once hdl-util has an equivalent fix upstream.
 1. **Lockstep:** hdl-util's frame counter equals the game's on every clock.
 2. **Picture:** the pixels hdl-util sends are the game's visible pixels, in order, none
    missing or extra: so the picture is neither shifted nor cropped.
-3. **Sound:** each 16-clock block of the audio pin holds two volumes, and the level sent is
-   their sum. The demo must make some sound within the run, or the check would prove nothing.
+3. **Sound:** the samples sent are the player's: the test runs sim.h's code on the audio pin
+   (its CIC filter must match exactly, its high-pass to within rounding). The demo must make
+   some sound within the run, or the check would prove nothing.
 
 Verilator can't evaluate one of hdl-util's audio parameters (a real cast to int), so the test
 sets `breakout_hdmi`'s `DVI_ONLY`, and hdl-util sends video only (DVI). The picture path is
@@ -114,7 +115,5 @@ hdl-util's audio packets are tested only on a real screen.
 
 - No controller. The game's inputs are tied off, so it plays its demo.
 - The picture is 0.1% fast (25.2 MHz, see Clocks).
-- One audio block a frame, at the start of line 480, may mix the old sound and the new: the
-  game's frame update changes the sound a clock into it. It is too short to hear.
 - HDMI audio needs an HDMI screen: a DVI-only monitor may not show the picture either. For
   one, build with `breakout_hdmi`'s `DVI_ONLY` parameter set: picture only, no sound.

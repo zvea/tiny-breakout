@@ -15,8 +15,8 @@
  * clock behind its counters, and hdl-util takes rgb a clock behind cx: they line up with no
  * delay of their own. hdl-util makes the sync pulses, so the game's aren't used.
  *
- * Audio: the Audio Pmod pin is PWM, which the Pmod's filter averages. Here it is turned into
- * 48 kHz samples instead: see "Audio" below.
+ * Audio: the Audio Pmod pin is PWM, which the Pmod's filter averages. Here it is filtered into
+ * 48 kHz samples instead, as the simulator's player does: see "Audio" below.
  */
 
 `default_nettype none
@@ -74,38 +74,63 @@ module breakout_hdmi #(
   wire audio_pin = uio_out[7];  // Audio Pmod
 
   // ---------------------------------------------------------------------------
-  // Audio. The pin carries two voices taking turns clock by clock, each at a volume of 0..7
-  // out of 8 steps (sound.sv): a pattern that repeats every 16 clocks, aligned to the line, and
-  // changes only between lines, or a clock into line 480 at the frame update. So the ones in
-  // each 16-clock block are the mix exactly, 0..14, with no filter, except that the first block
-  // of line 480 may mix the old sound and the new: inaudibly. The pin is registered, a clock
-  // behind the beam, so a block ends where cx[3:0] is 0.
+  // Audio: the pin as heard from the Audio Pmod's headphone jack, computed as the simulator's
+  // player does it (sim/play/sim.h), so the board sounds like the player. 48 kHz samples, one
+  // per 525 clocks exactly (25.2 MHz / 48 kHz):
+  //   1. A 3rd-order CIC filter decimating by 525: the fraction of time the pin was high,
+  //      smoothed, with nothing left of the PWM or anything else above 24 kHz to alias.
+  //   2. A 1st-order high-pass at 50 Hz, standing in for the Pmod's AC coupling: silence is 0
+  //      and the sound swings either side of it, with no DC.
+  // Nothing here is reset: it runs from configuration, and the pin is low while the game is.
   // ---------------------------------------------------------------------------
-  logic [9:0] cx;     // hdl-util's beam position: equal to the game's
-  logic [3:0] ones;   // in the block so far
-  logic [3:0] level;  // in the last whole block
+  logic [9:0] audio_count = 0;  // 0..524: a sample's clocks
+
+  always_ff @(posedge clk_pixel) audio_count <= (audio_count == 524) ? 10'd0 : audio_count + 1;
+
+  // 1. The CIC: three integrators every clock, three combs every sample. 28 bits hold the
+  // largest result, 525^3 (the pin always high), so the integrators may wrap: the combs'
+  // differences come out right modulo 2^28, which is all a CIC needs.
+  logic [27:0] integ1 = 0, integ2 = 0, integ3 = 0;
+  logic [27:0] comb1 = 0, comb2 = 0, comb3 = 0;  // each comb's input a sample ago
+  logic [27:0] cic = 0;  // 0 .. 525^3: the pin's time high, out of 525^3
 
   always_ff @(posedge clk_pixel) begin
-    if (cx[3:0] == 0) begin
-      level <= ones + 4'(audio_pin);
-      ones  <= 0;
-    end else begin
-      ones <= ones + 4'(audio_pin);
+    integ1 <= integ1 + 28'(audio_pin);
+    integ2 <= integ2 + integ1;
+    integ3 <= integ3 + integ2;
+    if (audio_count == 0) begin
+      comb1 <= integ3;
+      comb2 <= integ3 - comb1;
+      comb3 <= integ3 - comb1 - comb2;
+      cic   <= integ3 - comb1 - comb2 - comb3;
     end
   end
 
-  // 48 kHz samples: 25.2 MHz / 48 kHz is 525 clocks exactly. hdl-util takes a sample on each
-  // rising edge of clk_audio (count 0); the sample changes half a period before, so it is
-  // steady then. The level is scaled to 0..28672 of the 16-bit signed range: silence is 0.
-  logic [9:0]  audio_count = 0;
-  logic        clk_audio   = 0;
-  logic [15:0] sample      = 0;
+  // 2. The high-pass, a clock later: y = a (y + x - x_prev), with a = 0.99348 as in sim.h
+  // (exp(-2 pi 50 Hz / 48 kHz)), and y kept with 4 bits below the CIC's units. Since
+  // x is 0 .. 0.875 * 525^3 (the loudest mix is 14 of 16 clocks high), y is within +-x's
+  // largest: 31 bits and a sign.
+  localparam logic signed [17:0] ONE_MINUS_A = 18'sd109387;  // (1 - a) * 2^24
+  logic        [27:0] cic_prev = 0;
+  logic signed [33:0] hp = 0;
+  wire  signed [28:0] cic_step = signed'({1'b0, cic}) - signed'({1'b0, cic_prev});
+  wire  signed [33:0] hp_in = hp + (34'(cic_step) <<< 4);  // y + x - x_prev
+  wire  signed [51:0] hp_loss = hp_in * ONE_MINUS_A;       // (1 - a) (y + x - x_prev), * 2^24
 
-  always_ff @(posedge clk_pixel) begin
-    audio_count <= (audio_count == 524) ? 10'd0 : audio_count + 1;
-    clk_audio   <= audio_count < 262;
-    if (audio_count == 262) sample <= {1'b0, level, 11'b0};
-  end
+  always_ff @(posedge clk_pixel)
+    if (audio_count == 1) begin
+      hp       <= hp_in - 34'(hp_loss >>> 24);
+      cic_prev <= cic;
+    end
+
+  // The sample: y / 4096 in CIC units (sim.h's value times 525^3 / 4096), so the loudest
+  // swing, +-0.875 * 525^3, is +-30912 of 16-bit signed's 32767
+  wire [15:0] sample = hp[31:16];
+
+  // hdl-util takes a sample on each rising edge of clk_audio, at count 262: half a sample
+  // from where it changes, so it is steady then
+  logic clk_audio = 0;
+  always_ff @(posedge clk_pixel) clk_audio <= audio_count >= 262;
 
   // ---------------------------------------------------------------------------
   // HDMI
@@ -125,7 +150,7 @@ module breakout_hdmi #(
       .audio_sample_word('{sample, sample}),  // the same on left and right
       .tmds             (tmds),
       .tmds_clock       (tmds_clock),
-      .cx               (cx),
+      .cx               (),
       .cy               (),
       .frame_width      (),
       .frame_height     (),

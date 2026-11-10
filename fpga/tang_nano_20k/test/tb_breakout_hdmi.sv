@@ -13,11 +13,9 @@
  *      visible pixels, in order, none missing or extra: so the picture is neither shifted nor
  *      cropped. The game's pixel for a position is read from its pins a clock after its beam
  *      is there, as tiny_vga_out registers them.
- *   3. Audio blocks: in every 16-clock block of the audio pin, each voice's 8 PWM steps are some
- *      ones, then zeros (a volume), so the block's count is the mix; and breakout_hdmi's level
- *      is that count. The exception is the first block of line 480: the frame update changes
- *      the sound a clock into it (frame_tick is registered), so it may mix the old sound and
- *      the new. The demo must make some sound, or the check would prove nothing.
+ *   3. Audio: breakout_hdmi's samples are those of the simulator's player (sim/play/sim.h),
+ *      whose code is copied here: its CIC filter's exactly, and its high-pass's to within
+ *      rounding. The demo must make some sound, or the check would prove nothing.
  *
  * Hierarchical names reach into breakout_hdmi, the game and hdl-util: a testbench's licence.
  */
@@ -89,55 +87,60 @@ module tb_breakout_hdmi;
     end
   end
 
-  // 3. Audio blocks. The pin shows the beam a clock ago: h_prev[0] picks the voice (1: A,
-  // 0: B, as sound.sv), h_prev[3:1] the PWM step, and a block ends at h_prev[3:0] == 15.
-  logic [7:0] a_bits, b_bits;
-  logic [3:0] count;
-  logic       check_level = 0;  // compare breakout_hdmi's level on the next clock
-  int         loud_blocks = 0;
+  // 3. Audio: sim.h's audio_clock(), on the pin every clock. Its integrators add as they go
+  // (each takes the one before's new value), where breakout_hdmi's are registers, each a clock
+  // behind the one before: so breakout_hdmi's third integrator, at its combs (count 0), is
+  // sim.h's from 3 clocks before, and sim.h's combs run at count 522.
+  localparam real HP_A = 0.99348;  // sim.h's
+  longint unsigned cic_i[3] = '{0, 0, 0}, cic_c[3] = '{0, 0, 0};
+  longint unsigned cic_d = 0;      // sim.h's last CIC result
+  real             hp_x = 0, hp_y = 0;
+  int              loud_samples = 0, loudest = 0;
 
-  function automatic logic is_volume(input logic [7:0] bits);  // ones from step 0, then zeros
-    return (bits & (bits + 8'd1)) == 0;
-  endfunction
-
-  always_ff @(posedge clk) begin
-    logic [7:0] a, b;
-    a = a_bits;
-    b = b_bits;
-    if (h_prev[0]) a[h_prev[3:1]] = dut.audio_pin;
-    else b[h_prev[3:1]] = dut.audio_pin;
-    check_level <= 0;
-    if (running && h_prev[3:0] == 15) begin
-      if (!(v_prev == 480 && h_prev[9:4] == 0) && (!is_volume(a) || !is_volume(b)))
-        fail($sformatf("audio block: voice A %08b, voice B %08b (step 0 on the right)", a, b));
-      count       <= 4'($countones(a) + $countones(b));
-      check_level <= 1;
-      if (a != 0 || b != 0) begin
-        if (loud_blocks == 0) $display("First sound in frame %0d", frame);
-        loud_blocks++;
+  always @(posedge clk) begin
+    automatic longint unsigned d;
+    cic_i[0] += 64'(dut.audio_pin);
+    cic_i[1] += cic_i[0];
+    cic_i[2] += cic_i[1];
+    if (dut.audio_count == 522) begin
+      d = cic_i[2];
+      for (int k = 0; k < 3; k++) begin  // the combs
+        automatic longint unsigned prev = cic_c[k];
+        cic_c[k] = d;
+        d -= prev;
       end
-      a = 0;
-      b = 0;
+      cic_d = d;
+      hp_y  = HP_A * (hp_y + real'(d) - hp_x);  // in the CIC's units: sim.h's times 525^3
+      hp_x  = real'(d);
     end
-    a_bits <= a;
-    b_bits <= b;
-    if (check_level && dut.level != count)
-      fail($sformatf("audio level %0d, the block had %0d", dut.level, count));
+    // breakout_hdmi's sample is ready at count 2 (its combs at 0, its high-pass at 1). Its
+    // sample is the high-pass / 4096, rounded down: so expect within a step or two of that.
+    if (dut.audio_count == 2) begin
+      automatic real want = hp_y / 4096.0;
+      automatic int  got = int'($signed(dut.sample));
+      if (64'(dut.cic) != cic_d) fail($sformatf("CIC %0d, sim.h's %0d", dut.cic, cic_d));
+      if (real'(got) < want - 2.0 || real'(got) > want + 2.0)
+        fail($sformatf("audio sample %0d, sim.h's %.1f", got, want));
+      if (got > 1000 || got < -1000) begin
+        if (loud_samples == 0) $display("First sound in frame %0d", frame);
+        loud_samples++;
+      end
+      if (got > loudest) loudest = got;
+      if (-got > loudest) loudest = -got;
+    end
   end
 
   initial begin
     void'($value$plusargs("frames=%d", frames));
-    a_bits = 0;
-    b_bits = 0;
     wait (dut.rst_n);
     repeat (frames * 800 * 525) @(posedge clk);
     // The pixels still in the queue are hdl-util's latency: a few clocks' worth, no more
     if (expected.size() > 4) fail($sformatf("%0d pixels never sent", expected.size()));
     if (pixels_sent < longint'(frames - 1) * 640 * 480)
       fail($sformatf("only %0d pixels sent in %0d frames", pixels_sent, frames));
-    if (loud_blocks == 0) fail("no sound in the demo: the audio check saw only silence");
-    $display("%0d frames, %0d pixels, %0d audio blocks with sound: %0d errors", frames,
-             pixels_sent, loud_blocks, errors);
+    if (loud_samples == 0) fail("no sound in the demo: the audio check saw only silence");
+    $display("%0d frames, %0d pixels, %0d audio samples with sound (loudest %0d): %0d errors",
+             frames, pixels_sent, loud_samples, loudest, errors);
     if (errors == 0) $display("PASS");
     else $display("FAIL");
     $finish;
