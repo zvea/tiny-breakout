@@ -22,7 +22,10 @@ CI ([.github/workflows/test.yaml](../.github/workflows/test.yaml)) lints the des
 Verilator 5 and runs `test.py` and the unit tests on Icarus, both from Ubuntu 24.04's packages
 (Icarus 12, where the local setup below has 13.0). Tiny Tapeout's GDS workflow also runs
 `test.py` on the gate-level netlist. The system scenarios run only locally, because they need
-Verilator 4.x.
+Verilator 4.x. The fpga workflow ([.github/workflows/fpga.yaml](../.github/workflows/fpga.yaml))
+builds a bitstream for Tiny Tapeout's iCE40UP5K FPGA board, placed and routed against the
+board's 25.175 MHz clock, so a change that makes the design slower than that fails it; the
+bitstream is uploaded as the artifact `fpga_bitstream`.
 
 ## Setting up
 
