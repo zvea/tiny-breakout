@@ -6,13 +6,14 @@ Three layers, from module to whole game:
 |---|---|---|---|
 | [unit/](unit) | Each module on its own, through its ports (cocotb) | `pytest test/unit` | ~70 s (Verilator), ~5.5 min (`SIM=icarus`) |
 | [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~4 min |
-| [system/](system), cheap tier | Short gameplay scenarios (the controls, the demo, lost balls, a game's opening and more), judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~8 min in parallel (the longest scenario ~7.5 min, plus ~1 min for a first build) |
-| [system/](system), milestone tier | 1 long game, from a new game to the third brick wall and a restart, judged the same way | `pytest test/system -n auto -m milestone` | ~25 min |
+| [system/](system), cheap tier | Short gameplay scenarios (the controls, the demo, lost balls, a game's opening and more), judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~3 min in parallel (the longest scenarios ~2.2 min, plus ~1 min for a first build) |
+| [system/](system), milestone tier | A long game, from a new game to the third brick wall and a restart, and balls lost at speed, judged the same way | `pytest test/system -n auto -m milestone` | ~25 min |
 
 The system scenarios come in two tiers. The cheap one runs by default and is meant to run all
 the time. The milestone tier is one long game that simulates each expensive stretch of play
 once (autoplay clearing a brick wall, the pause, the later levels) and carries every check that
-needs it; run it at milestones, such as before a harden, with `-m milestone` alone or
+needs it, and, beside it, lost_at_speed, which needs autoplay to speed up every ball it loses;
+run it at milestones, such as before a harden, with `-m milestone` alone or
 `--milestone` for both tiers. The game is deterministic, so the opening scenario plays exactly
 the first frames of the long game. The table at the end of [scenarios.cpp](system/scenarios.cpp)
 lists the scenarios and their tiers, and each scenario's comment lists what its parts check; a
@@ -74,7 +75,7 @@ autoconf && ./configure --prefix="$HOME/opt/verilator-4.228" && make -j8 && make
 .venv/bin/pytest test/unit                 # Verilator 5
 SIM=icarus .venv/bin/pytest test/unit      # Icarus, as in CI (which has version 12)
 .venv/bin/pytest test/system -n auto       # cheap tier; needs Verilator 4; one worker per scenario
-.venv/bin/pytest test/system -n auto -m milestone  # the long game alone
+.venv/bin/pytest test/system -n auto -m milestone  # the milestone tier alone
 .venv/bin/pytest test/system -n auto --milestone   # both tiers
 .venv/bin/pytest test/system               # cheap tier, one after another
 .venv/bin/pytest test/system -k controls   # one scenario

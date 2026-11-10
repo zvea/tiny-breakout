@@ -11,8 +11,9 @@
 // the internals.
 //
 // Each expensive stretch of play is simulated once and carries every check that needs it, in
-// two tiers (the table at the end): the cheap scenarios run all the time; long_game plays a game
-// from a new game to the third wall, at milestones.
+// two tiers (the table at the end): the cheap scenarios run all the time; the milestone ones,
+// long_game (a game from a new game to the third wall) and lost_at_speed (balls lost at speed on
+// both frame parities), at milestones.
 // The comment before each scenario lists its parts and what each checks; every failure names
 // its part and frame.
 //
@@ -1256,8 +1257,10 @@ void long_game() {
         f.notes.checked[0], f.notes.checked[1]);
 }
 
-// Two tiers: the cheap one runs all the time, the milestone one (the long game) only at
-// milestones. test_scenarios.py reads each scenario's tier from this table.
+// Two tiers: the cheap one runs all the time, the milestone one only at milestones.
+// lost_at_speed is a milestone scenario for its time (some 8 minutes, nearly all of it autoplay
+// speeding each ball up): run in parallel with the long game, it costs a milestone run nothing.
+// test_scenarios.py reads each scenario's tier from this table.
 constexpr bool CHEAP = false, MILESTONE = true;
 
 struct Scenario {
@@ -1270,9 +1273,9 @@ const Scenario scenarios[] = {
     {"controls", controls},
     {"demo", demo},
     {"losing_every_ball", losing_every_ball},
-    {"lost_at_speed", lost_at_speed},
     {"opening", opening},
     {"long_game", long_game, MILESTONE},
+    {"lost_at_speed", lost_at_speed, MILESTONE},
 };
 
 }  // namespace

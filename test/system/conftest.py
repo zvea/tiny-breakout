@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """The scenarios' two tiers, and one pytest-xdist worker per scenario.
 
-Without options only the cheap tier runs: the scenarios marked milestone (the long game) are
-deselected. --milestone runs both tiers; -m picks by mark as usual, so -m milestone runs the
-long game alone.
+Without options only the cheap tier runs: the scenarios marked milestone (the long game and
+lost_at_speed) are deselected. --milestone runs both tiers; -m picks by mark as usual, so
+-m milestone runs the milestone tier alone.
 
 With pytest-xdist, `-n auto` gives every scenario that will run a worker of its own. The
 scenarios take from half a minute to half an hour. With fewer than twice as many tests as
@@ -22,13 +22,13 @@ from test_scenarios import scenarios
 def pytest_addoption(parser):
     parser.addoption(
         "--milestone", action="store_true",
-        help="run the milestone tier (the long game) as well as the cheap one",
+        help="run the milestone tier (the long game, lost_at_speed) as well as the cheap one",
     )  # fmt: skip
 
 
 def pytest_configure(config):
     config.addinivalue_line(
-        "markers", "milestone: the long game, run only with --milestone (or -m milestone)"
+        "markers", "milestone: a long scenario, run only with --milestone (or -m milestone)"
     )
 
 
