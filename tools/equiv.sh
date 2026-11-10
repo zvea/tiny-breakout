@@ -20,7 +20,7 @@ for f in $(sources); do cat "$ROOT/src/$f"; done > "$W/new.v"
 cd "$W"
 for f in gold new; do
   "$YOSYS" -q -p "read_verilog -sv $f.v; synth -top tt_um_tiny_breakout -flatten; dfflibmap -liberty hd.lib; abc -liberty hd.lib; opt_clean; tee -q -o $f.stat.txt stat -liberty hd.lib" > $f.log 2>&1 ||
-    { echo "synthesis failed for $f:"; grep -E ERROR $f.log; exit 1; }
+    { echo "synthesis failed for $f (see build/equiv/$f.log):"; grep ERROR $f.log || tail -3 $f.log; exit 1; }
   echo "$f: $(grep -oE 'Chip area.*: [0-9.]+' $f.stat.txt | grep -oE '[0-9.]+$') um2"
 done
 if "$YOSYS" -q -p "read_verilog -sv gold.v; hierarchy -top tt_um_tiny_breakout; proc; memory; flatten; rename tt_um_tiny_breakout gold; cd gold; ${GOLD_RENAMES:+$GOLD_RENAMES;} cd ..; design -stash g1;
