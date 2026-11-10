@@ -1,0 +1,3 @@
+[submodule "fpga/tang_nano_20k/third_party/hdmi"]
+	path = fpga/tang_nano_20k/third_party/hdmi
+	url = https://github.com/hdl-util/hdmi.git
