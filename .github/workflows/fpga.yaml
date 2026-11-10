@@ -2,8 +2,6 @@ name: fpga
 
 on:
   push:
-    # Comment out (or remove) the following line to run the FPGA workflow on every push:
-    branches: none
   workflow_dispatch:
 
 permissions:
@@ -17,6 +15,12 @@ concurrency:
 jobs:
   fpga:
     runs-on: ubuntu-24.04
+    env:
+      # Place and route against the clock the board supplies (640x480 at 60 Hz), not the tool's
+      # 12 MHz default, so a change that slows the design below it fails here; and with a fixed
+      # seed, so a bitstream that passed rebuilds the same
+      TT_FPGA_FREQ: "25.175"
+      TT_FPGA_SEED: "10"
     steps:
       - name: checkout repo
         uses: actions/checkout@v6
