@@ -50,6 +50,13 @@ def scenarios() -> list[tuple[str, bool]]:
     ]
 
 
+# Each scenario's time limit, by tier, only so that one that hangs fails instead of holding up
+# the run (the scenarios' own waits are capped, and their long rounds stop at the first
+# failure). The cheap tier's longest, lost_at_speed, has taken 9 minutes on a busy machine, so
+# 20 is a hang; the long game takes about 25, so 2 hours is.
+CHEAP_TIMEOUT = 20 * 60
+MILESTONE_TIMEOUT = 2 * 60 * 60
+
 # Identifies this test run: pytest-xdist gives all its workers the same one
 RUN_ID = os.environ.get("PYTEST_XDIST_TESTRUNUID") or uuid.uuid4().hex
 
@@ -87,7 +94,18 @@ def _build() -> None:
     [pytest.param(name, marks=pytest.mark.milestone) if milestone else name
      for name, milestone in scenarios()],
 )  # fmt: skip
-def test_scenario(scenarios_binary: Path, name: str):
-    result = subprocess.run([scenarios_binary, name], capture_output=True, text=True, timeout=7200)
+def test_scenario(request: pytest.FixtureRequest, scenarios_binary: Path, name: str):
+    milestone = request.node.get_closest_marker("milestone") is not None
+    timeout = MILESTONE_TIMEOUT if milestone else CHEAP_TIMEOUT
+    try:
+        result = subprocess.run(
+            [scenarios_binary, name], capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired as e:
+        # What it printed before it was stopped (bytes here, even with text=True)
+        output = e.stdout.decode(errors="replace") if e.stdout else ""
+        pytest.fail(
+            f"{name} still running after {timeout // 60} min, stopped\n{output}", pytrace=False
+        )
     print(result.stdout)
     assert result.returncode == 0, result.stdout + result.stderr

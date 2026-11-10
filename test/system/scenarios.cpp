@@ -181,8 +181,10 @@ bool is_pattern_wall(uint64_t standing) {
 // ---- Checks ------------------------------------------------------------------------------
 
 // A failed check is reported and counted, and the scenario goes on, so that one failure does
-// not hide others. Each message names the part of the scenario it comes from (`part`, set as
-// the scenario goes) and the frame since power-up; past 100 failures they are only counted.
+// not hide others (but rounds that each take a minute or more to simulate stop at the first
+// failure, so that a broken design fails fast). Each message names the part of the scenario it
+// comes from (`part`, set as the scenario goes) and the frame since power-up; past 100 failures
+// they are only counted.
 int failures = 0, frame_no = 0;
 const char *part = "";
 
@@ -322,7 +324,7 @@ void demo() {
     if (how == 2) g.pmod_start = 480 * 800 - 16 * 40;  // the frame update is at clock 480 x 800
     View v = run(g, 4);
     int bricks0 = v.bricks;
-    if (how == 0) {
+    if (how == 0) {  // its first brick goes at about frame 280
       for (int i = 0; i < 900 && v.bricks >= bricks0; i++) v = run(g, 1, false);
       CHECK(v.bricks < bricks0, "demo cleared no bricks in 900 frames (%d left)", v.bricks);
       v = look(g);
@@ -412,9 +414,9 @@ void controls() {
     s = listen(g);
   }
   const int call[][2] = {{40, 8}, {27, 8}, {20, 8}, {15, 24}};  // G4 D5 G5 C6: lines, frames
-  for (const auto &note : call) {
+  for (const auto &note : call) {  // a note that sticks is cut off at 4 times its length
     int n = 0;
-    for (; s.a.half == note[0] && bass(s); n++) {
+    for (; n < 4 * note[1] && s.a.half == note[0] && bass(s); n++) {
       run(g, 1, false);
       s = listen(g);
     }
@@ -527,6 +529,7 @@ void losing_every_ball() {
   part = "losses";
   View v = start_game(g), before = v;
   int expected_lives = 2, since_launch = 1000, prev_y = -1, prev_dy = 0, missing = 0, lit = 0;
+  int this_ball = 0;  // frames since the last ball was lost (or the game began)
   bool shades[4] = {};
   // Voice A's notes, frame by frame with repeats merged, leaving out the new game's call (known
   // by its bass on voice B). A lost ball's sigh (E-flat, D, C: 25, 27, 30 lines) and the
@@ -549,8 +552,11 @@ void losing_every_ball() {
       notes.push_back(s.a.half);
   };
   // Until the curtain shows (more than the 24-line status line is black), or the ball has
-  // been gone for 10 frames: game over, with no curtain
-  for (int i = 0; i < 20000 && black_from_top(g) <= 24 && missing < 10; i++) {
+  // been gone for 10 frames: game over, with no curtain. Or until a ball has been in play for
+  // 3600 frames: at 1x one goes up to the bricks and back past the paddle in about 600, or 1200
+  // if the paddle sends it up again, so it would never be lost.
+  while (this_ball < 3600 && black_from_top(g) <= 24 && missing < 10) {
+    this_ball++;
     bool launch = resting(v);
     g.buttons = LEFT | (launch ? FIRE : 0);
     since_launch = launch ? 0 : since_launch + 1;
@@ -577,6 +583,7 @@ void losing_every_ball() {
       CHECK(v.lives == expected_lives - 1, "life markers %d -> %d", expected_lives, v.lives);
       printf("frame %5d: %d spare balls left\n", frame_no, v.lives);
       expected_lives = v.lives;
+      this_ball = 0;
     }
     missing = v.ball ? 0 : missing + 1;
   }
@@ -584,7 +591,8 @@ void losing_every_ball() {
         "the border never showed all three shades (%d lit frames)", lit);
 
   part = "game over";
-  CHECK(black_from_top(g) > 24, "no curtain (ball gone for %d frames)", missing);
+  CHECK(black_from_top(g) > 24, "no curtain (ball gone for %d frames, %d since the last loss)",
+        missing, this_ball);
   if (black_from_top(g) <= 24) return;
   // The frame before the curtain shows is after game over (see below)
   CHECK(!before.ball && before.lives == 0, "ball %s, %d markers left",
@@ -616,9 +624,10 @@ void losing_every_ball() {
   CHECK(others == 0, "after the curtain: %d pixels besides the score are not black", others);
   CHECK(v.score == before.score, "after the curtain: score %d, was %d", v.score, before.score);
 
-  // Wait for the trombone to end, then 30 frames of quiet, still with no ball
+  // Wait for the trombone to end (about 25 frames after the curtain is down), then 30 frames of
+  // quiet, still with no ball
   part = "game over";
-  for (int i = 0; i < 200 && !(losses().size() >= 3 && s.a.vol == 0); i++) {
+  for (int i = 0; i < 100 && !(losses().size() >= 3 && s.a.vol == 0); i++) {
     v = run(g, 1);
     listen_for_losses();
     CHECK(!v.ball && border_colour(g) == BLACK, "ball %s, border %#x without FIRE",
@@ -667,20 +676,27 @@ void lost_at_speed() {
   part = "lost at speed";
   View v = start_game(g);
   std::vector<int> delays;  // per loss, frames until the next ball rests on the paddle
-  for (int round = 0; round < 8; round++) {
+  // A round takes over a minute to simulate: the rounds end at the first failure, as the rest
+  // would most likely fail the same way
+  for (int round = 0; round < 8 && !failures; round++) {
     g.autoplay = true;  // speed this ball up: 4 bricks cleared since it was launched
     g.buttons = 0;
     int base = v.bricks;
-    for (int i = 0; i < 3000 && base - v.bricks < 4; i++) {
+    // At 1x a trip from the paddle to the bricks and back takes about 600 frames: autoplay
+    // clears 4 bricks in 1500 to 3000, or more now and then as the wall thins (8000 to be safe)
+    for (int i = 0; i < 8000 && base - v.bricks < 4; i++) {
       v = run(g, 1);
       if (resting(v)) base = v.bricks;
     }
     CHECK(base - v.bricks >= 4, "round %d: the ball cleared %d bricks, not 4", round,
           base - v.bricks);
+    if (failures) break;
     g.autoplay = false;  // lose it, with FIRE held
     g.buttons = LEFT | FIRE;
     int lives = v.lives;
-    for (int i = 0; i < 3000 && v.lives == lives; i++) v = run(g, 1);
+    // At 1.5x it falls past the paddle and off the screen in about 250 frames, or 650 if the
+    // paddle sends it up again (the last ball too, to the new game FIRE starts): 2000 is plenty
+    for (int i = 0; i < 2000 && v.lives == lives; i++) v = run(g, 1);
     if (lives == 0) continue;  // the last ball: game over, and FIRE starts a new game
     CHECK(v.lives == lives - 1, "round %d: %d spare balls after losing one of %d", round, v.lives,
           lives);
@@ -695,9 +711,10 @@ void lost_at_speed() {
   std::string seen;
   for (int d : delays) seen += " " + std::to_string(d);
   printf("frames from each loss to the next ball resting:%s\n", seen.c_str());
-  CHECK(delays.size() >= 2 &&
-            std::count(delays.begin(), delays.end(), delays.front()) < int(delays.size()),
-        "losses seen on only one frame parity (delays:%s)", seen.c_str());
+  if (!failures)  // stopped early, the rounds played may have been too few to see both
+    CHECK(delays.size() >= 2 &&
+              std::count(delays.begin(), delays.end(), delays.front()) < int(delays.size()),
+          "losses seen on only one frame parity (delays:%s)", seen.c_str());
 
   // Reset in the middle of the game (score, fewer bricks, balls lost): a new game as at power-up,
   // which, with the controller in, starts with the call
