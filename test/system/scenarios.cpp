@@ -392,7 +392,7 @@ void check_colours(const Game &g, const View &v) {
 }
 
 // A new game, played by hand from the pins:
-// - new game: the call (G4, D5, G5 for 4 frames each, then C6 for 20) with voice B an octave
+// - new game: the call (G4, D5, G5 for 8 frames each, then C6 for 24) with voice B an octave
 //   below, the full wall, two spare balls and the ball resting on the paddle; then quiet while
 //   it waits there
 // - colours: of the bricks, walls, field and paddle
