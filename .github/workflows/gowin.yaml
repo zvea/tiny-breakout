@@ -1,4 +1,4 @@
-name: fpga tang nano 20k
+name: gowin
 
 on: [push, workflow_dispatch]
 

@@ -24,10 +24,10 @@ Verilator 5 and runs `test.py` and the unit tests on Icarus, both from Ubuntu 24
 (Icarus 12, where the local setup below has 13.0). Tiny Tapeout's GDS workflow also runs
 `test.py` on the gate-level netlist. The system scenarios run only locally, because they need
 Verilator 4.x. Two workflows build FPGA bitstreams, each uploaded as an artifact:
-[fpga_ice40up5k](../.github/workflows/fpga_ice40up5k.yaml), for Tiny Tapeout's iCE40UP5K FPGA
-board, placed and routed against the board's 25.175 MHz clock, so a change that makes the
-design slower than that fails it ([fpga/ice40up5k](../fpga/ice40up5k)); and
-[fpga_tang_nano_20k](../.github/workflows/fpga_tang_nano_20k.yaml), which also runs that
+[ice40](../.github/workflows/ice40.yaml), for Tiny Tapeout's iCE40UP5K FPGA board, placed
+and routed against the board's 25.175 MHz clock, so a change that makes the design slower
+than that fails it ([fpga/ice40up5k](../fpga/ice40up5k)); and
+[gowin](../.github/workflows/gowin.yaml), for the Sipeed Tang Nano 20K, which also runs that
 board's simulation test ([fpga/tang_nano_20k](../fpga/tang_nano_20k)).
 
 ## Setting up

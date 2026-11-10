@@ -11,7 +11,7 @@ This build is Tiny Tapeout's own: its flow ([tt-support-tools](https://github.co
 
 ## CI
 
-[.github/workflows/fpga_ice40up5k.yaml](../../.github/workflows/fpga_ice40up5k.yaml) builds
+[.github/workflows/ice40.yaml](../../.github/workflows/ice40.yaml) builds
 the bitstream on every push, with Tiny Tapeout's GitHub action, and uploads it as the artifact
 `fpga_bitstream`. It places and routes against the board's clock, `clock_hz` in
 [info.yaml](../../info.yaml) (25.175 MHz), and fails if the design is slower than that.

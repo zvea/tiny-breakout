@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds the iCE40UP5K bitstream locally, as CI's fpga_ice40up5k workflow does: with Tiny
+# Builds the iCE40UP5K bitstream locally, as CI's ice40 workflow does: with Tiny
 # Tapeout's own flow (tt-support-tools' tt_fpga.py), its wrapper and its pins for the TT FPGA
 # breakout board. Placed and routed against info.yaml's clock_hz, with the action's seed.
 # The flow writes to the top-level build/ (02-nextpnr.log, tt_um_tiny_breakout.bin, ...).

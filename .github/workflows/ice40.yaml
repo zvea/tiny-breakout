@@ -1,4 +1,4 @@
-name: fpga ice40up5k
+name: ice40
 
 on:
   push:
