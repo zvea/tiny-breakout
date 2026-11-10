@@ -63,8 +63,9 @@ addEventListener('keydown',e=>{
  const k=e.key;
  if(k==='m'||k==='M'){if(!e.repeat)toggleSound();return}  // a held A, R or M acts once
  if(e.target.closest?.('input,button'))return;  // a focused slider or button keeps its keys
- if(map[k]){e.preventDefault();if(k!==' '&&auto){auto=0;announce('autoplay off')}  // steering takes over
-  if(!(keys&map[k])){keys|=map[k];sendKeys()}}
+ if(map[k]){e.preventDefault();let changed=!(keys&map[k]);keys|=map[k];
+  if(k!==' '&&auto){auto=0;changed=true;announce('autoplay off')}  // steering takes over, a held key's repeat too
+  if(changed)sendKeys()}
  else if(e.repeat)return;
  else if(k==='a'||k==='A'){auto^=1;announce(auto?'autoplay on':'autoplay off');sendKeys()}
  else if(k==='r'||k==='R'){sendKeys(16)}});
