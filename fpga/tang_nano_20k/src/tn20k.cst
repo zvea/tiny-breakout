@@ -1,0 +1,28 @@
+// Tang Nano 20K pins (GW2AR-LV18QN88C8/I7), from Sipeed's TangNano-20K-example and
+// apicula's examples/tangnano20k.cst. nextpnr wants each LVDS pair's pins named separately.
+
+// 27 MHz crystal
+IO_LOC  "clk_27m" 4;
+IO_PORT "clk_27m" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+// Button S1: reset (high when pressed)
+IO_LOC  "key_s1" 88;
+IO_PORT "key_s1" IO_TYPE=LVCMOS33 PULL_MODE=DOWN;
+
+// HDMI connector: TMDS clock and data channels 0..2 (blue, green, red)
+IO_LOC  "tmds_clk_p" 33;
+IO_LOC  "tmds_clk_n" 34;
+IO_LOC  "tmds_d_p[0]" 35;
+IO_LOC  "tmds_d_n[0]" 36;
+IO_LOC  "tmds_d_p[1]" 37;
+IO_LOC  "tmds_d_n[1]" 38;
+IO_LOC  "tmds_d_p[2]" 39;
+IO_LOC  "tmds_d_n[2]" 40;
+IO_PORT "tmds_clk_p" IO_TYPE=LVDS25 PULL_MODE=NONE;
+IO_PORT "tmds_clk_n" IO_TYPE=LVDS25 PULL_MODE=NONE;
+IO_PORT "tmds_d_p[0]" IO_TYPE=LVDS25 PULL_MODE=NONE;
+IO_PORT "tmds_d_n[0]" IO_TYPE=LVDS25 PULL_MODE=NONE;
+IO_PORT "tmds_d_p[1]" IO_TYPE=LVDS25 PULL_MODE=NONE;
+IO_PORT "tmds_d_n[1]" IO_TYPE=LVDS25 PULL_MODE=NONE;
+IO_PORT "tmds_d_p[2]" IO_TYPE=LVDS25 PULL_MODE=NONE;
+IO_PORT "tmds_d_n[2]" IO_TYPE=LVDS25 PULL_MODE=NONE;

@@ -1,0 +1,35 @@
+hdl-util/hdmi at 83b1c95: let yosys-slang read it (applied by tools/common.sh to a copy in build/).
+
+Two always_ff blocks assign the same variable both with = and with <=, which yosys-slang
+rejects ("non-blocking assignment ... not supported after previous blocking assignment").
+Gowin's IDE and Verilator accept them as they are. Both changes keep the behaviour:
+  - hdmi.sv: control_data is reset with = but set with <=; reset it with <= too.
+  - packet_picker.sv: frame_counter (0..188 in steps of 4, wrapping at 192) is updated in two
+    blocking steps; make it one non-blocking assignment of the same value.
+
+Upstream: not yet reported. Drop this patch once upstream has an equivalent fix.
+
+--- a/src/hdmi.sv
++++ b/src/hdmi.sv
+@@ -324,7 +324,7 @@
+             begin
+                 mode <= 3'd2;
+                 video_data <= 24'd0;
+-                control_data = 6'd0;
++                control_data <= 6'd0;
+                 data_island_data <= 12'd0;
+             end
+             else
+--- a/src/packet_picker.sv
++++ b/src/packet_picker.sv
+@@ -123,9 +123,7 @@
+     end
+     else if (packet_pixel_counter == 5'd31 && packet_type == 8'h02) // Keep track of current IEC 60958 frame
+     begin
+-        frame_counter = frame_counter + 8'd4;
+-        if (frame_counter >= 8'd192)
+-            frame_counter = frame_counter - 8'd192;
++        frame_counter <= (frame_counter + 8'd4 >= 8'd192) ? frame_counter + 8'd4 - 8'd192 : frame_counter + 8'd4;
+     end
+ end
+ audio_sample_packet #(.SAMPLING_FREQUENCY(SAMPLING_FREQUENCY), .WORD_LENGTH({{WORD_LENGTH[0], WORD_LENGTH[1], WORD_LENGTH[2]}, WORD_LENGTH_LIMIT})) audio_sample_packet (.frame_counter(frame_counter), .valid_bit('{2'b00, 2'b00, 2'b00, 2'b00}), .user_data_bit('{2'b00, 2'b00, 2'b00, 2'b00}), .audio_sample_word(audio_sample_word_packet), .audio_sample_word_present(audio_sample_word_present_packet), .header(headers[2]), .sub(subs[2]));
