@@ -24,7 +24,7 @@ while [ $# -gt 0 ]; do
 done
 [ $# -le 1 ] || usage
 SRC=$(cd "${1:-$ROOT/src}" && pwd)
-command -v ffmpeg > /dev/null || { echo "ffmpeg not found"; exit 1; }
+for t in ffmpeg ffprobe; do command -v $t > /dev/null || { echo "$t not found"; exit 1; }; done
 # Verilator 4: sim.h relies on its internals (see sim/play/build.sh); 5 fails with C++ errors
 if [ -x "$ROOT/.tools/v4/bin/verilator" ]; then export PATH="$ROOT/.tools/v4/bin:$PATH"; fi
 VERSION=$(verilator --version 2>/dev/null || true)
