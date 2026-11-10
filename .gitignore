@@ -9,6 +9,7 @@ runs
 tt_submission
 src/user_config.json
 src/config_merged.json
+src/_tt_fpga_top.v
 test/sim_build
 test/__pycache__/
 test/results.xml
