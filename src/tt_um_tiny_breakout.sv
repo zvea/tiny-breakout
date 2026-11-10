@@ -247,6 +247,7 @@ module tt_um_tiny_breakout (
   logic       bricks_empty;
   logic       refill_bricks;  // decided by the frame update below
   logic       clear_brick;    // decided by the collision logic below
+  logic       clear_brick_q;  // ... and registered there, for the score and speed_level
 
   brick_wall u_brick_wall (
       .clk         (clk),
@@ -271,7 +272,8 @@ module tt_um_tiny_breakout (
       .clk     (clk),
       .rst_n   (rst_n),
       .clear   (frame_tick && new_game),
-      .add     (clear_brick),
+      .add     (clear_brick_q),  // a clock late (see Collisions): unseen, as it is drawn on
+                                 // lines 3..18 and bricks are cleared on lines 64..159
       .h_pos   (h_pos),
       .v_pos   (v_pos),
       .score_px(score_px)
@@ -383,7 +385,33 @@ module tt_um_tiny_breakout (
   wire signed [7:0] past_flat = ball_up   ? 16 - box_y : box_y + 6;  // bottom / top edge
   wire              side_hit  = past_side < past_flat;
 
-  // Collision flags: set during scan-out, consumed and cleared at frame_tick
+  // The touch, registered. Finding a touch takes the ball's whole pixel test (its box and
+  // circle) and the brick or paddle under the beam, and what it feeds would add onto that
+  // within the clock: the edge test, the flags, the score's carry chain, speed_level's
+  // incrementer. (The iCE40 FPGA build needs the time.) Only the brick's own clear must act
+  // on the pixel, as the wall's ring turns with the beam (brick_wall.sv); everything else
+  // takes the touch a clock later, from these flip-flops, loaded every clock. A clock late is
+  // harmless: the flags are read at frame_tick (line 480; the last touch is on the paddle's
+  // line, 455), and for the score and speed_level see below. No reset: touch is low while
+  // reset holds (serving is set), so zeros come in.
+  //   clear_brick_q:  a brick was cleared (the flags, the score and speed_level read it)
+  //   side_hit_q:     the edge it was hit on, read with clear_brick_q
+  //   paddle_touch_q: the paddle was touched
+  //   paddle_zone_q:  the paddle zone under the beam then: it is the beam's, and the next
+  //                   pixel may be in the next zone
+  logic       side_hit_q, paddle_touch_q;
+  logic [1:0] paddle_zone_q;
+  always_ff @(posedge clk) begin
+    clear_brick_q  <= clear_brick;
+    side_hit_q     <= side_hit;
+    paddle_touch_q <= touch && paddle_px;
+    paddle_zone_q  <= paddle_zone;
+  end
+
+  // Collision flags: set during scan-out, a clock after the touch, consumed and cleared at
+  // frame_tick. hit_row reads the wall's live brick_row, which is still the touched pixel's
+  // row: brick_row depends only on the line, and the clock after a brick pixel (x 64..575) is
+  // on the same line.
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       hit         <= '0;
@@ -391,13 +419,13 @@ module tt_um_tiny_breakout (
       hit_row     <= 0;
     end else if (frame_tick) begin
       hit <= '0;
-    end else if (touch) begin
-      if (brick_px && !side_hit) hit.brick_top_bottom <= 1;
-      if (brick_px && side_hit)  hit.brick_side       <= 1;
-      if (brick_px)              hit_row              <= brick_row;
-      if (paddle_px) begin
+    end else begin
+      if (clear_brick_q && !side_hit_q) hit.brick_top_bottom <= 1;
+      if (clear_brick_q && side_hit_q)  hit.brick_side       <= 1;
+      if (clear_brick_q)                hit_row              <= brick_row;
+      if (paddle_touch_q) begin
         hit.paddle  <= 1;
-        hit_zone    <= paddle_zone;
+        hit_zone    <= paddle_zone_q;
       end
     end
   end
@@ -559,7 +587,9 @@ module tt_um_tiny_breakout (
 
   // speed_level: 0 while the ball is on the paddle and from a lost ball, +1 per brick while
   // it flies (up to 16); in the pause, 16..31, a step every 4th frame; after game over, +1 per
-  // frame up to 31
+  // frame up to 31. A brick's step comes a clock after it is cleared (see Collisions): the
+  // speed is read at the moves, from line 480, and nothing else reads speed_level while the
+  // ball flies (the curtain, the celebration and timer_done are for game over and the pause).
   always_ff @(posedge clk) begin
     if (!rst_n || (frame_tick && new_game)) begin
       speed_level <= 0;
@@ -572,7 +602,7 @@ module tt_um_tiny_breakout (
       speed_level <= 0;
     end else if (frame_tick && game_over && speed_level != 31) begin
       speed_level <= speed_level + 1;
-    end else if (clear_brick && !speed_level[4]) begin  // stops at 16
+    end else if (clear_brick_q && !speed_level[4]) begin  // stops at 16
       speed_level <= speed_level + 1;
     end
   end
