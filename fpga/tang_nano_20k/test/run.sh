@@ -15,7 +15,8 @@ fi
 command -v verilator > /dev/null || { echo "No Verilator: see README.md" >&2; exit 1; }
 
 cd "$ROOT"
-prepare_hdmi  # the same patched hdl-util as the build
+need_hdmi
+mkdir -p "$BUILD"
 rm -rf "$BUILD/sim"  # from scratch: a build by another Verilator would point at its files
 
 # Warnings don't stop the test (-Wno-fatal): hdl-util has lint warnings of its own, and the

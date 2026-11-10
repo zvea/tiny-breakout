@@ -11,7 +11,8 @@ seed=${1:-1}
 
 need_venv
 cd "$ROOT"  # yowasp's tools see only the directory they start in, and below
-prepare_hdmi
+need_hdmi
+mkdir -p "$BUILD"
 
 # The Gowin primitives first, as black boxes for both front ends. tn20k_top.v (plain Verilog,
 # with them) goes through yosys's own front end; the SystemVerilog through yosys-slang, which

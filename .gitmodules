@@ -1,3 +1,6 @@
 [submodule "fpga/tang_nano_20k/third_party/hdmi"]
 	path = fpga/tang_nano_20k/third_party/hdmi
-	url = https://github.com/hdl-util/hdmi.git
+	# zvea's fork: upstream plus one fix, "Fix synthesis with yosys-slang" (branch
+	# nonblocking-assignments), https://github.com/hdl-util/hdmi/pull/58. Back to hdl-util
+	# once it is merged.
+	url = https://github.com/zvea/hdmi.git

@@ -14,21 +14,16 @@ game_sources() {
   sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/src\/\1/p' "$ROOT/info.yaml"
 }
 
-# hdmi_sources: hdl-util/hdmi's sources, as patched by prepare_hdmi, from ROOT
-hdmi_sources() { ls "$BUILD"/hdmi/src/*.sv; }
+# hdmi_sources: hdl-util/hdmi's sources, from the submodule, from ROOT
+HDMI="$REL/third_party/hdmi"
+hdmi_sources() { ls "$HDMI"/src/*.sv; }
 
-# prepare_hdmi: copies hdl-util/hdmi's sources from the submodule into build/hdmi and applies
-# third_party/hdl_util_hdmi.patch there; the submodule itself is left as upstream has it
-prepare_hdmi() {
-  local sub="$REL/third_party/hdmi"
-  if [ ! -f "$sub/src/hdmi.sv" ]; then
-    echo "No hdl-util/hdmi in $sub: run 'git submodule update --init $sub'" >&2
+# need_hdmi: stops with a hint if the hdl-util/hdmi submodule hasn't been checked out
+need_hdmi() {
+  if [ ! -f "$HDMI/src/hdmi.sv" ]; then
+    echo "No hdl-util/hdmi in $HDMI: run 'git submodule update --init $HDMI'" >&2
     exit 1
   fi
-  rm -rf "$BUILD/hdmi"
-  mkdir -p "$BUILD/hdmi"
-  cp -R "$sub/src" "$BUILD/hdmi/"
-  patch -s -d "$BUILD/hdmi" -p1 < "$REL/third_party/hdl_util_hdmi.patch"
 }
 
 # need_venv: stops with a hint if this board's .venv hasn't been set up
