@@ -109,7 +109,8 @@ module breakout_hdmi #(
   // 2. The high-pass, a clock later: y = a (y + x - x_prev), with a = 0.99348 as in sim.h
   // (exp(-2 pi 50 Hz / 48 kHz)), and y kept with 4 bits below the CIC's units. Since
   // x is 0 .. 0.875 * 525^3 (the loudest mix is 14 of 16 clocks high), y is within +-x's
-  // largest: 31 bits and a sign.
+  // largest, under 2^31 with those 4 bits, and y + x - x_prev within twice that: 33 bits and a
+  // sign hold it, with a bit to spare.
   localparam logic signed [17:0] ONE_MINUS_A = 18'sd109387;  // (1 - a) * 2^24
   logic        [27:0] cic_prev = 0;
   logic signed [33:0] hp = 0;

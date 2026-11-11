@@ -42,13 +42,16 @@ echo "Bitstream: $BUILD/tn20k.fs"
 
 # A summary, from nextpnr's log: the chip's resources the design uses (those it uses at all,
 # less the constant drivers and the global set/reset), and each clock's maximum frequency after
-# routing (the log's last report) against its target (--freq)
+# routing (the report after "Routing complete", whatever the number of clocks: the one before
+# it is placement's estimate) against its target (--freq)
 echo
 echo "Resources (used / on the chip):"
 sed -n '/Device utilisation:/,/^$/p' "$BUILD/pnr.log" |
   sed -nE 's/^Info:[[:space:]]+([A-Za-z0-9_]+): +([0-9]+)\/ *([0-9]+) +([0-9]+)%.*/\1 \2 \3 \4/p' |
   awk '$2 > 0 && $1 !~ /^(VCC|GND|GSR)$/ { printf "  %-10s %6d / %6d  %3d%%\n", $1, $2, $3, $4 }'
 echo "Timing (maximum frequency after routing):"
-grep "Max frequency for clock" "$BUILD/pnr.log" | tail -2 |
+TIMING=$(sed -n '/Routing complete/,$p' "$BUILD/pnr.log" | grep "Max frequency for clock" |
   sed -nE "s/.*clock +'([^']+)': +([0-9.]+) MHz \((PASS|FAIL) at ([0-9.]+) MHz.*/\1 \2 \3 \4/p" |
-  awk '{ printf "  %-22s %7.2f MHz (target %.2f): %s, %.1fx margin\n", $1, $2, $4, $3, $2 / $4 }'
+  awk '{ printf "  %-22s %7.2f MHz (target %.2f): %s, %.1fx margin\n", $1, $2, $4, $3, $2 / $4 }' ||
+  true)  # none found: say so below, rather than end the script (pipefail)
+echo "${TIMING:-  none found after routing in $BUILD/pnr.log: has the report changed?}"
