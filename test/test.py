@@ -119,8 +119,9 @@ async def test_vga_timing(dut):
 
 
 # Pixels of the demo's second frame in scan order: what, x, y, colour. The wall is in by then
-# but hidden, as the build shows its first row only from frame 8 (the system tests follow it). Each is in the middle of its object, at least 2 px from any other colour on its line,
-# so a clock's offset couldn't change it.
+# but hidden, as the build shows its first row only from the 9th frame (the system tests follow
+# it). Each is in the middle of its object, at least 2 px from any other colour on its line, so a
+# clock's offset couldn't change it.
 PICTURE = [
     ("the score's last 0, top stroke", 568, 5, WHITE),  # x 564..571, y 5..6
     ("the first spare ball", 68, 12, WHITE),  # x 64..71, y 8..15, 8 px wide on y 10..13
@@ -144,9 +145,9 @@ async def test_picture(dut):
     """vsync: a 2-line low pulse every 525 lines; and pixels of the demo's picture.
 
     The wall is filled during the first frame after reset, but the build hides it in the second,
-    where the pixels are read, between the vsync pulses timed. The ball, launched by the demo
-    from the paddle's middle, is still near it, far from them all; the paddle has moved 4 px at
-    most. (pixel() explains the timing.)
+    where the pixels are read, between the vsync pulses timed. The ball rests on the paddle's
+    middle through the build, far from them all, and autoplay holds the paddle still there.
+    (pixel() explains the timing.)
     """
     await reset(dut)
     vsync = await vsync_start(dut)

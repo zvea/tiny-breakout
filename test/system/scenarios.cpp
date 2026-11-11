@@ -253,8 +253,9 @@ View run(Game &g, int frames, bool find_ball = true) {
 }
 
 // A new wall is built a row at a time from the bottom while the ball rests on the paddle: a
-// row every 8 frames, each white for its first 4, the top one in colour 52 frames after the
-// refill. The build ends 12 frames later, and only then does FIRE launch the ball. Runs until
+// row every 8 frames, each white for its first 4, the top one in colour 49 to 52 frames after
+// the refill, by the frame phase the refill falls on (51 after a cleared wall). The build ends
+// 12 frames after that whatever the phase, and only then does FIRE launch the ball. Runs until
 // a full wall of 48 shows and the ball rests on the paddle (at most 80 frames), then to the
 // end of the build.
 const int BUILD_TAIL = 12;
@@ -930,7 +931,8 @@ struct BrickNotes {
       // bricks hit in one frame can show a frame apart, and the note is the second's; and the
       // sound reads the hit row live while a note plays, so a brick hit in the next frame's
       // scan retunes this one's note at once, though the picture can show it gone only a frame
-      // later still (cleared after the beam drew it, as at frame 4703 of the long game)
+      // later still (cleared after the beam drew it: the ball takes a brick at the top of one
+      // row, then in the next frame one at the bottom of the row above)
       int f = pending.front().frame;
       if (std::count(removals.begin(), removals.end(), f - 1) == 0 &&
           std::count(removals.begin(), removals.end(), f + 1) == 0 &&
@@ -1132,20 +1134,24 @@ View pause_after_clear(Follow &f) {
   int build = 0, twinkled = 0, x0 = v.paddle_x, prev = v.bricks;  // the paddle is narrow by now
   for (; build < 100 && resting(v); build++) {
     twinkled += twinkle();
-    CHECK(v.paddle_x == x0, "build frame %d: the paddle moved from %d to %d", build, x0, v.paddle_x);
+    CHECK(v.paddle_x == x0, "build frame %d: the paddle moved from %d to %d", build, x0,
+          v.paddle_x);
     CHECK(v.bricks >= prev, "build frame %d: %d bricks after %d", build, v.bricks, prev);
     prev = v.bricks;
     v = f.step();
   }
   printf("frame %5d: empty wall for %d frames, twinkle in %d; build %d frames to the launch\n",
          frame_no, pause, celebrated, build);
-  // The pause is 64 frames, and the build's first row is in colour 12 frames later; the twinkle
-  // shows for 15 of the pause timer's 16 steps of 4 frames
-  CHECK(pause >= 72 && pause <= 80, "empty wall for %d frames (expected about 76)", pause);
-  CHECK(celebrated >= 56 && celebrated <= 60, "twinkle in %d of the pause's %d frames (expected "
-        "about 60)", celebrated, pause);
-  CHECK(build >= 50 && build <= 56, "build of %d frames from the first row (expected about 53)",
-        build);
+  // The empty wall: the pause's timer at 16 for 1 to 5 frames, by the frame phase the last
+  // brick falls on; then the twinkle for exactly 57 (the timer's steps 17..30, 4 frames each,
+  // and 31 for one frame, as it ends the pause at the next frame update); then 11 frames from
+  // the refill to the build's first row in colour. One more when the last brick vanishes from
+  // the picture in its own frame: 69 to 74 in all. The refill always falls on the same frame
+  // phase, so the build, from its first row in colour to the launch, is always 53 frames.
+  CHECK(pause >= 69 && pause <= 74, "empty wall for %d frames (expected 69 to 74)", pause);
+  CHECK(celebrated == 57, "twinkle in %d of the pause's %d frames (expected 57)", celebrated,
+        pause);
+  CHECK(build == 53, "build of %d frames from the first row (expected 53)", build);
   CHECK(twinkled == 0, "twinkle in %d frames of the build", twinkled);
   CHECK(!twinkle(), "the twinkle stays after the build");
   CHECK(fanfare == std::vector<int>({30, 24, 20, 15}), "fanfare of %zu notes, the last %d",
