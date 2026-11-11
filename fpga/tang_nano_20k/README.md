@@ -90,10 +90,12 @@ channels. The board's own speaker amplifier isn't used.
 
 1. **Lockstep:** hdl-util's frame counter equals the game's on every clock.
 2. **Picture:** the pixels hdl-util sends are the game's visible pixels, in order, none
-   missing or extra: so the picture is neither shifted nor cropped.
+   missing or extra: so the picture is neither shifted nor cropped. The colours are taken from
+   the game before its pins, so a swapped channel or reversed level shows too.
 3. **Sound:** the samples sent are the player's: the test runs sim.h's code on the audio pin
    (its CIC filter must match exactly, its high-pass to within rounding). The demo must make
    some sound within the run, or the check would prove nothing.
+4. **Reset:** the button is pressed once, mid-frame, and the checks above hold after it.
 
 Verilator can't evaluate one of hdl-util's audio parameters (a real cast to int), so the test
 sets `breakout_hdmi`'s `DVI_ONLY`, and hdl-util sends video only (DVI). The picture path is

@@ -4,18 +4,22 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Self-checking testbench for breakout_hdmi (run by run.sh, with Verilator). It runs the demo
- * for +frames=N frames (default 400: the first sound is in frame 283) and checks what
- * breakout_hdmi's design rests on:
+ * for +frames=N frames (default 400: the first sound is in frame 350, as the reset in frame 5
+ * restarts the demo) and checks what breakout_hdmi's design rests on:
  *
  *   1. Lockstep: hdl-util's frame counter (cx, cy) equals the game's beam (h_pos, v_pos) on
  *      every clock after reset.
  *   2. Video: the pixels hdl-util sends (its video_data, in video periods) are the game's
  *      visible pixels, in order, none missing or extra: so the picture is neither shifted nor
- *      cropped. The game's pixel for a position is read from its pins a clock after its beam
- *      is there, as tiny_vga_out registers them.
+ *      cropped. The game's pixel for a position is its own colour as tiny_vga_out registers
+ *      it, a clock after the beam is there, taken before any pin mapping: so a colour channel
+ *      swapped or a level reversed, in the game's pins or in breakout_hdmi's reading of them,
+ *      fails too.
  *   3. Audio: breakout_hdmi's samples are those of the simulator's player (sim/play/sim.h),
  *      whose code is copied here: its CIC filter's exactly, and its high-pass's to within
  *      rounding. The demo must make some sound, or the check would prove nothing.
+ *   4. Reset: the button is pressed for 20 clocks in the middle of frame 5, and checks 1 to 3
+ *      hold after it as before (pixels queued before it are dropped).
  *
  * Hierarchical names reach into breakout_hdmi, the game and hdl-util: a testbench's licence.
  */
@@ -36,7 +40,7 @@ module tb_breakout_hdmi;
   ) dut (
       .clk_pixel   (clk),
       .clk_pixel_x5(1'b0),  // the serialisers aren't simulated (hdl-util leaves them out)
-      .reset_button(1'b0),
+      .reset_button(button),
       .tmds        (),
       .tmds_clock  ()
   );
@@ -44,8 +48,9 @@ module tb_breakout_hdmi;
   wire [9:0] h_pos = dut.u_game.u_vga_timing.h_pos;
   wire [9:0] v_pos = dut.u_game.u_vga_timing.v_pos;
 
+  logic button = 0;  // the board's reset button (S1), pressed once below
   int frames = 400;
-  int frame = 0;  // frames since reset, counted at the end of each
+  int frame = 0;  // frames since the first reset, counted at the end of each
   int errors = 0;
 
   always_ff @(posedge clk) if (dut.rst_n && h_pos == 799 && v_pos == 524) frame <= frame + 1;
@@ -73,8 +78,11 @@ module tb_breakout_hdmi;
   // 2. Video: the game's visible pixels go into a queue; hdl-util's video pixels come out of it
   logic [23:0] expected[$];
   longint      pixels_sent = 0;
+  wire colour_pkg::rgb_t pixel = dut.u_game.u_tiny_vga_out.rgb_q;  // the game's, unmapped
   always_ff @(posedge clk) begin
-    if (running && h_prev < 640 && v_prev < 480) expected.push_back(dut.rgb);
+    if (!dut.rst_n) expected.delete();  // a reset drops what was on its way
+    if (running && h_prev < 640 && v_prev < 480)
+      expected.push_back({{4{pixel.r}}, {4{pixel.g}}, {4{pixel.b}}});
     // (Only after reset: hdl-util's mode starts as video, for the clock before its reset.)
     if (running && dut.u_hdmi.mode == 3'd1) begin
       if (expected.size() == 0) fail("hdl-util sent a pixel the game didn't show");
@@ -128,6 +136,15 @@ module tb_breakout_hdmi;
       if (got > loudest) loudest = got;
       if (-got > loudest) loudest = -got;
     end
+  end
+
+  // 4. Reset: the button pressed for 20 clocks at line 300 of frame 5
+  initial begin
+    wait (dut.rst_n && frame == 5 && v_pos == 300);
+    button = 1;
+    repeat (20) @(posedge clk);
+    button = 0;
+    $display("Reset pressed in frame 5");
   end
 
   initial begin
