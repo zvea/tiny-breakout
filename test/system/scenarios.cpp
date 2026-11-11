@@ -925,12 +925,16 @@ struct BrickNotes {
     if (gone) removals.push_back(int(heard.size()) - 1);
     if (gone && v.bricks == before.bricks - 1)
       pending.push_back({__builtin_ctzll(gone) / 8, int(heard.size()) - 1, cleared});
-    while (!pending.empty() && pending.front().frame + 1 < int(heard.size())) {
-      // Not when another brick vanished a frame before or after: two bricks hit in one frame
-      // can show a frame apart, and the note is the second's
+    while (!pending.empty() && pending.front().frame + 2 < int(heard.size())) {
+      // Not when another brick vanished a frame before or after, or two frames after: two
+      // bricks hit in one frame can show a frame apart, and the note is the second's; and the
+      // sound reads the hit row live while a note plays, so a brick hit in the next frame's
+      // scan retunes this one's note at once, though the picture can show it gone only a frame
+      // later still (cleared after the beam drew it, as at frame 4703 of the long game)
       int f = pending.front().frame;
       if (std::count(removals.begin(), removals.end(), f - 1) == 0 &&
-          std::count(removals.begin(), removals.end(), f + 1) == 0)
+          std::count(removals.begin(), removals.end(), f + 1) == 0 &&
+          std::count(removals.begin(), removals.end(), f + 2) == 0)
         check(pending.front());
       pending.erase(pending.begin());
     }
