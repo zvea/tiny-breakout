@@ -6,7 +6,7 @@ A complete VGA brick-breaker game in a single [Tiny Tapeout](https://tinytapeout
 
 ![Tiny Breakout, mid-game](docs/img/gameplay.png)
 
-Tiny Breakout consists of some 14,200 transistors in 1,550 standard cells. There is no
+Tiny Breakout consists of some 14,600 transistors in 1,600 standard cells. There is no
 processor or frame buffer; the game keeps its state in about 200 flip-flops.
 
 It has been submitted to Tiny Tapeout's SKY26e shuttle (SkyWater's 130 nm process). It also
@@ -30,10 +30,10 @@ There is no frame buffer. Each pixel is computed from the game's state as the be
 - The bricks live in a ring of flip-flops that turns with the beam, so the brick being drawn is
   always in the same flip-flop. That saves a 48-way multiplexer and halves the brick wall's
   logic ([brick_wall.sv](src/brick_wall.sv)).
-- The brick walls are computed as the ring fills. The bottom row, built first, comes from a 5-bit
-  LFSR, and each row after it grows from the one before by an elementary, one-dimensional
-  cellular automaton (Wolfram's rule 150 or 182). This gives 21 different brick walls in under 1%
-  of the tile.
+- The brick walls are computed as the ring fills. The bottom row, computed first, comes from a
+  5-bit LFSR, and each row computed after it grows from the one before by an elementary,
+  one-dimensional cellular automaton (Wolfram's rule 150 or 182). This gives 21 different brick
+  walls in under 1% of the tile.
 - The ball's velocity is three bits: left or right, up or down, steep or flat. A bounce just
   sets or flips some of them, where signed velocities would need negations and absolute values.
   Its step never grows: the ball moves two to six times every four frames as it speeds up from
@@ -43,8 +43,8 @@ There is no frame buffer. Each pixel is computed from the game's state as the be
   for how many frames, and works out the note and volume from those. The noise for the paddle
   and wall sounds is a hash of the line number and the frame's random number, so it needs no
   generator of its own. The voices share the one audio pin by taking turns every clock, each
-  setting its volume by pulse width. The bass is a single flip-flop that divides the tune's square wave by two, an
-  octave down ([sound.sv](src/sound.sv)).
+  setting its volume by pulse width. The bass is a single flip-flop that divides the tune's
+  square wave by two, an octave down ([sound.sv](src/sound.sv)).
 
 [![The hardened tile](docs/img/layout.png)](https://gds-explorer.tinytapeout.com/viewer?file=https://zvea.github.io/tiny-breakout/tinytapeout.oas&pdk=sky130A)
 

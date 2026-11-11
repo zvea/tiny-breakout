@@ -43,8 +43,8 @@ fpga/tang_nano_20k/test/run.sh       # simulation test, about 3 minutes
 ```
 
 `tools/build.sh` takes an optional placement seed. The logs are in `build/`. The tools are all
-open source: yosys (with its yosys-slang front end for the SystemVerilog), nextpnr and
-apicula's `gowin_pack`, as WebAssembly builds from PyPI.
+open source and all from PyPI: yosys (with its yosys-slang front end for the SystemVerilog) and
+nextpnr as WebAssembly builds (YoWASP), and apicula's `gowin_pack`, in Python.
 
 CI ([.github/workflows/gowin.yaml](../../.github/workflows/gowin.yaml))
 does both on every push: it builds the bitstream, uploaded as the artifact

@@ -20,9 +20,10 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   the game: a black curtain comes down over everything but the score, and once it is down
   (about half a second) fire starts a new game.
 - **Levels:** when the last brick is cleared, the game pauses for about a second while the
-  playfield twinkles, gives back a spare ball (up to 2) and builds a new brick wall. Each wall,
-  the first of a game too, is built a row at a time from the bottom, each row landing white,
-  over about a second, while the ball waits on the paddle. Each level's paddle is narrower: 96 px, 80, 64, then 48 from the 4th level.
+  playfield twinkles, then gives back a spare ball (up to 2) and builds a new brick wall. Every
+  wall, a game's first too, is built a row at a time from the bottom, each row landing white,
+  over about a second while the ball waits on the paddle; fire launches it once the wall is
+  built. Each level's paddle is narrower: 96 px, 80, 64, then 48 from the 4th level.
 - **Autoplay:** the paddle steers itself and launches the ball. After each paddle hit it
   picks one of the paddle's four angle zones at random (the two outer ends and the two halves
   of the middle) and steers so that the ball lands there, so the ball keeps reaching new
@@ -43,13 +44,13 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
 2. Connect a VGA monitor through the TinyVGA PMOD on the output pins, and an SNES controller
    through the Gamepad PMOD on the input pins. For sound, also connect the Audio Pmod to the
    bidirectional pins (`uio[7]`); it is optional.
-3. Reset. With no controller connected the demo runs; connecting one starts a new game. Press
-   fire to launch the ball.
+3. Reset. With no controller connected the demo runs; connecting one starts a new game. Once
+   its wall is built (about a second), press fire to launch the ball.
 
 | Control | Gamepad | Direct input |
 |---|---|---|
 | Move left / right | D-pad left / right | `ui[0]` / `ui[1]` |
-| Fire: launch the ball, or start a new game after game over | A, X, L or R | `ui[2]` |
+| Fire: launch the ball (once the wall is built), or start a new game after game over | A, X, L or R | `ui[2]` |
 | Autoplay | SELECT switches it on; left, right or fire switches it off | `ui[3]` high |
 
 The other gamepad buttons (B, Y, START, up and down) do nothing. There is no pause, and a
