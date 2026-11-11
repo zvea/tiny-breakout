@@ -27,9 +27,7 @@ BLACK = 0b00_00_00
 WHITE = 0b11_11_11  # the ball, the spare-ball markers and the score
 PALE_CYAN = 0b10_11_11  # the paddle
 GREY = 0b01_01_01  # the walls
-NAVY = 0b00_00_01  # the field
-RED = 0b11_00_00  # the top row of bricks
-VIOLET = 0b10_00_11  # the bottom row
+NAVY = 0b00_00_01  # the field, and the bricks until the build shows them
 
 # Video timing (src/vga_timing.sv): 640x480 of 800 clocks x 525 lines
 CLOCK_NS = 40  # ~25 MHz pixel clock
@@ -120,8 +118,8 @@ async def test_vga_timing(dut):
     assert period == LINE
 
 
-# Pixels of the demo's second frame, the first to show the bricks, in scan order: what, x, y,
-# colour. Each is in the middle of its object, at least 2 px from any other colour on its line,
+# Pixels of the demo's second frame in scan order: what, x, y, colour. The wall is in by then
+# but hidden, as the build shows its first row only from frame 8 (the system tests follow it). Each is in the middle of its object, at least 2 px from any other colour on its line,
 # so a clock's offset couldn't change it.
 PICTURE = [
     ("the score's last 0, top stroke", 568, 5, WHITE),  # x 564..571, y 5..6
@@ -130,8 +128,8 @@ PICTURE = [
     ("the status line", 320, 12, BLACK),  # y 0..23
     ("inside the score's last 0", 567, 12, BLACK),  # strokes at x 564..565 and 570..571
     ("the top wall", 320, 28, GREY),  # y 24..31
-    ("a brick in row 0", 288, 72, RED),  # column 3: x 258..319, y 66..79
-    ("a brick in row 5", 480, 152, VIOLET),  # column 6: x 450..511, y 146..159
+    ("a hidden brick in row 0", 288, 72, NAVY),  # column 3: x 258..319, y 66..79
+    ("a hidden brick in row 5", 480, 152, NAVY),  # column 6: x 450..511, y 146..159
     ("the border, left", 28, 240, BLACK),  # x 0..55
     ("the left wall", 60, 240, GREY),  # x 56..63
     ("the field", 320, 240, NAVY),
@@ -145,8 +143,8 @@ PICTURE = [
 async def test_picture(dut):
     """vsync: a 2-line low pulse every 525 lines; and pixels of the demo's picture.
 
-    The wall is built during the first frame after reset, and shown from the second, so the
-    pixels are read in that, between the vsync pulses timed. The ball, launched by the demo
+    The wall is filled during the first frame after reset, but the build hides it in the second,
+    where the pixels are read, between the vsync pulses timed. The ball, launched by the demo
     from the paddle's middle, is still near it, far from them all; the paddle has moved 4 px at
     most. (pixel() explains the timing.)
     """

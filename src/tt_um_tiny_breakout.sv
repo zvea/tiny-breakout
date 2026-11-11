@@ -144,14 +144,16 @@ module tt_um_tiny_breakout (
   // 16. Every ball starts at 1x; the levels get harder through a narrower paddle instead.
   //
   // In the pause after a cleared wall, speed_level is the timer: 16..31, one step every 4
-  // frames (about a second), and the paddle moves at 1x (see moves). After game over it is
-  // the curtain's line: 0..31, one per frame.
+  // frames (about a second), and the paddle moves at 1x (see moves). In a new wall's build
+  // it is the build's timer: 0..15, also a step every 4 frames, the paddle again at 1x.
+  // After game over it is the curtain's line: 0..31, one per frame.
   logic [4:0] speed_level;
   logic [1:0] frame_phase;  // counts frames: the pattern of moves over 4 frames
   wire        odd_frame = frame_phase[0];
 
   logic [1:0] lives;      // spare balls; losing a ball with none left wraps to 3: game over
   logic       serving;    // ball resting on the paddle, waiting to be launched
+  logic       building;   // a new wall is being shown row by row; the ball waits on the paddle
   wire        game_over = (lives == 3);
   logic [1:0] level;      // 0 .. 3: from the 4th level on it stays at 3
   wire  [1:0] level_next = (level == 3) ? 2'd3 : level + 1;
@@ -475,7 +477,7 @@ module tt_um_tiny_breakout (
   wire timer_done = (speed_level == 31);
   wire restart    = game_over && btn_fire && timer_done;      // new game once the curtain is down
   assign new_game = restart || end_demo;                      // ... or when the demo ends
-  wire on_paddle  = !game_over && (serving || bricks_empty);  // ball waits on the paddle
+  wire on_paddle  = !game_over && (serving || bricks_empty || building);  // ball waits on the paddle
   wire lose_ball  = !game_over && !on_paddle && ball_lost;    // ball fell off the bottom
   wire fly        = !game_over && !on_paddle && !ball_lost;   // ball in flight
   wire paused     = on_paddle && bricks_empty;                // the wall was cleared ...
@@ -483,14 +485,14 @@ module tt_um_tiny_breakout (
 
   // Moves per frame over the 4-frame phase 0, 1, 2, 3: one on even frames; one on odd frames
   // too if speed_level[3] (2x); one more in phase 1 if speed_level[2] (a half step); and
-  // from speed_level 16 1, 2, 1, 2 (3x). In the pause after a cleared wall speed_level is the
-  // timer, not a speed: there the paddle, with the ball resting on it, moves at 1x, as the next
-  // ball will. (paused holds through the move lines, as the wall's emptiness is read off the
+  // from speed_level 16 1, 2, 1, 2 (3x). In the pause after a cleared wall and in a wall's
+  // build speed_level is a timer, not a speed: there the paddle, with the ball resting on it,
+  // moves at 1x, as the next ball will. (paused holds through the move lines, as the wall's emptiness is read off the
   // picture above them, except in the frame that ends the pause, where it drops as the wall
   // refills; speed_level is back at 0 then, which gives the same count.) Line 480 + k moves if
   // k < moves (line 480 is frame_tick). Each term is a 1-bit condition, zero-extended by
   // {1'b0, ...}.
-  wire [1:0] moves = paused         ? {1'b0, !odd_frame}
+  wire [1:0] moves = (paused || building) ? {1'b0, !odd_frame}
                    : speed_level[4] ? 2'd1 + {1'b0, odd_frame}
                    : {1'b0, !odd_frame} + {1'b0, speed_level[3] && odd_frame} +
                      {1'b0, speed_level[2] && (frame_phase == 1)};
@@ -591,15 +593,26 @@ module tt_um_tiny_breakout (
   // Bricks come back for a new game, or after the pause for the next level
   assign refill_bricks = frame_tick && (new_game || level_done);
 
+  // Wall build: after each refill (and from reset) the new wall is shown a row at a time from
+  // the bottom while the ball waits on the paddle. speed_level is its timer, 0..15, a step
+  // every 4th frame: a row lands every 2 steps from step 2, shown white for its first step.
+  wire build_done = (speed_level == 15) && (frame_phase == 3);
+  always_ff @(posedge clk) begin
+    if (!rst_n || refill_bricks) building <= 1;
+    else if (frame_tick && build_done) building <= 0;
+  end
+
   // speed_level: 0 while the ball is on the paddle and from a lost ball, +1 per brick while
-  // it flies (up to 16); in the pause, 16..31, a step every 4th frame; after game over, +1 per
-  // frame up to 31. A brick's step comes a clock after it is cleared (see Collisions): the
+  // it flies (up to 16); in the pause, 16..31, a step every 4th frame; in a wall's build,
+  // 0..15, a step every 4th frame, back to 0 as it ends; after game over, +1 per frame up to 31. A brick's step comes a clock after it is cleared (see Collisions): the
   // speed is read at the moves, from line 480, and by the sound's brick note only at a line
-  // start; nothing else reads speed_level while the ball flies (the curtain, the celebration
-  // and timer_done are for game over and the pause).
+  // start; nothing else reads speed_level while the ball flies (the curtain, the twinkle, the
+  // build and timer_done are for game over, the pause and the build).
   always_ff @(posedge clk) begin
     if (!rst_n || (frame_tick && new_game)) begin
       speed_level <= 0;
+    end else if (frame_tick && building) begin
+      if (frame_phase == 3) speed_level <= build_done ? 5'd0 : speed_level + 1;
     end else if (frame_tick && paused) begin
       // Set here: with FIRE held the ball launches next frame, skipping the on_paddle branch
       if (level_done) speed_level <= 0;
@@ -641,17 +654,33 @@ module tt_um_tiny_breakout (
   // red, red), so the pulse keeps pace with the ball
   wire colour_pkg::rgb_t lost_rgb = {ball_y[4:3], 4'b0000};  // {r, g, b}
 
-  // Celebration, in the pause after a cleared wall: rainbow bands rise behind the ball and
-  // paddle, over the field and the border. They show while speed_level counts 17..31 (the
-  // pause starts at 16, where play stops, so 16 alone can't tell the two apart). The bands
-  // are 64 px tall and rise 2 px per frame: the band under the beam is (line / 2 + frames into
-  // the pause) / 32, the frames counted by speed_level's low bits and frame_phase.
+  // Celebration, in the pause after a cleared wall: the field twinkles behind the ball and
+  // paddle while speed_level counts 17..31 (the pause starts at 16, where play stops, so 16
+  // alone can't tell the two apart). In 16x16-px cells, crosses light up for 4 frames, coloured
+  // by height in 64-px bands like the brick rows. A hash of the cell's position (bit
+  // permutations, XOR and a 5-bit add) picks half the cells and gives each one of the timer's
+  // 16 steps, so each lights once in the pause and about 28 show at a time.
   wire       celebrate = !game_over && speed_level[4] && (speed_level[3:0] != 0);
-  wire [7:0] band_y    = v_pos[8:1] + 8'({speed_level[3:0], frame_phase});
+  wire [4:0] tw_hash = ({h_pos[4], h_pos[9], h_pos[6], h_pos[7], h_pos[8]} ^
+                        {v_pos[4], v_pos[8], v_pos[6], v_pos[7], v_pos[5]}) +
+                       ({v_pos[7], v_pos[4], v_pos[5], v_pos[6], v_pos[8]} ^
+                        {h_pos[5], h_pos[7], h_pos[9], h_pos[4], h_pos[6]});
+  wire       tw_on   = tw_hash[0] && (speed_level[3:0] == tw_hash[4:1]);
+  wire [3:0] tw_ox   = h_pos[3:0];
+  wire [3:0] tw_oy   = v_pos[3:0];
+  wire       tw_arm_v = (tw_ox[3:1] == 3) && (tw_oy >= 4) && (tw_oy <= 9);
+  wire       tw_arm_h = (tw_oy[3:1] == 3) && (tw_ox >= 4) && (tw_ox <= 9);
+  wire       twinkle_px = celebrate && field_px && tw_on && (tw_arm_v || tw_arm_h);
 
-  // Brick colour by row, top to bottom; in the celebration, the colour of the band, which
-  // goes on past violet through magenta and rose, back to red
-  wire [2:0] colour_row = celebrate ? band_y[7:5] : brick_row;
+  // Wall build: rows from the bottom up, brick_row + rows shown >= 6; the newest row is white
+  // for its first step
+  wire [3:0] build_row  = {1'b0, brick_row} + {1'b0, speed_level[3:1]};
+  wire       brick_shown = !building || (build_row >= 6);
+  wire       brick_white = building && (build_row == 6) && !speed_level[0];
+
+  // Brick colour by row, top to bottom; in the celebration, the twinkle's colour by height in
+  // 64-px bands, which goes on past violet through magenta and rose
+  wire [2:0] colour_row = celebrate ? v_pos[8:6] : brick_row;
   colour_pkg::rgb_t brick_rgb;
   always_comb begin
     case (colour_row)
@@ -673,9 +702,9 @@ module tt_um_tiny_breakout (
     if (curtain && !score_px)                rgb = colour_pkg::BLACK;
     else if (ball_px || life_px || score_px) rgb = BALL_COLOUR;
     else if (paddle_px)                      rgb = PADDLE_COLOUR;
-    else if (brick_px)                       rgb = brick_rgb;
+    else if (brick_px && brick_shown)        rgb = brick_white ? colour_pkg::WHITE : brick_rgb;
     else if (wall_px)                        rgb = WALL_COLOUR;
-    else if (celebrate)                      rgb = brick_rgb;  // the band's colour
+    else if (twinkle_px)                     rgb = brick_rgb;  // the twinkle's colour
     else if (field_px)                       rgb = FIELD_COLOUR;
     else if (ball_doomed)                    rgb = lost_rgb;
     else                                     rgb = colour_pkg::BLACK;
@@ -723,6 +752,6 @@ module tt_um_tiny_breakout (
   assign uio_oe  = 8'b1000_0000;
 
   // Unused inputs and signal bits, listed to silence lint warnings
-  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[2:0], band_y[4:0], 1'b0};
+  wire _unused = &{ena, uio_in, ui.unused, paddle_dx[2:0], 1'b0};
 
 endmodule

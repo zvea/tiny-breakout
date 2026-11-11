@@ -19,9 +19,10 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   playfield turns red, brightening as the ball drops off the screen. Losing the last ball ends
   the game: a black curtain comes down over everything but the score, and once it is down
   (about half a second) fire starts a new game.
-- **Levels:** when the last brick is cleared, the game pauses for about a second while
-  rainbow bands rise up the screen, gives back a spare ball (up to 2) and builds a new brick
-  wall. Each level's paddle is narrower: 96 px, 80, 64, then 48 from the 4th level.
+- **Levels:** when the last brick is cleared, the game pauses for about a second while the
+  playfield twinkles, gives back a spare ball (up to 2) and builds a new brick wall. Each wall,
+  the first of a game too, is built a row at a time from the bottom, each row landing white,
+  over about a second, while the ball waits on the paddle. Each level's paddle is narrower: 96 px, 80, 64, then 48 from the 4th level.
 - **Autoplay:** the paddle steers itself and launches the ball. After each paddle hit it
   picks one of the paddle's four angle zones at random (the two outer ends and the two halves
   of the middle) and steers so that the ball lands there, so the ball keeps reaching new

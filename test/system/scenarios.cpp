@@ -79,14 +79,20 @@ View look(const Game &g, bool find_ball = true) {
     if (c == WHITE && prev != WHITE) v.lives++;
     prev = c;
   }
-  // Ball: the white pixels below the top wall
+  // Ball: the white pixels below the top wall, in runs no wider than the ball's 8 px (in a
+  // new wall's build each row lands white: 62-px runs)
   for (int y = 32; find_ball && y < 480; y++)
-    for (int x = 0; x < 640; x++)
-      if (at(x, y) == WHITE) {
+    for (int x = 0; x < 640; x++) {
+      if (at(x, y) != WHITE) continue;
+      int end = x;
+      while (end < 640 && at(end, y) == WHITE) end++;
+      if (end - x <= 8) {
         if (!v.ball || x < v.ball_x) v.ball_x = x;
         if (!v.ball) v.ball_y = y;
         v.ball = true;
       }
+      x = end;
+    }
   // Paddle: first paddle-coloured pixel on its bottom line, 455, which only a ball already
   // lost can cover (a bouncing ball reaches line 451)
   for (int x = 0; x < 640 && v.paddle_x < 0; x++)
@@ -110,8 +116,9 @@ View look(const Game &g, bool find_ball = true) {
   }
   // Bricks: 8 x 6 bricks of 64 x 16 px from (64, 64). A brick counts as standing if either
   // of two pixels inside it differs from the 2-px gap at the brick's left edge on the same
-  // line (two, in case the ball covers one). Comparing with the gap, not with the field's
-  // colour, also holds while rainbow bands fill the field after a cleared wall.
+  // line (two, in case the ball covers one). A row landing white in a new wall's build doesn't
+  // count yet. The twinkle after a cleared wall never lights these pixels or the gap: its
+  // crosses span x and y 4..9 of their 16-px cells, and these are at 0, 4 and 12, 4 and 13.
   for (int r = 0; r < 6; r++)
     for (int c = 0; c < 8; c++) {
       int x0 = 64 * (c + 1), y0 = 16 * (r + 4);
@@ -201,21 +208,21 @@ const char *part = "";
     }                                                                      \
   } while (0)
 
-int shown_bricks = 0;  // in the last frame
+uint64_t shown_standing = 0;  // the bricks shown in the last frame
 
 // Reset through the pin, as at power-up
 void power_up(Game &g) {
   g.reset();
   frame_no = 0;
-  shown_bricks = 0;
+  shown_standing = 0;
 }
 
 // Checked on every frame played, in every scenario:
 // - the ball never gets into the outer half of a wall: one touching a wall turns at the next
 //   frame update, by then at most two moves (4 px) into it, so nothing white in x 56..59 or
 //   580..583 below y 24, or in y 24..27 (the walls are 8 px thick: x 56..63, 576..583, y 24..31)
-// - a new wall comes in whole: when the brick count rises, the frame before showed no bricks.
-//   The frame in which a wall fills shows none (it once showed the bottom row).
+// - a new wall comes in a row at a time from the bottom (the build): bricks that appear in a
+//   frame are all in one row, and the frame before showed none in that row or above it
 void watch(const Game &g) {
   auto white = [&](int x, int y) { return colour(g.fb[y * 640 + x]) == WHITE; };
   int in_walls = 0;
@@ -224,10 +231,16 @@ void watch(const Game &g) {
   for (int y = 24; y < 28; y++)
     for (int x = 60; x < 580; x++) in_walls += white(x, y);
   CHECK(in_walls == 0, "the ball is in a wall: %d white pixels in the walls' outer half", in_walls);
-  int bricks = look(g, false).bricks;
-  CHECK(bricks <= shown_bricks || shown_bricks == 0,
-        "a wall of %d bricks came in after a frame that showed %d", bricks, shown_bricks);
-  shown_bricks = bricks;
+  uint64_t standing = look(g, false).standing, fresh = standing & ~shown_standing;
+  if (fresh) {
+    int r = 0;
+    while (!((fresh >> (8 * r)) & 0xff)) r++;  // the top row with new bricks
+    uint64_t to_r = r == 5 ? ~uint64_t{0} : (uint64_t{1} << (8 * (r + 1))) - 1;  // rows 0..r
+    CHECK((fresh >> (8 * r)) == ((fresh >> (8 * r)) & 0xff) && !(shown_standing & to_r),
+          "bricks %016llx appeared after a frame that showed %016llx",
+          (unsigned long long)fresh, (unsigned long long)shown_standing);
+  }
+  shown_standing = standing;
 }
 
 View run(Game &g, int frames, bool find_ball = true) {
@@ -239,21 +252,25 @@ View run(Game &g, int frames, bool find_ball = true) {
   return look(g, find_ball);
 }
 
-// With no controller connected the game plays itself (demo). The emulated controller is
-// recognised from its second report, which ends the demo and starts a new game; returns
-// the view once that game's wall is in (frame 3) and its ball rests on the paddle.
-View start_game(Game &g) {
-  View v = run(g, 4);
-  for (int i = 0; i < 6 && !(v.bricks == 48 && resting(v)); i++) v = run(g, 1);
-  CHECK(v.bricks == 48 && resting(v), "no new game: %d bricks, ball at (%d, %d)", v.bricks,
-        v.ball_x, v.ball_y);
+// A new wall is built a row at a time from the bottom while the ball rests on the paddle: a
+// row every 8 frames, each white for its first 4, the top one in colour 52 frames after the
+// refill. The build ends 12 frames later, and only then does FIRE launch the ball. Runs until
+// a full wall of 48 shows and the ball rests on the paddle (at most 80 frames), then to the
+// end of the build.
+const int BUILD_TAIL = 12;
+View wait_for_wall(Game &g, View v) {
+  for (int i = 0; i < 80 && !(v.bricks == 48 && resting(v)); i++) v = run(g, 1);
+  if (v.bricks == 48 && resting(v)) v = run(g, BUILD_TAIL);
   return v;
 }
 
-// A new ball goes onto the paddle at the next move, and at 1x every other frame has none:
-// runs up to 2 more frames for it to come to rest.
-View settle(Game &g, View v) {
-  for (int i = 0; i < 2 && !resting(v); i++) v = run(g, 1);
+// With no controller connected the game plays itself (demo). The emulated controller is
+// recognised from its second report, which ends the demo and starts a new game; returns
+// the view once that game's wall is built and its ball rests on the paddle.
+View start_game(Game &g) {
+  View v = wait_for_wall(g, run(g, 4));
+  CHECK(v.bricks == 48 && resting(v), "no new game: %d bricks, ball at (%d, %d)", v.bricks,
+        v.ball_x, v.ball_y);
   return v;
 }
 
@@ -324,6 +341,7 @@ void demo() {
     else g.pmod_plugged = false;
     if (how == 2) g.pmod_start = 480 * 800 - 16 * 40;  // the frame update is at clock 480 x 800
     View v = run(g, 4);
+    for (int i = 0; i < 80 && v.bricks < 48; i++) v = run(g, 1);  // the demo's wall is built
     int bricks0 = v.bricks;
     if (how == 0) {  // its first brick goes at about frame 280
       for (int i = 0; i < 900 && v.bricks >= bricks0; i++) v = run(g, 1, false);
@@ -331,17 +349,17 @@ void demo() {
       v = look(g);
       CHECK(!resting(v), "in the demo the ball is resting on the paddle");
     } else {
-      v = run(g, 20);
+      v = run(g, BUILD_TAIL + 20);
       CHECK(v.ball && v.ball_y < 440 - 10, "the demo did not launch the ball: y %d", v.ball_y);
     }
     if (how == 1) {
       g.pad_bits = 0;  // a controller is connected, nothing pressed
-      v = settle(g, run(g, 3));
+      v = wait_for_wall(g, run(g, 3));
     } else {
       g.buttons = LEFT;
       run(g, 1);
       g.buttons = 0;
-      v = settle(g, run(g, 3));  // a new game at the next frame update, then its wall fills
+      v = wait_for_wall(g, run(g, 3));  // a new game at the next frame update, then its build
     }
     CHECK(v.bricks == 48 && v.lives == 2, "then %d bricks, %d spare balls", v.bricks, v.lives);
     CHECK(resting(v), "then the ball is at (%d, %d), paddle %d", v.ball_x, v.ball_y, v.paddle_x);
@@ -424,10 +442,11 @@ void controls() {
     CHECK(n == note[1], "%d frames of the note at %d lines over its bass (expected %d)", n,
           note[0], note[1]);
   }
-  View v = look(g);
+  View v = wait_for_wall(g, look(g));  // the wall is built while the call plays
   CHECK(v.bricks == 48, "bricks %d", v.bricks);
   CHECK(v.lives == 2, "life markers %d", v.lives);
   CHECK(resting(v), "ball at (%d, %d), paddle at %d", v.ball_x, v.ball_y, v.paddle_x);
+  s = listen(g);
   for (int i = 0; i < 30; i++) {  // the ball waits on the paddle: quiet
     CHECK(s.a.vol == 0 && s.b.vol == 0, "%d frames after the call: volumes %d, %d (notes %d, %d)",
           i, s.a.vol, s.b.vol, s.a.half, s.b.half);
@@ -655,7 +674,7 @@ void losing_every_ball() {
     v = run(g, 1);
     CHECK(border_colour(g) == BLACK, "frame %d of the new game: border %#x", i, border_colour(g));
   }
-  v = settle(g, v);
+  v = wait_for_wall(g, v);
   CHECK(black_from_top(g) == 24, "%d black lines from the top", black_from_top(g));
   CHECK(v.lives == 2, "life markers %d", v.lives);
   CHECK(v.score == 0, "score %d", v.score);
@@ -1048,19 +1067,22 @@ void opening() {
 }
 
 // The pause after a cleared wall, from its first frame with no bricks: the empty wall stays for
-// about a second, with rainbow bands over the field and the border, and the fanfare (C, E, G,
-// then a held high C, over its bass), which has ended by the time the next wall comes in.
-// Autoplay leaves the paddle where it is while the ball waits on it: to see that wherever the
-// paddle is (autoplay often has it at a wall by now), it is steered away from the nearer wall by
-// hand for the first frames of the pause, which it does at 1x (the speed counter is the pause's
-// timer there), then handed back to autoplay. Returns the first frame of the next wall.
+// about a second while the field twinkles, with the fanfare (C, E, G, then a held high C, over
+// its bass), which has ended by the time the next wall comes in. Then the next wall is built a
+// row at a time from the bottom (watch() checks the order) while the ball waits on the paddle,
+// with no twinkle, and autoplay launches the ball once the build is over. Autoplay leaves the
+// paddle where it is while the ball waits on it: to see that wherever the paddle is (autoplay
+// often has it at a wall by now), it is steered away from the nearer wall by hand for the first
+// frames of the pause, which it does at 1x (the speed counter is the pause's timer there), then
+// handed back to autoplay. Returns the first frame after the launch, the wall complete.
 View pause_after_clear(Follow &f) {
   Game &g = f.g;
-  // The rainbow: the field and the border show the same band colour on a line
-  auto rainbow = [&] {
-    int field = colour(g.fb[300 * 640 + 300]), border = colour(g.fb[300 * 640 + 20]);
-    for (int k : {0x30, 0x38, 0x3c, 0x0c, 0x0b, 0x23, 0x33, 0x31})  // red .. violet, magenta, rose
-      if (field == k && border == k) return true;
+  // The twinkle: anything but the field's navy on the field below the wall and above the ball
+  // resting on the paddle (y 160..439), where only the twinkle's crosses can be
+  auto twinkle = [&] {
+    for (int y = 160; y < 440; y++)
+      for (int x = 64; x < 576; x++)
+        if (colour(g.fb[y * 640 + x]) != NAVY) return true;
     return false;
   };
   int pause = 0, celebrated = 0, held_x = -1;
@@ -1075,9 +1097,7 @@ View pause_after_clear(Follow &f) {
     g.autoplay = pause >= 8;
     g.buttons = pause < 8 ? away : 0;
     if (pause == 10) held_x = v.paddle_x;
-    // Only while the rainbow shows: the frame the next wall fills in has no bricks either, but
-    // play has resumed (autoplay launches the ball and steers)
-    if (pause > 10 && rainbow())
+    if (pause > 10)
       CHECK(v.paddle_x == held_x, "pause frame %d: with autoplay, the paddle moved from %d to %d",
             pause, held_x, v.paddle_x);
     int x = v.paddle_x;
@@ -1088,25 +1108,42 @@ View pause_after_clear(Follow &f) {
       moved = dx > 0;
       steered += dx;
     }
-    celebrated += rainbow();
+    celebrated += twinkle();
     Sound s = listen(g);
     if (s.a.vol && (fanfare.empty() || fanfare.back() != s.a.half)) fanfare.push_back(s.a.half);
     // The first frame can still play the last brick's note (it can vanish from the picture a
     // frame before its sound): from the second on, the fanfare
     unaccompanied += pause >= 1 && s.a.vol && !bass(s);
   }
-  printf("frame %5d: empty wall for %d frames, rainbow in %d\n", frame_no, pause, celebrated);
-  CHECK(pause >= 60 && pause <= 68, "empty wall for %d frames (expected about 64)", pause);
-  CHECK(celebrated >= pause - 8, "rainbow in only %d of the pause's %d frames", celebrated, pause);
-  CHECK(!rainbow(), "the rainbow stays after the pause");
+  Voice after = hear(g, 1);
+  CHECK(after.vol == 0, "the new wall comes in with a note of %d lines at volume %d", after.half,
+        after.vol);
+  // The build: from its first row in colour, the ball rests on the paddle, which autoplay holds
+  // still, until the build ends; no twinkle; the bricks only come in
+  int build = 0, twinkled = 0, x0 = v.paddle_x, prev = v.bricks;
+  for (; build < 100 && resting(v); build++) {
+    twinkled += twinkle();
+    CHECK(v.paddle_x == x0, "build frame %d: the paddle moved from %d to %d", build, x0, v.paddle_x);
+    CHECK(v.bricks >= prev, "build frame %d: %d bricks after %d", build, v.bricks, prev);
+    prev = v.bricks;
+    v = f.step();
+  }
+  printf("frame %5d: empty wall for %d frames, twinkle in %d; build %d frames to the launch\n",
+         frame_no, pause, celebrated, build);
+  // The pause is 64 frames, and the build's first row is in colour 12 frames later; the twinkle
+  // shows for 15 of the pause timer's 16 steps of 4 frames
+  CHECK(pause >= 72 && pause <= 80, "empty wall for %d frames (expected about 76)", pause);
+  CHECK(celebrated >= 56 && celebrated <= 60, "twinkle in %d of the pause's %d frames (expected "
+        "about 60)", celebrated, pause);
+  CHECK(build >= 50 && build <= 56, "build of %d frames from the first row (expected about 53)",
+        build);
+  CHECK(twinkled == 0, "twinkle in %d frames of the build", twinkled);
+  CHECK(!twinkle(), "the twinkle stays after the build");
   CHECK(fanfare == std::vector<int>({30, 24, 20, 15}), "fanfare of %zu notes, the last %d",
         fanfare.size(), fanfare.empty() ? 0 : fanfare.back());
   CHECK(unaccompanied == 0, "%d frames of the fanfare without its bass", unaccompanied);
   CHECK(too_fast == 0 && steered >= 8, "in the pause the paddle moved %d px by hand, %d times "
         "faster than 1x", steered, too_fast);
-  Voice after = hear(g, 1);
-  CHECK(after.vol == 0, "the new wall comes in with a note of %d lines at volume %d", after.half,
-        after.vol);
   return v;
 }
 
@@ -1238,7 +1275,7 @@ void long_game() {
   g.buttons = 0;
   f.step();
   f.step();
-  v = settle(g, f.v);
+  v = f.v = wait_for_wall(g, f.v);
   CHECK(v.paddle_w == 96 && v.paddle_x == 272 && resting(v),
         "paddle %d px at x %d, ball at (%d, %d)", v.paddle_w, v.paddle_x, v.ball_x, v.ball_y);
   // From the third wall, part cleared: the new game's first wall is full, as at power-up (the
