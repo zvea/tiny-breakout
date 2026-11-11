@@ -21,14 +21,16 @@ module tn20k_top (
     output wire [2:0] tmds_d_n
 );
 
-  // 27 MHz x 14 / 3 = 126 MHz (VCO 504 MHz, / 4), and / 5 = 25.2 MHz
+  // 27 MHz x 14 / 3 = 126 MHz, and / 5 = 25.2 MHz. The VCO runs at the output x ODIV: 1008 MHz,
+  // mid-range in the GW2A-18's 500..1250 MHz (C8/I7, the board's grade: DS102-2.7.3E, p. 38;
+  // ODIV 4 gave 504 MHz, 0.8% above the minimum). The output doesn't depend on ODIV.
   wire clk_pixel_x5, clk_pixel, pll_lock;
 
   rPLL #(
       .FCLKIN("27"),
       .IDIV_SEL(2),   // / 3
       .FBDIV_SEL(13), // x 14
-      .ODIV_SEL(4),
+      .ODIV_SEL(8),   // VCO = 126 MHz x 8
       .DYN_IDIV_SEL("false"),
       .DYN_FBDIV_SEL("false"),
       .DYN_ODIV_SEL("false")
