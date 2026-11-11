@@ -211,3 +211,77 @@ def test_brick_wall():
     run("brick_wall_tb", ["vga_timing.sv", "wall_pattern.sv", "brick_wall.sv",
                           str(UNIT_DIR / "brick_wall_tb.sv")],
         "test_brick_wall")
+
+
+async def reset_at(dut, x: int, y: int):
+    """Resets the wall (and the beam) for 3 clocks from the beam at (x, y); returns in the test's
+    phase with the beam at the start of the frame after reset."""
+    await goto(dut, x, y)
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 3)
+    dut.rst_n.value = 1
+    await RisingEdge(dut.clk)
+    await Timer(PERIOD_NS * 3 // 4, unit="ns")
+
+
+async def assert_filling_frame(dut, what: str):
+    """No brick shows in the frame now under way (the wall is filling)."""
+    for r, c in ALL:
+        assert (await probe(dut, *centre(r, c)))["brick_px"] == 0, f"brick {r},{c} {what}"
+
+
+@cocotb.test()
+async def reset_mid_step_and_mid_wall(dut):
+    """A reset during a row turn's steps (on a brick row's first line, x 64 + 8 x phase .., with
+    the phase different each time) or in the middle of the wall: the next frame fills, showing
+    nothing, then the full wall is back, whatever was cleared."""
+    await start(dut)
+    await next_frame(dut)
+    for x, y in [(67, 80), (99, 128), (300, 112)]:  # steps at phase 0 and 4; mid-wall
+        await next_frame(dut)
+        for r, c in ALL[1::3]:
+            await pulse(dut, "clear", *centre(r, c))
+        await reset_at(dut, x, y)
+        await assert_filling_frame(dut, f"while filling after a reset at ({x}, {y})")
+        assert await standing(dut) == set(ALL), f"after a reset at ({x}, {y})"
+
+
+@cocotb.test()
+async def an_uneven_wall_stays_put(dut):
+    """A partly cleared, uneven wall (pattern walls are mirror images, which would hide a
+    column reversal) is drawn the same for 7 frames: more than the 5 frames the row turns'
+    phase takes to come round."""
+    rng = random.Random(7)
+    await start(dut)
+    await next_frame(dut)
+    await next_frame(dut)
+    hits = sorted(rng.sample(ALL, 13))
+    for r, c in hits:
+        await pulse(dut, "clear", *centre(r, c))
+    model = set(ALL) - set(hits)
+    for frame in range(7):
+        got = await standing(dut)
+        assert got == model, f"frame {frame}: extra {sorted(got - model)}, missing {sorted(model - got)}"
+
+
+@cocotb.test()
+async def refills_at_other_lines(dut):
+    """A refill at the start of a frame fills that frame, one below the wall fills the next, and
+    one during the fill after reset changes nothing: each time no brick shows while it fills,
+    then the new wall."""
+    await start(dut)
+    await pulse(dut, "refill", 0, 100)  # in the fill after reset
+    assert await standing(dut) == set(ALL), "after a refill during the fill after reset"
+    await clear_all(dut)
+    dut.full_wall.value = 0
+    dut.level.value = 1
+    dut.random.value = 9
+    await next_frame(dut)
+    await pulse(dut, "refill", 0, 0)  # at the start of a frame: it fills this one
+    await assert_filling_frame(dut, "while filling after a refill at line 0")
+    assert await standing(dut) == pattern(9), "after a refill at line 0"
+    await clear_all(dut)
+    dut.random.value = 22
+    await pulse(dut, "refill", 0, 200)  # below the wall: it fills the next frame
+    assert await standing(dut) == set(), "the frame after a refill at line 200 is filling"
+    assert await standing(dut) == pattern(22), "after a refill at line 200"
