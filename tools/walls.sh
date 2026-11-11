@@ -28,7 +28,7 @@ if [ -n "$PNG" ]; then mkdir -p "$(dirname "$PNG")"; fi
 # Verilator from the local tools (test/README.md), with that environment's compiler, else PATH's
 if [ -x "$ROOT/.tools/env/bin/verilator" ]; then export PATH="$ROOT/.tools/env/bin:$PATH"; fi
 VERILATOR=verilator
-W="$ROOT/build/walls"; rm -rf "$W"; mkdir -p "$W"
+workdir walls
 cat > "$W/main.cpp" <<'CPP'
 #include "Vwall_pattern.h"
 #include <cstdio>

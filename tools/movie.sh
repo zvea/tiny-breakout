@@ -33,7 +33,7 @@ case $VERSION in
   *) echo "movie.sh needs Verilator 4, in .tools/v4 or on PATH (see test/README.md); found: ${VERSION:-none}"
      exit 1 ;;
 esac
-W="$ROOT/build/movie"; rm -rf "$W"; mkdir -p "$W" "$(dirname "$OUT")"
+workdir movie; mkdir -p "$(dirname "$OUT")"
 case "$(uname -s)" in
   Darwin) CFLAGS="-O3" ;;
   *)      CFLAGS="-O3 -march=native" ;;

@@ -11,7 +11,7 @@ set -euo pipefail
 . "$(dirname "$0")/common.sh"
 REV=${1:-HEAD}
 git -C "$ROOT" rev-parse --verify --quiet "$REV^{commit}" > /dev/null || { echo "no such revision: $REV"; exit 2; }
-W="$ROOT/build/local_area"; rm -rf "$W"; mkdir -p "$W"
+workdir local_area
 LIB=$(liberty); [ -n "$LIB" ] || { echo "sky130 library not found (set PDK_ROOT)"; exit 1; }
 cp "$LIB" "$W/hd.lib"  # yowasp's yosys only sees files under its working directory
 for side in rev tree; do
@@ -30,6 +30,8 @@ w, rev = sys.argv[1], sys.argv[2]
 def areas(side):
     return [float(re.search(r"Chip area.*: ([0-9.]+)", open(f).read()).group(1)) for f in sorted(glob.glob(f"{w}/{side}.stat*.txt"))]
 a, b = areas("rev"), areas("tree")
+if len(a) < 5 or len(b) < 5:  # a synthesis failed: no average over fewer orderings
+    sys.exit(f"synthesis failed: {5 - len(a)} of {rev}'s orderings and {5 - len(b)} of the working tree's (see {w})")
 ma, mb = sum(a) / len(a), sum(b) / len(b)
 print(f"{rev:>12}: {ma:7.0f} um2  ({min(a):.0f}..{max(a):.0f}, {len(a)} runs)")
 print(f"{'working tree':>12}: {mb:7.0f} um2  ({min(b):.0f}..{max(b):.0f}, {len(b)} runs)  {mb - ma:+.0f} um2")

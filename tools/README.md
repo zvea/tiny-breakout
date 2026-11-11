@@ -3,7 +3,9 @@
 Scripts for measuring and checking the design. They find the repo from their own location,
 use the project's `.venv` (for Python, LibreLane and yowasp-yosys), and keep their working
 files in `build/` and `runs/`; `flow.sh` also copies the sources into `.exp_src_TAG/` in the
-repo root while it runs. All three are git-ignored.
+repo root while it runs. All three are git-ignored. `local_area.sh`, `equiv.sh`, `walls.sh` and
+`movie.sh` work in a fresh `build/NAME.XXXXXX` per run, so runs can overlap; it is removed when
+the script succeeds and kept when it fails.
 
 | Script | What it does | Time |
 |---|---|---|
@@ -38,8 +40,13 @@ Notes:
   ```sh
   git clone https://github.com/TinyTapeout/tt-support-tools tt
   .venv/bin/pip install -r tt/requirements.txt
+  .venv/bin/pip install yowasp-yosys==0.62.0.0.post1088
   .venv/bin/python tt/tt_tool.py --create-user-config
   ```
+
+  The second `pip install` puts back the yosys of test/README.md's setup, which
+  `tt/requirements.txt` replaces with an older one: `local_area.sh`, `equiv.sh` and `lec.sh`
+  use it, and the flow's own yosys (in LibreLane's image) is the same 0.62.
 
   The local scripts need the sky130 PDK, found via `$PDK_ROOT` or ciel's default `~/.ciel`.
   `walls.sh` needs Verilator, from `.tools/env` (as in test/README.md) or `PATH`; its `--png`

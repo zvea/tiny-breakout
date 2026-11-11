@@ -31,6 +31,15 @@ liberty() {
 # a dot), safe to build the paths from that a script removes and recreates
 valid_name() { [[ $1 =~ ^[A-Za-z0-9_.-]+$ && $1 != .* ]]; }
 
+# workdir NAME: sets W to a fresh working directory, build/NAME.XXXXXX, for this run alone, so
+# that two runs of one script (two agents, say) can't share files; removed when the script
+# succeeds, kept for a look when it fails. Call it once, from the script itself (not a subshell).
+workdir() {
+  mkdir -p "$ROOT/build"
+  W=$(mktemp -d "$ROOT/build/$1.XXXXXX")
+  trap 'status=$?; [ "$status" -ne 0 ] || rm -rf -- "$W"; exit "$status"' EXIT
+}
+
 # abspath PATH: PATH made absolute against the current directory (realpath -m, which BSD's
 # realpath on macOS lacks, without resolving . or ..)
 abspath() { case $1 in /*) echo "$1" ;; *) echo "$PWD/$1" ;; esac; }
