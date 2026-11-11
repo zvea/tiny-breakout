@@ -11,6 +11,7 @@ Threshold for Threshold-surpassing long wires is not set. The checker will be sk
 [DRT-N] LEFN_ENCLOSURE with no CUTCLASS is not supported. Skipping for layer via
 [DRT-N] LEFN_ENCLOSURE with no CUTCLASS is not supported. Skipping for layer viaN
 [GPL-N] Target density N.N is too low for the available free area.
+[GRT-N] Unable to repair antennas on net with diodes.
 [RSZ-N] found N floating nets.
 [STA-N] skyN_fd_sc_hd__ff_nNC_NvN.lib line N, library skyN_fd_sc_hd__ff_nNC_NvN already exists.
 [STA-N] skyN_fd_sc_hd__ss_NC_NvN.lib line N, library skyN_fd_sc_hd__ss_NC_NvN already exists.
