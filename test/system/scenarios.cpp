@@ -725,9 +725,9 @@ void lost_at_speed() {
     for (; lost < 3600 && v.lives == lives; lost++) v = run(g, 1);
     if (lives == 0) {  // the last ball: game over, and FIRE starts a new game
       // That loss ends on the new game's first frame, which shows its markers but not yet its
-      // wall (frame 3, see start_game). The next round counts the bricks cleared from the wall
-      // it starts with, so wait for it.
-      for (int i = 0; i < 6 && v.bricks < 48; i++) v = run(g, 1);
+      // wall (see wait_for_wall). The next round counts the bricks cleared from the wall it
+      // starts with, so wait for it to be built.
+      v = wait_for_wall(g, v);
       CHECK(v.bricks == 48 && v.lives == 2, "round %d: a new game with %d bricks, %d spare balls",
             round, v.bricks, v.lives);
       printf("frame %5d: round %d: the last ball lost at 1x, and a new game, in %d frames\n",
@@ -762,7 +762,8 @@ void lost_at_speed() {
   g.buttons = 0;
   power_up(g);
   v = run(g, 4);
-  Sound s = listen(g);
+  Sound s = listen(g);  // the call starts at once; the wall is built meanwhile
+  v = wait_for_wall(g, v);
   CHECK(v.bricks == 48 && v.score == 0 && v.lives == 2, "after reset: %d bricks, score %d, %d "
         "spare balls", v.bricks, v.score, v.lives);
   CHECK(v.paddle_w == 96 && v.paddle_x == 272 && resting(v), "after reset: paddle at %d, %d px "
@@ -945,8 +946,10 @@ struct BrickNotes {
     for (int f = h.frame - 1; f <= h.frame + 1; f++)
       ok |= f >= 0 && f < int(heard.size()) && heard[f].a.half == n && heard[f].a.vol == 5 &&
             !bass(heard[f]);
-    CHECK(ok, "brick in row %d, %d cleared by this ball: no note of %d lines", h.row, h.cleared,
-          n);
+    auto at = [&](int f) { return f >= 0 && f < int(heard.size()) ? heard[f].a : Voice{}; };
+    CHECK(ok, "brick in row %d, %d cleared by this ball: no note of %d lines (heard %d/%d, %d/%d, "
+          "%d/%d: lines/volume)", h.row, h.cleared, n, at(h.frame - 1).half, at(h.frame - 1).vol,
+          at(h.frame).half, at(h.frame).vol, at(h.frame + 1).half, at(h.frame + 1).vol);
     checked[fast]++;
   }
 };
@@ -1077,12 +1080,12 @@ void opening() {
 // handed back to autoplay. Returns the first frame after the launch, the wall complete.
 View pause_after_clear(Follow &f) {
   Game &g = f.g;
-  // The twinkle: anything but the field's navy on the field below the wall and above the ball
-  // resting on the paddle (y 160..439), where only the twinkle's crosses can be
+  // The twinkle: anything but the field's navy (or the ball's white, once launched) on the field
+  // below the wall and above the paddle (y 160..439), where only the twinkle's crosses can be
   auto twinkle = [&] {
     for (int y = 160; y < 440; y++)
       for (int x = 64; x < 576; x++)
-        if (colour(g.fb[y * 640 + x]) != NAVY) return true;
+        if (colour(g.fb[y * 640 + x]) != NAVY && colour(g.fb[y * 640 + x]) != WHITE) return true;
     return false;
   };
   int pause = 0, celebrated = 0, held_x = -1;
@@ -1096,10 +1099,11 @@ View pause_after_clear(Follow &f) {
   for (; pause < 100 && v.bricks == 0; pause++) {
     g.autoplay = pause >= 8;
     g.buttons = pause < 8 ? away : 0;
-    if (pause == 10) held_x = v.paddle_x;
+    if (pause == 10) held_x = v.paddle_x + v.paddle_w / 2;
+    // By the centre: the paddle narrows for the next level at the end of the pause
     if (pause > 10)
-      CHECK(v.paddle_x == held_x, "pause frame %d: with autoplay, the paddle moved from %d to %d",
-            pause, held_x, v.paddle_x);
+      CHECK(v.paddle_x + v.paddle_w / 2 == held_x, "pause frame %d: with autoplay, the paddle's "
+            "centre moved from %d to %d", pause, held_x, v.paddle_x + v.paddle_w / 2);
     int x = v.paddle_x;
     v = f.step();
     if (pause >= 1 && pause < 8) {  // steered by hand: at 1x, never in two frames running
@@ -1110,9 +1114,10 @@ View pause_after_clear(Follow &f) {
     }
     celebrated += twinkle();
     Sound s = listen(g);
-    if (s.a.vol && (fanfare.empty() || fanfare.back() != s.a.half)) fanfare.push_back(s.a.half);
+    if (pause >= 1 && s.a.vol && (fanfare.empty() || fanfare.back() != s.a.half))
+      fanfare.push_back(s.a.half);
     // The first frame can still play the last brick's note (it can vanish from the picture a
-    // frame before its sound): from the second on, the fanfare
+    // frame before its sound): from the second on, the fanfare (for its notes above too)
     unaccompanied += pause >= 1 && s.a.vol && !bass(s);
   }
   Voice after = hear(g, 1);
@@ -1120,7 +1125,7 @@ View pause_after_clear(Follow &f) {
         after.vol);
   // The build: from its first row in colour, the ball rests on the paddle, which autoplay holds
   // still, until the build ends; no twinkle; the bricks only come in
-  int build = 0, twinkled = 0, x0 = v.paddle_x, prev = v.bricks;
+  int build = 0, twinkled = 0, x0 = v.paddle_x, prev = v.bricks;  // the paddle is narrow by now
   for (; build < 100 && resting(v); build++) {
     twinkled += twinkle();
     CHECK(v.paddle_x == x0, "build frame %d: the paddle moved from %d to %d", build, x0, v.paddle_x);
