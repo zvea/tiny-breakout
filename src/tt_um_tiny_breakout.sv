@@ -477,7 +477,7 @@ module tt_um_tiny_breakout (
   wire timer_done = (speed_level == 31);
   wire restart    = game_over && btn_fire && timer_done;      // new game once the curtain is down
   assign new_game = restart || end_demo;                      // ... or when the demo ends
-  wire on_paddle  = !game_over && (serving || bricks_empty || building);  // ball waits on the paddle
+  wire on_paddle  = !game_over && (serving || bricks_empty || building);  // ball on the paddle
   wire lose_ball  = !game_over && !on_paddle && ball_lost;    // ball fell off the bottom
   wire fly        = !game_over && !on_paddle && !ball_lost;   // ball in flight
   wire paused     = on_paddle && bricks_empty;                // the wall was cleared ...
@@ -487,11 +487,11 @@ module tt_um_tiny_breakout (
   // too if speed_level[3] (2x); one more in phase 1 if speed_level[2] (a half step); and
   // from speed_level 16 1, 2, 1, 2 (3x). In the pause after a cleared wall and in a wall's
   // build speed_level is a timer, not a speed: there the paddle, with the ball resting on it,
-  // moves at 1x, as the next ball will. (paused holds through the move lines, as the wall's emptiness is read off the
-  // picture above them, except in the frame that ends the pause, where it drops as the wall
-  // refills; speed_level is back at 0 then, which gives the same count.) Line 480 + k moves if
-  // k < moves (line 480 is frame_tick). Each term is a 1-bit condition, zero-extended by
-  // {1'b0, ...}.
+  // moves at 1x, as the next ball will. (paused holds through the move lines, as the wall's
+  // emptiness is read off the picture above them, except in the frame that ends the pause,
+  // where it drops as the wall refills, and building, set a clock after the refill, takes
+  // over.) Line 480 + k moves if k < moves (line 480 is frame_tick). Each term is a 1-bit
+  // condition, zero-extended by {1'b0, ...}.
   wire [1:0] moves = (paused || building) ? {1'b0, !odd_frame}
                    : speed_level[4] ? 2'd1 + {1'b0, odd_frame}
                    : {1'b0, !odd_frame} + {1'b0, speed_level[3] && odd_frame} +
@@ -604,10 +604,11 @@ module tt_um_tiny_breakout (
 
   // speed_level: 0 while the ball is on the paddle and from a lost ball, +1 per brick while
   // it flies (up to 16); in the pause, 16..31, a step every 4th frame; in a wall's build,
-  // 0..15, a step every 4th frame, back to 0 as it ends; after game over, +1 per frame up to 31. A brick's step comes a clock after it is cleared (see Collisions): the
-  // speed is read at the moves, from line 480, and by the sound's brick note only at a line
-  // start; nothing else reads speed_level while the ball flies (the curtain, the twinkle, the
-  // build and timer_done are for game over, the pause and the build).
+  // 0..15, a step every 4th frame, back to 0 as it ends; after game over, +1 per frame up to
+  // 31. A brick's step comes a clock after it is cleared (see Collisions): the speed is read
+  // at the moves, from line 480, and by the sound's brick note only at a line start; nothing
+  // else reads speed_level while the ball flies (the curtain, the twinkle, the build and
+  // timer_done are for game over, the pause and the build).
   always_ff @(posedge clk) begin
     if (!rst_n || (frame_tick && new_game)) begin
       speed_level <= 0;
@@ -656,10 +657,11 @@ module tt_um_tiny_breakout (
 
   // Celebration, in the pause after a cleared wall: the field twinkles behind the ball and
   // paddle while speed_level counts 17..31 (the pause starts at 16, where play stops, so 16
-  // alone can't tell the two apart). In 16x16-px cells, crosses light up for 4 frames, coloured
-  // by height in 64-px bands like the brick rows. A hash of the cell's position (bit
-  // permutations, XOR and a 5-bit add) picks half the cells and gives each one of the timer's
-  // 16 steps, so each lights once in the pause and about 28 show at a time.
+  // alone can't tell the two apart; 31 lasts a single frame, as the pause ends at the next
+  // frame update). In 16x16-px cells, crosses light up for 4 frames, coloured by height in
+  // 64-px bands like the brick rows. A hash of the cell's position (bit permutations, XOR and
+  // a 5-bit add) picks half the cells and gives each one of the timer's 16 steps, 28 cells to
+  // a step: those on step 0 never light, and those on step 15 only for that single frame.
   wire       celebrate = !game_over && speed_level[4] && (speed_level[3:0] != 0);
   wire [4:0] tw_hash = ({h_pos[4], h_pos[9], h_pos[6], h_pos[7], h_pos[8]} ^
                         {v_pos[4], v_pos[8], v_pos[6], v_pos[7], v_pos[5]}) +
