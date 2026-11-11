@@ -29,7 +29,9 @@ There is no frame buffer. Each pixel is computed from the game's state as the be
   ([autoplay.sv](src/autoplay.sv)).
 - The bricks live in a ring of flip-flops that turns with the beam, so the brick being drawn is
   always in the same flip-flop. That saves a 48-way multiplexer and halves the brick wall's
-  logic ([brick_wall.sv](src/brick_wall.sv)).
+  logic. The five rows behind the one being drawn turn by a bit on every clock, a line being a
+  whole number of turns, so they need no enable and use smaller flip-flops
+  ([brick_wall.sv](src/brick_wall.sv)).
 - The brick walls are computed as the ring fills. The bottom row, computed first, comes from a
   5-bit LFSR, and each row computed after it grows from the one before by an elementary,
   one-dimensional cellular automaton (Wolfram's rule 150 or 182). This gives 21 different brick

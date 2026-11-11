@@ -9,16 +9,23 @@
  * but for a 2-px gap on the left and top.
  *
  * The bricks are kept as a ring that turns with the beam, so the brick under the beam is
- * always bit 0. That needs no 48-way read multiplexer or write decoder, and halves the wall's
- * logic. It relies on the beam scanning the screen in order (vga_timing). The ring holds the
- * rows one after another, the head row (the one under the beam) in bits 0..7, and turns by
- * one bit at the start of each brick column, 8 times a line:
- *   - On most lines only the head row turns, so it is back in place for the next line.
- *   - On the first line of each brick row the whole ring turns (a row turn), so by the end of
- *     the line it has moved on by a row: 6 row turns per frame. That line is in the 2-px gap
- *     above the bricks, so no brick shows while the rows are half moved, and none is cleared.
- *     Turning the rows one bit at a time, as the head row turns anyway, saves a multiplexer
- *     on each head row bit over moving them a whole row at once.
+ * always in the same flip-flop. That needs no 48-way read multiplexer or write decoder, and
+ * halves the wall's logic. It relies on the beam scanning the screen in order (vga_timing).
+ * The ring is the head row, the one under the beam (head, bit 0 under the beam), and the
+ * tail, the other five rows one after another in 40 bits:
+ *   - The head row turns by one brick at the start of each brick column, 8 times a line, so
+ *     it is back in place for the next line.
+ *   - The tail turns by one bit on every clock, so it needs no enable: plain flip-flops,
+ *     which are a third smaller. A line is 800 clocks, 20 turns of the tail, so the tail is
+ *     where it was at the same point of every line.
+ *   - On the first line of each brick row (a row turn: 6 per frame) the head row swaps with
+ *     the front of the tail instead, a bit a clock for 8 clocks: each step shifts a bit out
+ *     of the head into the tail's back and the tail's front into the head, so by the end of
+ *     it the head holds the next row and the old one is at the tail's back. That line is in
+ *     the 2-px gap above the bricks, so no brick shows while the rows are half moved, and
+ *     none is cleared. A row turn moves the tail's order on by 8 bits, so the next one steps
+ *     8 clocks later in its line (phase, 0..4, at x 64 + 8 x phase), where the next row is
+ *     arriving at the tail's front.
  * Bricks keep their order around the ring, so which bit holds which brick at reset does not
  * matter.
  *
@@ -58,6 +65,9 @@ module brick_wall (
     output logic       empty          // no brick standing: valid below the wall (y >= 160)
 );
 
+  // The tail's scheme fixes these in several places below (8-clock steps in wall column 0, the
+  // phase's 0..4 and its move at x 512, last_row's bits), and needs a line (vga_timing's
+  // H_TOTAL) to be a multiple of the tail's 40 bits: changing any of them means reworking it.
   localparam int COLS = 8;
   localparam int ROWS = 6;
   localparam int RING = ROWS * COLS;
@@ -71,22 +81,30 @@ module brick_wall (
   wire       in_rows = (row >= FIRST_ROW) && (row < FIRST_ROW + 6'(ROWS));
   wire       gap     = (h_pos[5:1] == 0) || (v_pos[3:1] == 0);  // 2-px gap left of / above each brick
 
-  logic [RING-1:0] ring;     // 1 = standing; ring row r in bits 8r .. 8r + 7; bit 0 under the beam
-  logic            filling;  // refill in progress: 1s come in with the row turns
+  // The ring: the head row, under the beam, and the tail, the other five rows (see the top)
+  logic [COLS-1:0]      head;     // 1 = standing; bit 0 is under the beam
+  logic [RING-COLS-1:0] tail;     // turns every clock: plain flip-flops, no enable
+  logic [2:0]           phase;    // 0..4: where in the gap line the next row turn steps
+  logic                 filling;  // refill in progress: 1s come in with the row turns
 
-  // Turns happen in the gaps, where no brick is cleared
+  // The head row turns at the start of each brick column, in the gaps, where no brick is
+  // cleared. A row turn takes 8 steps on consecutive clocks in wall column 0 (x 64..127) of the
+  // first line of a brick row, a gap line, at x 64 + 8 x phase .. 71 + 8 x phase; the head row
+  // does not turn on that line.
   wire col_turn  = (h_pos[5:0] == 0) && in_cols;      // start of each brick column
-  wire row_line  = (v_pos[3:0] == 0) && in_rows;      // first line of each brick row: a row turn
-  wire last_step = col_turn && row_line && h_pos[9];  // a row turn's last step (column 7)
+  wire row_line  = (v_pos[3:0] == 0) && in_rows;      // first line of each brick row
+  wire step      = row_line && (col == FIRST_COL) && (h_pos[5:3] == phase);
+  wire last_step = step && (h_pos[2:0] == 7);
 
   // The row the fill loads at this row turn (see the top). The turn on the first line of brick
   // row k (0..5 from the top) loads row k - 1, the first one row 5. Bit c + 1 of a ring row is
   // under wall column c, as the head row has turned once at the start of column 0, so rows
-  // are turned by one bit out of and into column order. At the last step, before it is taken,
-  // the loaded row is in bits 41..47 and 0, and the row before it in bits 33..40.
+  // are turned by one bit out of and into column order. On the last step's clock, before its
+  // edge, the loaded row is in tail bits 33..39 and head bit 0, and the row before it in tail
+  // bits 25..32.
   wire [2:0]      turn     = 3'(row - FIRST_ROW);
   wire [2:0]      fill_r   = (turn == 0) ? 3'd5 : turn - 3'd1;
-  wire [COLS-1:0] last_row = {ring[RING-15], ring[RING-8:RING-14]};  // bit c: column c
+  wire [COLS-1:0] last_row = {tail[25], tail[32:26]};  // bit c: column c
   wire [COLS-1:0] pattern_row;
   wall_pattern u_wall_pattern (
       .r     (fill_r),
@@ -98,25 +116,39 @@ module brick_wall (
   wire [COLS-1:0] fill_row = full_wall ? '1 : pattern_row;  // bit c: column c
   wire [COLS-1:0] fill     = {fill_row[COLS-2:0], fill_row[COLS-1]} & {COLS{filling && last_step}};
 
-  // No reset: refill (which reset starts) fills the wall
+  // No reset, for the tail nor the head: refill (which reset starts) fills the wall
   always_ff @(posedge clk) begin
-    if (col_turn && row_line) begin
-      ring <= {ring[0], ring[RING-1:1]} | {fill, (RING - COLS)'(0)};
-    end else if (col_turn) begin
-      ring[COLS-1:0] <= {ring[0], ring[COLS-1:1]};
+    tail <= {step ? head[0] : tail[0], tail[RING-COLS-1:1]} | {fill, (RING - 2 * COLS)'(0)};
+  end
+
+  always_ff @(posedge clk) begin
+    if (step) begin
+      head <= {tail[0], head[COLS-1:1]};
+    end else if (col_turn && !row_line) begin
+      head <= {head[0], head[COLS-1:1]};
     end else if (clear && brick_px) begin
-      ring[0] <= 0;
+      head[0] <= 0;
     end
   end
 
+  // Each row turn moves the tail's order on by 8 bits, so the next one steps 8 clocks later in
+  // its line: lines are 800 clocks, 20 turns of the 40-bit tail, so this keeps the next row's
+  // bits arriving at tail bit 0 as the steps take them. The phase moves on at the last column
+  // turn of the line (x 512), after the steps.
+  always_ff @(posedge clk) begin
+    if (!rst_n) phase <= 0;
+    else if (row_line && col_turn && h_pos[9]) phase <= (phase == 4) ? 3'd0 : phase + 3'd1;
+  end
+
   // Filling ends at the end of the wall (line 160) of the next frame, after its last row turn
-  // (line 144); refill must come after line 160, as it does at frame_tick (line 480)
+  // (line 144); refill must come from line 176, as it does at frame_tick (line 480): one on
+  // lines 160..175 would be lost, as filling ends on those lines
   always_ff @(posedge clk) begin
     if (!rst_n || refill) filling <= 1;
     else if (row == FIRST_ROW + 6'(ROWS)) filling <= 0;
   end
 
-  assign brick_px = in_cols && in_rows && !gap && ring[0] && !filling;
+  assign brick_px = in_cols && in_rows && !gap && head[0] && !filling;
 
   // Whether a brick was drawn this frame, from the wall's top row on (a filling wall counts)
   logic seen;

@@ -26,7 +26,7 @@ module vga_timing (
   localparam logic [9:0] H_VISIBLE    = 640;
   localparam logic [9:0] H_SYNC_START = 656;  // after a 16-clock front porch
   localparam logic [9:0] H_SYNC_END   = 752;  // 96-clock sync pulse, then a 48-clock back porch
-  localparam logic [9:0] H_TOTAL      = 800;
+  localparam logic [9:0] H_TOTAL      = 800;  // a multiple of 40: brick_wall's tail relies on it
 
   localparam logic [9:0] V_VISIBLE    = 480;
   localparam logic [9:0] V_SYNC_START = 490;  // after a 10-line front porch
