@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -209,12 +210,25 @@ const char *part = "";
   } while (0)
 
 uint64_t shown_standing = 0;  // the bricks shown in the last frame
+int white_for[48] = {};       // per brick: frames it has been shown white for, up to the last
+
+// The twinkle after a cleared wall: anything but the field's navy (or the ball's white) on the
+// field below the wall and above the paddle (y 160..439), where only its crosses can be
+bool twinkling(const Game &g) {
+  for (int y = 160; y < 440; y++)
+    for (int x = 64; x < 576; x++) {
+      int k = colour(g.fb[y * 640 + x]);
+      if (k != NAVY && k != WHITE) return true;
+    }
+  return false;
+}
 
 // Reset through the pin, as at power-up
 void power_up(Game &g) {
   g.reset();
   frame_no = 0;
   shown_standing = 0;
+  std::fill(std::begin(white_for), std::end(white_for), 0);
 }
 
 // Checked on every frame played, in every scenario:
@@ -222,7 +236,9 @@ void power_up(Game &g) {
 //   frame update, by then at most two moves (4 px) into it, so nothing white in x 56..59 or
 //   580..583 below y 24, or in y 24..27 (the walls are 8 px thick: x 56..63, 576..583, y 24..31)
 // - a new wall comes in a row at a time from the bottom (the build): bricks that appear in a
-//   frame are all in one row, and the frame before showed none in that row or above it
+//   frame are all in one row, and the frame before showed none in that row or above it; each
+//   lands white, for exactly 4 frames before its colour (shown white: both of the pixels that
+//   look() samples white, which the ball, at 8 px, can't be)
 void watch(const Game &g) {
   auto white = [&](int x, int y) { return colour(g.fb[y * 640 + x]) == WHITE; };
   int in_walls = 0;
@@ -239,6 +255,17 @@ void watch(const Game &g) {
     CHECK((fresh >> (8 * r)) == ((fresh >> (8 * r)) & 0xff) && !(shown_standing & to_r),
           "bricks %016llx appeared after a frame that showed %016llx",
           (unsigned long long)fresh, (unsigned long long)shown_standing);
+  }
+  for (int i = 0; i < 48; i++) {
+    int x0 = 64 * (i % 8 + 1), y0 = 16 * (i / 8 + 4);
+    if (white(x0 + 4, y0 + 4) && white(x0 + 60, y0 + 13)) {
+      white_for[i]++;
+      continue;
+    }
+    if ((fresh >> i) & 1)
+      CHECK(white_for[i] == 4, "the brick in row %d, column %d came in after %d white frames "
+            "(expected 4)", i / 8, i % 8, white_for[i]);
+    white_for[i] = 0;
   }
   shown_standing = standing;
 }
@@ -541,8 +568,9 @@ void controls() {
 //   held while it comes down starts nothing, no ball comes without FIRE, and once the trombone
 //   has ended, all is quiet.
 // - restart: fire (A on the gamepad here) starts a new game. From its first frame nothing of the
-//   old one shows: the border is black (it once flashed the level-clear rainbow, as the
-//   curtain's count carried over), and the picture is back with a full wall, two spare balls,
+//   old one shows: the border is black and nothing twinkles in the field (the curtain's count
+//   once carried over, which flashed the level-clear rainbow then and would light the twinkle
+//   now), and once its wall is built the picture is back with a full wall, two spare balls,
 //   score 0 and the ball resting on the paddle.
 void losing_every_ball() {
   Game g;
@@ -674,8 +702,10 @@ void losing_every_ball() {
   for (int i = 0; i < 3; i++) {
     v = run(g, 1);
     CHECK(border_colour(g) == BLACK, "frame %d of the new game: border %#x", i, border_colour(g));
+    CHECK(!twinkling(g), "frame %d of the new game: a twinkle", i);
   }
   v = wait_for_wall(g, v);
+  CHECK(!twinkling(g), "a twinkle once the new game's wall is built");
   CHECK(black_from_top(g) == 24, "%d black lines from the top", black_from_top(g));
   CHECK(v.lives == 2, "life markers %d", v.lives);
   CHECK(v.score == 0, "score %d", v.score);
@@ -972,6 +1002,8 @@ struct Follow {
   View step() {
     View before = v;
     v = run(g, 1);
+    // The twinkle shows only in the pause after a cleared wall, when no bricks stand
+    if (v.bricks > 0) CHECK(!twinkling(g), "a twinkle with %d bricks standing", v.bricks);
     bounces.feed(v);
     speeds.feed(v);
     zones.feed(before, v);
@@ -1077,7 +1109,7 @@ void opening() {
 
 // The pause after a cleared wall, from its first frame with no bricks: the empty wall stays for
 // about a second while the field twinkles, with the fanfare (C, E, G, then a held high C, over
-// its bass), which has ended by the time the next wall comes in. Then the next wall is built a
+// its bass), which has ended by the frame the wall refills in. Then the next wall is built a
 // row at a time from the bottom (watch() checks the order) while the ball waits on the paddle,
 // with no twinkle, and autoplay launches the ball once the build is over. Autoplay leaves the
 // paddle where it is while the ball waits on it: to see that wherever the paddle is (autoplay
@@ -1086,15 +1118,9 @@ void opening() {
 // handed back to autoplay. Returns the first frame after the launch, the wall complete.
 View pause_after_clear(Follow &f) {
   Game &g = f.g;
-  // The twinkle: anything but the field's navy (or the ball's white, once launched) on the field
-  // below the wall and above the paddle (y 160..439), where only the twinkle's crosses can be
-  auto twinkle = [&] {
-    for (int y = 160; y < 440; y++)
-      for (int x = 64; x < 576; x++)
-        if (colour(g.fb[y * 640 + x]) != NAVY && colour(g.fb[y * 640 + x]) != WHITE) return true;
-    return false;
-  };
+  auto twinkle = [&] { return twinkling(g); };
   int pause = 0, celebrated = 0, held_x = -1;
+  bool refill_heard = false;  // the first frame after the twinkle (the refill) listened to
   std::vector<int> fanfare;  // voice A's notes in the pause, in order
   int unaccompanied = 0;     // frames of the fanfare without its bass
   // Steered away from the nearer wall for the first frames: at 1x, a 4-px step every other frame
@@ -1118,7 +1144,16 @@ View pause_after_clear(Follow &f) {
       moved = dx > 0;
       steered += dx;
     }
-    celebrated += twinkle();
+    bool twinkled_now = twinkle();
+    celebrated += twinkled_now;
+    // The fanfare ends with the pause: the frame after the twinkle's last, as the wall refills,
+    // is silent
+    if (celebrated && !twinkled_now && !refill_heard) {
+      Voice after = hear(g, 1);
+      CHECK(after.vol == 0, "the wall refills with a note of %d lines at volume %d", after.half,
+            after.vol);
+      refill_heard = true;
+    }
     Sound s = listen(g);
     if (pause >= 1 && s.a.vol && (fanfare.empty() || fanfare.back() != s.a.half))
       fanfare.push_back(s.a.half);
@@ -1126,9 +1161,7 @@ View pause_after_clear(Follow &f) {
     // frame before its sound): from the second on, the fanfare (for its notes above too)
     unaccompanied += pause >= 1 && s.a.vol && !bass(s);
   }
-  Voice after = hear(g, 1);
-  CHECK(after.vol == 0, "the new wall comes in with a note of %d lines at volume %d", after.half,
-        after.vol);
+  CHECK(refill_heard, "the twinkle didn't end before the next wall came in");
   // The build: from its first row in colour, the ball rests on the paddle, which autoplay holds
   // still, until the build ends; no twinkle; the bricks only come in
   int build = 0, twinkled = 0, x0 = v.paddle_x, prev = v.bricks;  // the paddle is narrow by now
@@ -1290,6 +1323,8 @@ void long_game() {
   g.buttons = 0;
   f.step();
   f.step();
+  // The new game's wall is hidden at first, so Follow::step doesn't look for the twinkle yet
+  CHECK(!twinkling(g), "a twinkle as the new game starts");
   v = f.v = wait_for_wall(g, f.v);
   CHECK(v.paddle_w == 96 && v.paddle_x == 272 && resting(v),
         "paddle %d px at x %d, ball at (%d, %d)", v.paddle_w, v.paddle_x, v.ball_x, v.ball_y);
