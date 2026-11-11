@@ -20,9 +20,8 @@ lists the scenarios and their tiers, and each scenario's comment lists what its 
 failure names its part and frame.
 
 CI ([.github/workflows/test.yaml](../.github/workflows/test.yaml)) lints the design with
-Verilator 5 and runs `test.py` and the unit tests on Icarus, both from Ubuntu 24.04's packages
-(Icarus 12, where the local setup below has 13.0). Tiny Tapeout's GDS workflow also runs
-`test.py` on the gate-level netlist. The system scenarios run only locally, because they need
+Ubuntu 24.04's Verilator 5 and runs `test.py` and the unit tests on Icarus 13.0, Tiny Tapeout's
+own build, which its GDS workflow also uses to run `test.py` on the gate-level netlist. The system scenarios run only locally, because they need
 Verilator 4.x. Two workflows build FPGA bitstreams, each uploaded as an artifact:
 [ice40](../.github/workflows/ice40.yaml), for Tiny Tapeout's iCE40UP5K FPGA board, placed
 and routed against the board's 25.175 MHz clock, so a change that makes the design slower
@@ -75,7 +74,7 @@ autoconf && ./configure --prefix="$HOME/opt/verilator-4.228" && make -j8 && make
 
 ```sh
 .venv/bin/pytest test/unit                 # Verilator 5
-SIM=icarus .venv/bin/pytest test/unit      # Icarus, as in CI (which has version 12)
+SIM=icarus .venv/bin/pytest test/unit      # Icarus, as in CI
 .venv/bin/pytest test/system -n auto       # cheap tier; needs Verilator 4; one worker per scenario
 .venv/bin/pytest test/system -n auto -m milestone  # the milestone tier alone
 .venv/bin/pytest test/system -n auto --milestone   # both tiers
