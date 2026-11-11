@@ -9,13 +9,18 @@
  * but for a 2-px gap on the left and top.
  *
  * The bricks are kept as a ring that turns with the beam, so the brick under the beam is
- * always bricks[0][0]. That needs no 48-way read multiplexer or write decoder, and halves
- * the wall's logic. It relies on the beam scanning the screen in order (vga_timing):
- *   - The head row, bricks[0], turns by one brick at the start of each brick column:
- *     8 turns per line, so it is back in place for the next line.
- *   - All rows turn by one row at the start of each brick row: 6 turns per frame.
- * Bricks keep their order around the ring, so which bit holds which brick at reset does
- * not matter.
+ * always bit 0. That needs no 48-way read multiplexer or write decoder, and halves the wall's
+ * logic. It relies on the beam scanning the screen in order (vga_timing). The ring holds the
+ * rows one after another, the head row (the one under the beam) in bits 0..7, and turns by
+ * one bit at the start of each brick column, 8 times a line:
+ *   - On most lines only the head row turns, so it is back in place for the next line.
+ *   - On the first line of each brick row the whole ring turns (a row turn), so by the end of
+ *     the line it has moved on by a row: 6 row turns per frame. That line is in the 2-px gap
+ *     above the bricks, so no brick shows while the rows are half moved, and none is cleared.
+ *     Turning the rows one bit at a time, as the head row turns anyway, saves a multiplexer
+ *     on each head row bit over moving them a whole row at once.
+ * Bricks keep their order around the ring, so which bit holds which brick at reset does not
+ * matter.
  *
  * Refill shifts a new wall in with the row turns of the next frame, and the bricks stay
  * hidden until the end of the wall (line 160), after the last turn: the frame after reset and
@@ -23,11 +28,13 @@
  * also keeps the unreset bits from showing as X in simulation.
  *
  * The first wall of a game is full; every later one comes from wall_pattern, which gives the
- * wall's rows one at a time: each row turn of the fill loads one row. The fill's first turn
- * loads row 5 (the bottom one), then rows 0 .. 4, and each time wall_pattern also gets the
- * row loaded just before, still in bricks[ROWS-1], so a layout can grow each row from the last.
- * The fill ORs the new rows into what is left in the ring: empty after a cleared wall. A new
- * game can start with bricks left, so the first wall is forced full, whatever the layout.
+ * wall's rows one at a time: each row turn of the fill loads one row, the one leaving the head
+ * for the tail. The fill's first turn loads row 5 (the bottom one), then rows 0 .. 4, and each
+ * time wall_pattern also gets the row loaded just before, the one ahead of it in the ring, so
+ * a layout can grow each row from the last. A row is loaded at its turn's last step, when it
+ * and the row before are both whole. The fill ORs the new rows into what is left in the ring:
+ * empty after a cleared wall. A new game can start with bricks left, so the first wall is
+ * forced full, whatever the layout.
  *
  * Empty is read off the picture: no brick was drawn in the wall's rows. It is valid from
  * the end of the wall (y 160) until the next frame starts.
@@ -53,6 +60,7 @@ module brick_wall (
 
   localparam int COLS = 8;
   localparam int ROWS = 6;
+  localparam int RING = ROWS * COLS;
   localparam logic [3:0] FIRST_COL = 1;  // in 64-px columns: x 64
   localparam logic [5:0] FIRST_ROW = 4;  // in 16-px rows: y 64
 
@@ -63,20 +71,22 @@ module brick_wall (
   wire       in_rows = (row >= FIRST_ROW) && (row < FIRST_ROW + 6'(ROWS));
   wire       gap     = (h_pos[5:1] == 0) || (v_pos[3:1] == 0);  // 2-px gap left of / above each brick
 
-  logic [ROWS-1:0][COLS-1:0] bricks;  // 1 = standing; bricks[0][0] is under the beam
-  logic                      filling;  // refill in progress: 1s come in with the row turns
+  logic [RING-1:0] ring;     // 1 = standing; ring row r in bits 8r .. 8r + 7; bit 0 under the beam
+  logic            filling;  // refill in progress: 1s come in with the row turns
 
   // Turns happen in the gaps, where no brick is cleared
-  wire row_turn = (h_pos == 0) && (v_pos[3:0] == 0) && in_rows;  // start of each brick row
-  wire col_turn = (h_pos[5:0] == 0) && in_cols;                  // start of each brick column
+  wire col_turn  = (h_pos[5:0] == 0) && in_cols;      // start of each brick column
+  wire row_line  = (v_pos[3:0] == 0) && in_rows;      // first line of each brick row: a row turn
+  wire last_step = col_turn && row_line && h_pos[9];  // a row turn's last step (column 7)
 
-  // The row the fill loads at this row turn (see the top). The turn at the start of brick row
-  // k (0..5 from the top) loads row k - 1, the first one row 5. Ring bit c + 1 is under wall
-  // column c, as the head row has turned once at the start of column 0, so rows are turned by
-  // one bit out of and into column order.
+  // The row the fill loads at this row turn (see the top). The turn on the first line of brick
+  // row k (0..5 from the top) loads row k - 1, the first one row 5. Bit c + 1 of a ring row is
+  // under wall column c, as the head row has turned once at the start of column 0, so rows
+  // are turned by one bit out of and into column order. At the last step, before it is taken,
+  // the loaded row is in bits 41..47 and 0, and the row before it in bits 33..40.
   wire [2:0]      turn     = 3'(row - FIRST_ROW);
   wire [2:0]      fill_r   = (turn == 0) ? 3'd5 : turn - 3'd1;
-  wire [COLS-1:0] last_row = {bricks[ROWS-1][0], bricks[ROWS-1][COLS-1:1]};  // bit c: column c
+  wire [COLS-1:0] last_row = {ring[RING-15], ring[RING-8:RING-14]};  // bit c: column c
   wire [COLS-1:0] pattern_row;
   wall_pattern u_wall_pattern (
       .r     (fill_r),
@@ -86,16 +96,16 @@ module brick_wall (
       .row   (pattern_row)
   );
   wire [COLS-1:0] fill_row = full_wall ? '1 : pattern_row;  // bit c: column c
+  wire [COLS-1:0] fill     = {fill_row[COLS-2:0], fill_row[COLS-1]} & {COLS{filling && last_step}};
 
   // No reset: refill (which reset starts) fills the wall
   always_ff @(posedge clk) begin
-    if (row_turn) begin
-      for (int r = 0; r < ROWS - 1; r++) bricks[r] <= bricks[r+1];
-      bricks[ROWS-1] <= bricks[0] | ({fill_row[COLS-2:0], fill_row[COLS-1]} & {COLS{filling}});
+    if (col_turn && row_line) begin
+      ring <= {ring[0], ring[RING-1:1]} | {fill, (RING - COLS)'(0)};
     end else if (col_turn) begin
-      bricks[0] <= {bricks[0][0], bricks[0][COLS-1:1]};
+      ring[COLS-1:0] <= {ring[0], ring[COLS-1:1]};
     end else if (clear && brick_px) begin
-      bricks[0][0] <= 0;
+      ring[0] <= 0;
     end
   end
 
@@ -106,7 +116,7 @@ module brick_wall (
     else if (row == FIRST_ROW + 6'(ROWS)) filling <= 0;
   end
 
-  assign brick_px = in_cols && in_rows && !gap && bricks[0][0] && !filling;
+  assign brick_px = in_cols && in_rows && !gap && ring[0] && !filling;
 
   // Whether a brick was drawn this frame, from the wall's top row on (a filling wall counts)
   logic seen;
