@@ -2,8 +2,9 @@
 # Usage: tools/warnings.sh RUN_DIR [--update]
 # The warnings of a hardened run (RUN_DIR, e.g. runs/exp_TAG), which the flow reports but does
 # not fail on. Prints their counts; fails on the ones that must never happen (an inferred
-# latch, a critical disconnected pin, a clock pin over its slew limit); and lists any kind of
-# message in warning.log that tools/warnings.ref does not have, for a person to judge.
+# latch, a critical disconnected pin, a clock pin over its slew limit, an antenna violation
+# left after routing: LibreLane only reports those); and lists any kind of message in
+# warning.log that tools/warnings.ref does not have, for a person to judge.
 # --update rewrites warnings.ref from this run, once its new messages have been looked at.
 #
 # SPDX-FileCopyrightText: 2026 Alexei Zverovitch
@@ -48,12 +49,18 @@ metrics = {
     "lint warnings": "design__lint_warning__count",
     "inferred latches": "design__inferred_latch__count",
     "critical disconnected pins": "design__critical_disconnected_pin__count",
+    "antenna violating nets": "antenna__violating__nets",
+    "antenna violating pins": "antenna__violating__pins",
 }
 counts = {k: m.get(key, "missing") for k, key in metrics.items()}
 counts["clock pins over slew limit"] = len(clock_slew)
 print("warnings: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
-failed = [k for k in ("inferred latches", "critical disconnected pins", "clock pins over slew limit")
-          if counts[k] and counts[k] != "missing"]
+# Antenna violations: the check after detailed routing, on the final wires. Global routing's
+# repair can warn on the way ("Unable to repair antennas on net with diodes", in warnings.ref)
+# and still clear them with a diode; this is what says it did.
+must_be_zero = ("inferred latches", "critical disconnected pins", "clock pins over slew limit",
+                "antenna violating nets", "antenna violating pins")
+failed = [k for k in must_be_zero if counts[k] and counts[k] != "missing"]
 # A metric LibreLane no longer reports (renamed in an upgrade, say) would otherwise pass unseen
 failed += [f"metric {key} missing from metrics.json (renamed? update tools/warnings.sh)"
            for key in metrics.values() if key not in m]
