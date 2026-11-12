@@ -28,6 +28,27 @@ jobs:
           SOURCES=$(sed -n 's/^ *- "\([A-Za-z0-9_]*\.sv\)".*/\1/p' info.yaml | sed 's|^|src/|')
           verilator --lint-only -Wall --top-module tt_um_tiny_breakout $SOURCES
 
+  # The formal proofs that modules behave exactly as their reference models (test/README.md).
+  # yowasp-yosys is yosys built for WebAssembly: the version the proofs are developed with.
+  formal:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Setup python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install yosys
+        shell: bash
+        run: pip install yowasp-yosys==0.62.0.0.post1088
+
+      - name: Prove
+        shell: bash
+        run: test/formal/prove.sh
+
   test:
     runs-on: ubuntu-24.04
     steps:
