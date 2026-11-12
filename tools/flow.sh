@@ -1,8 +1,11 @@
 #!/bin/bash
-# Usage: tools/flow.sh place|harden TAG [SRC_DIR]
+# Usage: tools/flow.sh place|repair|harden TAG [SRC_DIR]
 # Runs the Tiny Tapeout flow (LibreLane, dockerized) with src/config.json on the sources in
 # SRC_DIR (default src), into runs/exp_TAG, and prints the results:
 #   place:  up to global placement; TT's utilisation figure (GPL-0019). About 4 minutes.
+#   repair: on through CTS and its timing repair; also the utilisation after repair, which counts
+#           the cells the flow adds after placement (fanout buffers, clock tree, hold delay
+#           cells) and TT's figure does not. About 5 minutes.
 #   harden: the whole flow; also DRC, LVS, antenna, timing, tools/warnings.sh and tools/lec.sh.
 #           About 15 minutes.
 # EXTRA_CFG='{"KEY": value}' overrides config values, for experiments.
@@ -12,11 +15,12 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
-usage() { sed -n '2,9p' "$0"; exit 2; }
+usage() { sed -n '2,12p' "$0"; exit 2; }
 [ $# -ge 2 ] && [ $# -le 3 ] || usage
 MODE=$1; TAG=$2
 case $MODE in
   place)  TO=(--to OpenROAD.GlobalPlacement) ;;
+  repair) TO=(--to OpenROAD.ResizerTimingPostCTS) ;;
   harden) TO=() ;;
   *)      usage ;;
 esac
@@ -46,6 +50,13 @@ PY
 UTIL=$(grep -hE '^\[INFO GPL-0019\] (Util|Utilization):' "$D"/*-openroad-globalplacement/openroad-globalplacement.log | head -1 | sed -E 's/.*: *//' || true)
 UTIL=${UTIL:-n/a}
 echo "$TAG: TT utilisation $UTIL"
+if [ "$MODE" = repair ]; then
+  "$PY" - "$TAG" "$D"/*-openroad-resizertimingpostcts/state_out.json <<'PY'
+import json, sys
+u = json.load(open(sys.argv[2]))["metrics"].get("design__instance__utilization")
+print(f"{sys.argv[1]}: utilisation after repair " + (f"{100 * u:.2f} %" if u is not None else "n/a"))
+PY
+fi
 if [ "$MODE" = harden ]; then
   "$PY" - "$D/final/metrics.json" <<'PY'
 import json, sys

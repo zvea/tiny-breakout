@@ -10,8 +10,9 @@ the script succeeds and kept when it fails.
 | Script | What it does | Time |
 |---|---|---|
 | `flow.sh place TAG [SRC_DIR]` | Tiny Tapeout flow up to global placement: TT's utilisation figure | ~4 min |
+| `flow.sh repair TAG [SRC_DIR]` | On through CTS and its timing repair: also the utilisation after repair | ~5 min |
 | `flow.sh harden TAG [SRC_DIR]` | The whole flow: also DRC, LVS, antenna, timing, `warnings.sh`, `lec.sh` and the GDS | ~15 min |
-| `flow_avg.sh NAME [SRC_DIR]` | `flow.sh place` for 3 register orderings, and their mean | ~12 min |
+| `flow_avg.sh NAME [SRC_DIR]` | `flow.sh repair` for 3 register orderings, and the means of both figures | ~15 min |
 | `local_area.sh [REV]` | Local synthesis area of the working tree vs a git revision (5 orderings each) | ~1 min |
 | `equiv.sh [REV]` | Formal equivalence of the working tree vs a git revision, for refactors | ~1 min |
 | `lec.sh RUN_DIR [SRC_DIR]` | Formal equivalence of the RTL vs a hardened run's final netlist | ~1 min |
@@ -21,8 +22,11 @@ the script succeeds and kept when it fails.
 
 Notes:
 
-- **Which number counts:** `flow.sh place` gives TT's utilisation. `local_area.sh` is quick but
-  only a guide: its differences have been off from the flow's by up to 2x.
+- **Which number counts:** `flow.sh place` gives TT's utilisation, taken at global placement,
+  before the flow adds fanout buffers, the clock tree and hold delay cells (together about 9
+  points). `flow.sh repair` also gives the utilisation after them, so a change that saves those
+  (fewer resets, fewer flip-flop-to-flip-flop hops, less fanout) shows only there. `local_area.sh`
+  is quick but only a guide: its differences have been off from the flow's by up to 2x.
 - **Noise:** synthesis results shift with the order of register declarations alone (about a
   point of utilisation, or 50-100 um2 locally), so compare means over orderings.
 - **Routability:** the only real test is `flow.sh harden` (0 DRC, LVS and antenna errors).
