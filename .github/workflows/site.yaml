@@ -1,0 +1,139 @@
+name: site
+
+# The project's GitHub Pages site, built whole here because each Pages deployment replaces the
+# entire site: Tiny Tapeout's 3D viewer of the latest harden at the root (what their template's
+# viewer job publishes, steps copied from tt-gds-action/viewer@ttsky26e) and tutorials/ beside it.
+# It runs after each gds run on main that passes (harden, precheck and GL test), and when the
+# tutorials or this file change on main.
+on:
+  workflow_run:
+    workflows: [gds]
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [main]
+    paths: ['tutorials/**', '.github/workflows/site.yaml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  site:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # One deployment at a time: the one in progress finishes, and a newer run replaces any still
+    # waiting. Here in the job, so a run skipped by the condition above never joins the queue.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read     # to download the harden's artifacts from its run
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v6
+
+      # The latest gds run on main that passed, whatever triggered this run: a re-run of an
+      # older one mustn't replace a newer GDS. If its artifacts have expired, the downloads fail
+      # and the site keeps its current deployment.
+      - name: Find the harden
+        id: harden
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list --repo "${{ github.repository }}" --workflow gds.yaml --branch main \
+               --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          [ -n "$id" ] || { echo "no gds run on main has passed: no GDS to publish"; exit 1; }
+          echo "run_id=$id" >> "$GITHUB_OUTPUT"
+
+      # The artifact also holds the sources it was built from, so it goes in a folder of its own
+      - name: Download GDS artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: tt_submission
+          path: harden
+          run-id: ${{ steps.harden.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download gds_render (png) artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: gds_render
+          path: site
+          run-id: ${{ steps.harden.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Read PDK information from submission
+        working-directory: harden/tt_submission
+        run: echo "PDK=$(jq -r '.PDK' pdk.json)" >> "$GITHUB_ENV"
+
+      - name: Copy OAS and GDSII
+        run: |
+          cp harden/tt_submission/*.gds site/tinytapeout.gds
+          cp harden/tt_submission/*.oas site/tinytapeout.oas
+
+      - name: Generate an HTML page that redirects to the viewer
+        run: |
+          cat << EOF > site/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Redirecting to 3D Viewer...</title>
+          </head>
+          <body>
+            <script>
+              location.href = "https://gds-viewer.tinytapeout.com/?pdk=${PDK}&model=" + encodeURIComponent(location.href + '/tinytapeout.oas');
+            </script>
+          </body>
+          </html>
+          EOF
+
+      - name: Add the tutorials, with an index of their titles
+        run: |
+          mkdir -p site/tutorials
+          cp tutorials/*.html site/tutorials/
+          {
+            echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+            echo '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+            echo '<title>Tiny Breakout tutorials</title></head><body style="font-family: system-ui, sans-serif; margin: 2em">'
+            echo '<h1>Tiny Breakout tutorials</h1><ul>'
+            for f in tutorials/*.html; do
+              title=$(sed -n 's:.*<title>\(.*\)</title>.*:\1:p' "$f" | head -1)
+              echo "<li><a href=\"$(basename "$f")\">${title:-$(basename "$f")}</a></li>"
+            done
+            echo '</ul></body></html>'
+          } > site/tutorials/index.html
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+      - name: Display links in workflow summary
+        run: |
+          PAGE_URL=$(echo "${{ steps.deployment.outputs.page_url }}" | sed -e 's/\/$//')
+          cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          # 3D Viewer
+          [Open 3D viewer](https://gds-viewer.tinytapeout.com/?model=$PAGE_URL/tinytapeout.oas&pdk=$PDK)
+
+          # Tiny Tapeout Explorer
+          [Open in Tiny Tapeout Explorer](https://gds-explorer.tinytapeout.com/viewer?file=$PAGE_URL/tinytapeout.oas&pdk=$PDK)
+
+          # Tutorials
+          $(for f in tutorials/*.html; do echo "- [$(basename "$f")]($PAGE_URL/$f)"; done)
+
+          # 2D Preview
+          ![png]($PAGE_URL/gds_render.png)
+          EOF

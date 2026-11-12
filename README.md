@@ -93,6 +93,12 @@ The same design also runs on two FPGA boards:
   controller and sound.
 - [Sipeed Tang Nano 20K](fpga/tang_nano_20k/README.md): the demo, with HDMI picture and sound.
 
+## Tutorials
+
+[tutorials/](tutorials/README.md) explains how the chip is made and checked, starting with the
+[ASIC toolchain](https://zvea.github.io/tiny-breakout/tutorials/asic-toolchain.html): the steps
+from RTL to GDS, the tools and the forms the design takes, as an interactive chart.
+
 ## Licence
 
 [Apache 2.0](LICENSE).

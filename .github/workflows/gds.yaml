@@ -4,14 +4,14 @@ on:
   push:
   workflow_dispatch:
 
-# Tiny Tapeout's template, plus these two settings. The viewer job widens its own permissions.
+# Tiny Tapeout's template, plus these two settings, without its viewer job: site.yaml publishes
+# the 3D viewer, with the tutorials, after each successful run on main.
 permissions:
   contents: read
 
 # A newer push to the same branch replaces a run still going, so back-to-back pushes don't
 # queue up 15-minute hardens (or precheck runs, whose Nix setup downloads nixpkgs from GitHub,
-# which rate-limits it: HTTP 429). Cancelling can stop the viewer mid-deploy; deploy-pages then
-# cancels that Pages deployment, the site keeps the one before, and the newer run deploys its own.
+# which rate-limits it: HTTP 429).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -48,12 +48,3 @@ jobs:
 
       - name: GL test
         uses: TinyTapeout/tt-gds-action/gl_test@ttsky26e
-
-  viewer:
-    needs: gds
-    runs-on: ubuntu-24.04
-    permissions:
-      pages: write      # to deploy to Pages
-      id-token: write   # to verify the deployment originates from an appropriate source
-    steps:
-      - uses: TinyTapeout/tt-gds-action/viewer@ttsky26e
