@@ -45,6 +45,9 @@
  *
  * Empty is read off the picture: no brick was drawn in the wall's rows. It is valid from
  * the end of the wall (y 160) until the next frame starts.
+ *
+ * test/reference/ref_wall.sv has the same behaviour without the ring, and
+ * test/formal/wall_equiv.sv proves this module equal to it (test/formal/prove.sh).
  */
 
 `default_nettype none

@@ -1,6 +1,6 @@
 # Tests
 
-Three layers, from module to whole game:
+Three layers, from module to whole game, and formal proofs against reference models:
 
 | Tests | What they check | Command | Time |
 |---|---|---|---|
@@ -8,6 +8,7 @@ Three layers, from module to whole game:
 | [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~4 min |
 | [system/](system), cheap tier | Short gameplay scenarios (the controls, the demo, lost balls, a game's opening and more), judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~3 min in parallel (the longest scenarios ~2.2 min, plus ~1 min for a first build) |
 | [system/](system), milestone tier | A long game, from a new game to the third brick wall and a restart, and balls lost at speed, judged the same way | `pytest test/system -n auto -m milestone` | ~25 min |
+| [formal/](formal) | That a module behaves exactly as its reference model in [reference/](reference), on every clock after reset, in the chip (yosys, k-induction) | `test/formal/prove.sh` | ~2 min |
 
 The system scenarios come in two tiers. The cheap one runs by default and is meant to run all
 the time. The milestone tier is one long game that simulates each expensive stretch of play
@@ -21,13 +22,47 @@ failure names its part and frame.
 
 CI ([.github/workflows/test.yaml](../.github/workflows/test.yaml)) lints the design with
 Ubuntu 24.04's Verilator 5 and runs `test.py` and the unit tests on Icarus 13.0, Tiny Tapeout's
-own build, which its GDS workflow also uses to run `test.py` on the gate-level netlist. The system scenarios run only locally, because they need
+own build, which its GDS workflow also uses to run `test.py` on the gate-level netlist, and
+runs the formal proofs. The system scenarios run only locally, because they need
 Verilator 4.x. Two workflows build FPGA bitstreams, each uploaded as an artifact:
 [ice40](../.github/workflows/ice40.yaml), for Tiny Tapeout's iCE40UP5K FPGA board, placed
 and routed against the board's 25.175 MHz clock, so a change that makes the design slower
 than that fails it ([fpga/ice40up5k](../fpga/ice40up5k)); and
 [gowin](../.github/workflows/gowin.yaml), for the Sipeed Tang Nano 20K, which also runs that
 board's simulation test ([fpga/tang_nano_20k](../fpga/tang_nano_20k)).
+
+## Reference models and formal proofs
+
+The design's modules are written for size, and the tricks that make them small also make them
+hard to read. [reference/](reference) holds reference models of the same behaviour written to
+be read: no tricks, structured by what the game does, never built for the chip. For each one,
+a proof in [formal/](formal) shows that the chip's module has exactly the reference's outputs on
+every clock after a reset, for any inputs the game can give it.
+
+- [reference/ref_wall.sv](reference/ref_wall.sv): the wall as rows of bricks, cleared by row and
+  column. [formal/wall_equiv.sv](formal/wall_equiv.sv) proves [src/brick_wall.sv](../src/brick_wall.sv),
+  the turning ring, equal to it; its invariant states which brick each of the ring's flip-flops
+  holds, for every beam position.
+
+The reference uses the chip's own [wall_pattern](../src/wall_pattern.sv), the layout of the walls:
+a change to the layouts is a change of design, meant for both, and the pattern is too small to be
+worth a reference of its own. Only the wall has one: it is the module whose tricks make it hard to
+read, and the likeliest one to change for area.
+
+Each proof has two parts. The first proves the module equal to its reference, assuming only
+what the rest of the chip guarantees on the module's ports (for the wall: a new wall only at the
+frame update, inputs that change only then, a full wall after a reset, a patterned one only when
+the wall is empty). The second, [formal/wall_contract.sv](formal/wall_contract.sv), proves on the
+whole chip, for any inputs on its pins, that it does guarantee exactly that. Together they hold
+for every clock after a reset: a proof by induction is a proof for all time, not a simulation of
+some of it. Changing a module's tricks without changing its behaviour keeps its proof passing;
+changing its behaviour means changing the reference to match, which is the place to see what
+changed.
+
+To add a proof, add `test/formal/NAME.sv` with a top module `NAME`: a `// sources:` line lists the
+files it reads (`chip` for the whole design), and `(* connect = "INSTANCE.SIGNAL" *)` on a wire
+drives it from a signal inside an instance, as yosys has no hierarchical references.
+`test/formal/prove.sh` runs every proof there, or the ones named.
 
 ## Setting up
 
