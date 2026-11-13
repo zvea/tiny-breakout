@@ -1,0 +1,12 @@
+# What regenerate.sh makes from a run: re-run captures, dumps, and the data they become
+data.json
+gpl/config.json
+gpl/fake_design/
+gpl/frames/
+gpl/logs/
+gpl/work/
+split/fake_design/
+split/out/
+guides/*.guide
+gds/gds.json
+__pycache__/

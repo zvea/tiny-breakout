@@ -95,9 +95,12 @@ The same design also runs on two FPGA boards:
 
 ## Tutorials
 
-[tutorials/](tutorials/README.md) explains how the chip is made and checked, starting with the
-[ASIC toolchain](https://zvea.github.io/tiny-breakout/tutorials/asic-toolchain.html): the steps
-from RTL to GDS, the tools and the forms the design takes, as an interactive chart.
+We have several [tutorials](tutorials/README.md) on how the chip is made and checked.
+[ASIC toolchain](https://zvea.github.io/tiny-breakout/tutorials/asic-toolchain.html) is an
+interactive chart of the steps from RTL to GDS, the tools that run them and the forms the design
+takes on the way.
+[Physical design](https://zvea.github.io/tiny-breakout/tutorials/physical-design.html) animates
+how the flow places and routes this chip, from an empty die to the finished GDS.
 
 ## Licence
 

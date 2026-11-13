@@ -1,0 +1,2431 @@
+<!doctype html>
+<!--
+  SPDX-FileCopyrightText: 2026 Alexei Zverovitch
+  SPDX-License-Identifier: Apache-2.0
+
+  How the flow places and routes Tiny Breakout, from an empty die to the finished GDS.
+  One self-contained file: no external requests. Built from physical-design/ by build.py.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tiny Breakout Physical Design</title>
+<script>
+// the theme before the first paint: the saved choice, else the system's
+(function () {
+  var t = null;
+  try { t = window.localStorage.getItem("tb-die-theme"); } catch (e) {}
+  if (t !== "light" && t !== "dark") t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", t);
+})();
+</script>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* One screen: the die on the left (canvas, zoom and pan, the legend above it, the play bar and
+   scale below it, the steps along its foot), the current step's explanation on the right.
+   Each colour keeps its meaning from step to step; whatever is not the current step's subject
+   is dimmed. Laptop and tablet first; on a phone the panels stack. */
+:root {
+  --bg: #ffffff;
+  --ink: #1b1d1f;
+  --muted: #5d6369;
+  --rule: #c9cdd1;
+  --bar: #eef0f2;
+  --focus: #1a56c4;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* the die */
+  --stage: #f3f4f6;
+  --veil: rgba(243, 244, 246, 0.86);
+  --die: #d9dde2;
+  --die-edge: #7d8792;
+  --core: #fbfbfc;
+  --row: #eef1f4;
+  --row-flip: #dce3eb;
+  --row-edge: #c4ccd5;
+  --site: rgba(60, 72, 86, 0.22);
+  --dim: #3a4250;
+  --tap: #4d5b6b;
+  --endcap: #9aa6b3;
+  --cell-edge: rgba(20, 26, 33, 0.55);
+  --swatch-edge: rgba(20, 26, 33, 0.35);
+  --vpwr: #d0453a;
+  --vgnd: #2f63c4;
+  --via: #1f2630;
+  --pin: #1b1d1f;
+  /* cells */
+  --logic: #e3c47e;
+  --ff: #2f9a8b;
+  --buf: #d64f98;
+  --tie: #8d8a33;
+  --clock: #ef7d1a;
+  --clknet: #c4600c;
+  --hold: #7a4f2e;
+  --diode: #b8860b;
+  --decap: #5b7fa6;
+  --fill: #8c99a6;
+  --trail: rgba(209, 70, 47, 0.7);
+  --pick: #1b1d1f;
+  --setup: #e4572e;
+  --holdp: #7b2fd6;
+  /* GDS layers below the metals */
+  --nwell: #8bc34a;
+  --diff: #a39a35;
+  --gtap: #615a1c;
+  --poly: #9c1b34;
+  --cut: #1f2630;
+  /* IR drop, low to high */
+  --ir0: #f7fcb9;
+  --ir1: #addd8e;
+  --ir2: #41ab5d;
+  --ir3: #005a32;
+  /* crowding: overfull placement bins, nets per g-cell */
+  --hot: #8a2be2;
+  /* routing layers */
+  --li1: #a39ad0;
+  --met1: #2b9fd8;
+  --met2: #e0458f;
+  --met3: #34a853;
+  --met4: #e8a317;
+  --wvia: #1f2630;
+}
+:root[data-theme="dark"] {
+  --bg: #121416; --ink: #e4e6e8; --muted: #9aa0a6; --rule: #3d4247; --bar: #1d2125; --focus: #7fb0ff;
+  --stage: #0d0f11; --veil: rgba(13, 15, 17, 0.86); --die: #2a2f35; --die-edge: #8a949f; --core: #1b1f23;
+  --row: #22272c; --row-flip: #30373e; --row-edge: #3b434b; --site: rgba(200, 210, 222, 0.18); --dim: #c9d0d8;
+  --tap: #a9b6c4; --endcap: #66717d; --cell-edge: rgba(0, 0, 0, 0.6); --swatch-edge: rgba(255, 255, 255, 0.3);
+  --vpwr: #ff6b5e; --vgnd: #5f95ff; --via: #e9edf2; --pin: #f1f3f5;
+  --logic: #b48f45; --ff: #4cc0ae; --buf: #ff86c4; --tie: #c9c56a; --clock: #ff9a3d; --clknet: #ffb067;
+  --hold: #c08a5c; --diode: #e8b23a; --decap: #7fa3c9; --fill: #a7b3bf;
+  --trail: rgba(255, 122, 92, 0.8); --pick: #f1f3f5; --hot: #d27bff;
+  --setup: #ff8a65; --holdp: #c48bff;
+  --nwell: #6f9a3c; --diff: #c9bd5a; --gtap: #8c8433; --poly: #e0506a; --cut: #e9edf2;
+  --ir0: #12301f; --ir1: #23733f; --ir2: #66bd63; --ir3: #d9f0a3;
+  --li1: #8f86c0; --met1: #5cc0f5; --met2: #ff7ab4; --met3: #5fd27e; --met4: #ffc24a; --wvia: #e9edf2;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 13px; line-height: 1.45; }
+button { font: inherit; color: inherit; }
+
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 380px; }
+.stage { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--stage); }
+.view { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; }
+.view.dragging { cursor: grabbing; }
+.view canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.view:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+
+.zoom {
+  position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); left: max(10px, env(safe-area-inset-left, 0px));
+  display: flex; flex-direction: column; gap: 4px;
+}
+.iconbtn {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0;
+  color: var(--muted); background: var(--bg); cursor: pointer; border: 1px solid var(--rule); border-radius: 2px;
+}
+.iconbtn svg { width: 16px; height: 16px; display: block; }
+.iconbtn:hover:not(:disabled) { color: var(--ink); border-color: var(--muted); }
+.iconbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.iconbtn:disabled { opacity: 0.4; cursor: default; }
+
+/* the legend: along the top, in the order things appear, on a backdrop so it reads over the die */
+.legend {
+  position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50px; max-width: calc(100% - 64px);
+  margin: 0; padding: 4px 8px; list-style: none; pointer-events: none; box-sizing: border-box;
+  display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; white-space: nowrap;
+  background: var(--veil); border-radius: 2px;
+}
+.legend:empty { display: none; }
+.legend li { display: flex; align-items: center; gap: 7px; }
+.legend li.gone { visibility: hidden; }
+.legend li.dimmed { color: var(--muted); }
+.legend i { flex: none; width: 14px; height: 10px; border: 1px solid var(--swatch-edge); border-radius: 1px; transition: opacity 0.6s; }
+.legend li.dimmed i { opacity: 0.3; }
+.legend i.line { height: 0; border: 0; border-top: 2px solid; border-radius: 0; }
+.legend i.lay { background: var(--c); }
+.legend.gds i.lay { background: color-mix(in srgb, var(--c) 18%, transparent); border: 1.5px solid var(--c); }
+
+/* the band along the foot of the view: scale and keys on the left, the play bar beside them */
+.foot {
+  position: absolute; bottom: 8px; left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px));
+  display: flex; align-items: flex-end; gap: 16px; pointer-events: none;
+}
+.scale {
+  flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums;
+  background: var(--veil); padding: 3px 6px; border-radius: 2px;
+}
+.scale i { display: block; height: 6px; border: 1.5px solid var(--muted); border-top: 0; margin-bottom: 2px; }
+.hint { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
+.hint kbd { font: inherit; border: 1px solid var(--rule); border-radius: 2px; padding: 0 3px; }
+.readout {
+  pointer-events: auto; flex: 1; min-width: 0; max-width: 680px; margin-left: auto; display: flex; align-items: center; gap: 10px;
+  padding: 5px 10px 5px 5px; background: var(--bg); border: 1px solid var(--rule); border-radius: 2px; font-size: 12px;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.readout input { width: 130px; flex: none; accent-color: var(--ink); }
+.readout .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.readout .what b { font-weight: 600; }
+
+.tip {
+  position: absolute; pointer-events: none; background: var(--bg); color: var(--ink); border: 1px solid var(--rule);
+  border-radius: 2px; padding: 5px 8px; font-size: 12px; line-height: 1.4; max-width: 300px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.tip b { font-weight: 600; }
+.tip .it { display: flex; gap: 7px; align-items: flex-start; }
+.tip .it + .it { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--rule); }
+.tip .it.dimmed { color: var(--muted); }
+.tip .sw { flex: none; width: 10px; height: 10px; margin-top: 3px; border: 1px solid var(--swatch-edge); border-radius: 1px; }
+.tip code { font-family: var(--mono); font-size: 11.5px; }
+
+/* the steps, along the foot of the die */
+.steps {
+  display: flex; align-items: center; gap: 8px; padding-block: 8px 10px; border-top: 1px solid var(--rule); background: var(--bg);
+  padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: 12px;
+}
+.track { flex: 1; min-width: 0; display: flex; gap: 3px; }
+.seg {
+  flex: 1; min-width: 0; height: 30px; padding: 0 2px; border: 1px solid var(--rule); border-radius: 2px; background: var(--bar);
+  cursor: pointer; font-size: 11px; color: var(--muted);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap;
+}
+.seg .num { display: none; }
+.track.numbered .seg .long { display: none; }
+.track.numbered .seg .num { display: inline; }
+.seg:hover { border-color: var(--muted); color: var(--ink); }
+.seg:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.seg.done { background: var(--row-flip); color: var(--ink); }
+.seg.now { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+/* the explanation */
+aside {
+  min-width: 0; min-height: 0; overflow-y: auto; border-left: 1px solid var(--rule);
+  padding-block: calc(14px + env(safe-area-inset-top, 0px)) 16px;
+  padding-left: 20px; padding-right: max(20px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 12px;
+}
+.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+h1 { font-size: 15px; font-weight: 600; margin: 0; }
+.head p { margin: 0; color: var(--muted); font-size: 12px; }
+.kicker { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 2px; font-variant-numeric: tabular-nums; }
+h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text-wrap: balance; }
+.tool { margin: 0; font-size: 12px; color: var(--muted); }
+.tool code { font-family: var(--mono); font-size: 11.5px; }
+.body p { margin: 0 0 8px; }
+.body h3 { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 12px 0 3px; }
+.body code { font-family: var(--mono); font-size: 12px; }
+.body a { color: inherit; text-underline-offset: 2px; }
+/* what the picture shows, as opposed to what the tool does */
+.body .note { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 12px; }
+.nav { display: flex; gap: 8px; }
+.nav button {
+  flex: 1; min-width: 0; height: 32px; border: 1px solid var(--rule); border-radius: 2px; background: var(--bg); cursor: pointer; color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+}
+.nav button svg { width: 13px; height: 13px; flex: none; }
+.nav button:hover:not(:disabled) { border-color: var(--muted); }
+.nav button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.nav button:disabled { color: var(--muted); opacity: 0.5; cursor: default; }
+
+/* short screens: a little tighter, so the panel still fits */
+@media (max-height: 820px) and (min-width: 761px) {
+  body { font-size: 12.5px; line-height: 1.4; }
+  aside { gap: 9px; padding-block: 10px 10px; }
+  h2 { font-size: 17px; }
+  .body p { margin-bottom: 6px; }
+  .body .note { font-size: 11.5px; }
+}
+/* laptops below 1400 px: the step names a little smaller, so none is clipped */
+@media (max-width: 1400px) {
+  .seg { font-size: 10.5px; padding: 0; }
+  .track { gap: 2px; }
+}
+/* tablets in landscape: the play bar's text may take two lines */
+@media (max-width: 1150px) and (min-width: 761px) {
+  .readout { white-space: normal; }
+  .readout .what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
+}
+/* very short screens (1280 x 720 and less): tighter still */
+@media (max-height: 740px) and (min-width: 761px) {
+  body { font-size: 12px; line-height: 1.36; }
+  aside { gap: 7px; padding-block: 8px 8px; }
+  h2 { font-size: 16px; margin-bottom: 2px; }
+  .body h3 { margin: 9px 0 2px; }
+  .body .note { margin-top: 6px; padding-top: 6px; font-size: 11.5px; }
+}
+/* phones: the panels stack; keep it usable rather than polished */
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 62vh auto; height: auto; }
+  .view { touch-action: pan-y; }
+  aside { border-left: 0; border-top: 1px solid var(--rule); overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .legend { flex-wrap: nowrap; overflow-x: auto; right: 10px; pointer-events: auto; scrollbar-width: none; }
+  .legend li.dimmed, .legend li.gone { display: none; }
+  .hint { display: none; }
+  .foot { flex-wrap: wrap; }
+  .readout { flex-basis: 100%; max-width: none; margin-left: 0; }
+  .readout input { width: 90px; }
+  .seg .long { display: none; }
+  .seg .num { display: inline; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="stage">
+    <div class="view" id="view" tabindex="0" role="group" aria-label="The die: scroll or + and - to zoom, drag to move, arrow keys to step">
+      <canvas id="canvas" role="img" aria-label="The die"></canvas>
+      <div class="loading" id="loading">Loading the layout…</div>
+      <div class="zoom">
+        <button type="button" class="iconbtn" id="zin" aria-label="Zoom in (+)" title="Zoom in (+)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+        <button type="button" class="iconbtn" id="zout" aria-label="Zoom out (-)" title="Zoom out (-)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+        <button type="button" class="iconbtn" id="zfit" aria-label="Show the whole die (0)" title="Show the whole die (0)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg></button>
+      </div>
+      <ul class="legend" id="legend" aria-label="Legend"></ul>
+      <div class="foot" id="foot">
+        <div class="scale"><i id="scalebar"></i><span id="scaletext"></span>
+          <p class="hint">Scroll to zoom, drag to move, <kbd>&larr;</kbd> <kbd>&rarr;</kbd> to step/play</p></div>
+        <div class="readout" id="readout" hidden>
+          <button type="button" class="iconbtn" id="play" aria-label="Play"></button>
+          <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Progress through this step">
+          <span class="what" id="what"></span>
+        </div>
+      </div>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <nav class="steps" aria-label="Steps">
+      <div class="track" id="track"></div>
+    </nav>
+  </main>
+  <aside>
+    <div class="head">
+      <div>
+        <h1>Tiny Breakout physical design</h1>
+        <p>From an empty die to the finished GDS</p>
+      </div>
+      <button type="button" class="iconbtn" id="theme" aria-label="Switch theme"></button>
+    </div>
+    <section aria-live="polite">
+      <p class="kicker" id="kicker"></p>
+      <h2 id="title"></h2>
+      <p class="tool" id="tool"></p>
+    </section>
+    <div class="nav">
+      <button type="button" id="prev"><span aria-hidden="true">&larr; </span>Back</button>
+      <button type="button" id="navplay" disabled></button>
+      <button type="button" id="next">Next<span aria-hidden="true"> &rarr;</span></button>
+    </div>
+    <div class="body" id="body"></div>
+  </aside>
+</div>
+
+<script>
+var DATA_GZ = "/*DATA*/";
+</script>
+<script>
+(function () {
+  "use strict";
+  // Theme: as the head set it (the saved choice, else the system's). The button shows the
+  // theme it switches to.
+  var themeBtn = document.getElementById("theme"), theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  var ICONS = {
+    light: '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M3.2 12.8l1.1-1.1M11.7 4.3l1.1-1.1"/></svg>',
+    dark: '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M13.6 9.6A5.6 5.6 0 0 1 6.4 2.4a5.6 5.6 0 1 0 7.2 7.2z"/></svg>'
+  };
+  function applyTheme() {
+    document.documentElement.setAttribute("data-theme", theme);
+    var next = theme === "dark" ? "light" : "dark";
+    themeBtn.innerHTML = ICONS[next];
+    themeBtn.setAttribute("aria-label", "Switch to " + next + " theme");
+    themeBtn.title = "Switch to " + next + " theme";
+    document.dispatchEvent(new Event("themechange"));
+  }
+  themeBtn.addEventListener("click", function () {
+    theme = theme === "dark" ? "light" : "dark";
+    try { window.localStorage.setItem("tb-die-theme", theme); } catch (err) {}
+    applyTheme();
+  });
+  applyTheme();
+})();
+
+// The data travels gzipped and base64-encoded; the browser inflates it.
+(function () {
+  "use strict";
+  var bin = atob(DATA_GZ), u8 = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  if (typeof DecompressionStream === "undefined") {
+    document.getElementById("loading").textContent = "This page needs a browser from 2023 or later (DecompressionStream).";
+    return;
+  }
+  new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip"))).text()
+    .then(function (text) { document.getElementById("loading").remove(); start(JSON.parse(text)); })
+    .catch(function (e) { document.getElementById("loading").textContent = "Could not read the layout data: " + e; });
+})();
+
+function start(D) {
+  "use strict";
+  // The steps, by name, in the flow's order
+  var S = { DIE: 0, FLOOR: 1, TAPS: 2, PDN: 3, PINS: 4, PLACE: 5, REPAIR: 6, LEGAL: 7, CTS: 8, HOLD: 9,
+            GRT: 10, ANT: 11, DRT: 12, FILL: 13, STA: 14, IR: 15, GDS: 16 };
+  var U = D.units, SW = D.site[0], RH = D.site[1], DIE = D.die, CORE = D.core, NROWS = D.rows.length;
+  function um(v) { return v / U; }
+  function fmt(v, dp) { var t = v.toFixed(dp === undefined ? 2 : dp); return t.indexOf(".") < 0 ? t : t.replace(/\.?0+$/, ""); }
+  function n(v) { return v.toLocaleString("en-GB"); }
+  function clamp01(t) { return t < 0 ? 0 : t > 1 ? 1 : t; }
+  function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+  // An element added by step k appears while p runs from k-1 to k, staggered by s in [0, 1],
+  // so stepping back plays it in reverse.
+  function appear(p, k, s) { return clamp01((p - (k - 1) - s * 0.6) / 0.4); }
+  // how far through step k position p is (0 before it, 1 after it)
+  function within(p, k) { return clamp01(p - (k - 1)); }
+  function hash01(i) { var h = Math.imul(i + 1, 2654435761) >>> 0; return (h % 1000) / 1000; }
+  function shortName(t) { return t.replace("sky130_fd_sc_hd__", ""); }
+  function plain(html) { return html.replace(/<[^>]+>/g, ""); }
+
+  // ---- fixed cells, power grid, pins -------------------------------------------------------
+  var fixed = D.fixed.map(function (c) { return { kind: c[0], type: D.types[c[1]], site: c[2], row: c[3], w: c[4], orient: c[5], name: c[6] }; });
+  var nTap = 0, nEnd = 0;
+  fixed.forEach(function (c) {
+    if (c.kind === "tap") nTap++; else nEnd++;
+    // endcaps first, then taps from left to right (the order tapcell inserts them)
+    c.s = c.kind === "endcap" ? 0.25 * (c.row / NROWS) : 0.3 + 0.7 * (c.site / D.sitesPerRow);
+  });
+  var byRow = [];
+  for (var r0 = 0; r0 < NROWS; r0++) byRow.push([]);
+  fixed.forEach(function (c) { byRow[c.row].push(c); });
+  var tapSites = fixed.filter(function (c) { return c.kind === "tap" && c.row === 1; }).map(function (c) { return c.site; }).sort(function (a, b) { return a - b; });
+  var TAPPITCH = (tapSites[1] - tapSites[0]) * SW;
+
+  var PDN = D.pdn, RAILW = PDN.rails[0][4], STRW = PDN.stripes[0][5], nStripe = PDN.stripes.length;
+  var nRail = { VPWR: 0, VGND: 0 };
+  PDN.rails.forEach(function (r) { nRail[r[0]]++; });
+  var STRPITCH = PDN.stripes[2][2] - PDN.stripes[0][2];
+  var PINS = D.pins.map(function (q) { return { name: q[0], dir: q[1], layer: q[2], x0: q[3], y0: q[4], x1: q[5], y1: q[6] }; });
+  var PINW = PINS[0].x1 - PINS[0].x0, PINH = PINS[0].y1 - PINS[0].y0, PINPITCH = PINS[1].x0 - PINS[0].x0;
+  var CLKPIN = PINS.filter(function (q) { return q.name === "clk"; })[0];
+  // the pins in runs that share a bus name (uio_oe[7:0], ...), for the labels above the die
+  var GROUPS = [];
+  PINS.forEach(function (q) {
+    var bus = q.name.replace(/\[\d+\]$/, ""), g = GROUPS[GROUPS.length - 1];
+    if (g && g.bus === bus && /\]$/.test(q.name)) { g.x1 = q.x1; g.n++; }
+    else GROUPS.push({ bus: bus, x0: q.x0, x1: q.x1, n: 1 });
+  });
+
+  // ---- every cell from global placement on --------------------------------------------------
+  // The netlist's cells first (the order of the placement frames), then those later steps add. A
+  // stage is a snapshot of all of them: position, orientation, master.
+  var Q = 10, ABSENT = 0xFFFF * Q;
+  var NL = D.netlist, NC = NL.names.length, LC = D.cells, M = LC.meta, NU = NC + LC.names.length;
+  var TARGET = M.gpl.target, BINS = M.gpl.bins;
+  var NAMES = NL.names.concat(LC.names), CLS = NL.cls.concat(LC.cls);
+  var WT = LC.widths.map(function (w) { return w * Q; });
+  function unpack(b64) {
+    var bin = atob(b64), f = new Float32Array(bin.length / 2);
+    for (var i = 0; i < f.length; i++) f[i] = (bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8)) * Q;
+    return f;
+  }
+  function bytes(b64) { var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < u.length; i++) u[i] = bin.charCodeAt(i); return u; }
+  function u16(arr, k) { return arr[k] | (arr[k + 1] << 8); }
+
+  // Global placement's frames: the first descent, the routability snapshot it rewinds to, the
+  // final pass. Time between frames goes with the square root of how far the cells travel, so the
+  // motion reads at an even pace; the rewind holds still, moves back, and holds again.
+  var GF = D.gpl.map(function (f) { var g = Object.assign({}, f); g.xy = unpack(f.xy); return g; });
+  var nIP = 0; GF.forEach(function (f) { if (f.ip !== undefined) nIP = Math.max(nIP, f.ip); });
+  var LASTF = GF[GF.length - 1], SNAP = GF.filter(function (f) { return f.rewind; })[0];
+  var FADE = 0.05, SEG = [], segTotal = 0;
+  for (var gi = 1; gi < GF.length; gi++) {
+    var ga = GF[gi - 1].xy, gb = GF[gi].xy, dsum = 0;
+    for (var gj = 0; gj < ga.length; gj += 2) dsum += Math.hypot(gb[gj] - ga[gj], gb[gj + 1] - ga[gj + 1]);
+    var wgt = GF[gi].rewind ? 0 : Math.max(0.25, Math.sqrt(dsum / NC / U));
+    SEG.push(wgt); segTotal += wgt;
+  }
+  // the rewind gets REWIND_MS of the step's play time, the rest is shared out by distance
+  var PLACE_MS = 14000, REWIND_MS = 2800, rwShare = REWIND_MS / (PLACE_MS * (1 - FADE));
+  SEG.forEach(function (w, i) { if (GF[i + 1].rewind) SEG[i] = segTotal * rwShare / (1 - rwShare); });
+  segTotal = SEG.reduce(function (a, b) { return a + b; }, 0);
+  var SEGCUM = [0];
+  SEG.forEach(function (w) { SEGCUM.push(SEGCUM[SEGCUM.length - 1] + w / segTotal); });
+  function gplAt(u) {
+    if (u <= FADE) return { i: 0, f: 0 };
+    var v = (u - FADE) / (1 - FADE);
+    for (var i = 0; i < SEG.length; i++) if (v <= SEGCUM[i + 1]) return { i: i, f: (v - SEGCUM[i]) / (SEGCUM[i + 1] - SEGCUM[i]) };
+    return { i: SEG.length - 1, f: 1 };
+  }
+
+  var K = { G: { xy: new Float32Array(2 * NU).fill(ABSENT), or: new Uint8Array(NU), ty: new Uint8Array(NU).fill(255) } };
+  K.G.xy.set(LASTF.xy);
+  for (var ki = 0; ki < NC; ki++) K.G.ty[ki] = NL.type[ki];
+  Object.keys(LC.kf).forEach(function (id) { var f = LC.kf[id]; K[id] = { xy: unpack(f.xy), or: bytes(f.orient), ty: bytes(f.type) }; });
+  function has(Sg, i) { return Sg.ty[i] !== 255; }
+  function flipX(o) { return o === 1 || o === 2 ? 1 : 0; }   // S, FN: mirrored left to right
+  function flipY(o) { return o === 1 || o === 3 ? 1 : 0; }   // S, FS: mirrored top to bottom
+  var OR_NAMES = ["N", "S", "FN", "FS"];
+  var CHANGED = new Uint8Array(NU), nRemoved = 0;   // what the repair step removes or resizes
+  for (var ci = 0; ci < NC; ci++) {
+    if (!has(K.rszB, ci)) { CHANGED[ci] = 1; nRemoved++; }
+    else if (K.rszB.ty[ci] !== K.G.ty[ci]) CHANGED[ci] = 1;
+  }
+  var nTie = CLS.filter(function (c) { return c === "tie"; }).length;
+
+  // The clock tree: each net's level (0: driven by the pin), and which cells drive one
+  var CLOCK = LC.clock.map(function (c) { return { name: c[0], drv: c[1], loads: c[2] }; });
+  var FEED = {}, DRIVES = new Uint8Array(NU);
+  CLOCK.forEach(function (c, j) { c.loads.forEach(function (l) { FEED[l] = j; }); if (c.drv >= 0) DRIVES[c.drv] = 1; });
+  function level(j) {
+    var c = CLOCK[j];
+    if (c.lv === undefined) c.lv = c.drv < 0 || FEED[c.drv] === undefined ? 0 : level(FEED[c.drv]) + 1;
+    return c.lv;
+  }
+  var CLV = 0;
+  CLOCK.forEach(function (c, j) { CLV = Math.max(CLV, level(j)); });
+  var ROOT = CLOCK.filter(function (c) { return c.lv === 0; })[0];
+  var NBRANCH = CLOCK.filter(function (c) { return c.lv === 1; }).reduce(function (a, c) { return a + c.loads.length; }, 0);
+  // in the clock step, net level L grows over [lvStart(L), lvStart(L) + 0.22] of its first part
+  function lvStart(L) { return 0.04 + 0.74 * L / (CLV + 1); }
+
+  // drawing order: logic, flip-flops, then the cells added after synthesis on top
+  var RANK = { logic: 0, ff: 1, tie: 2, buf: 3, clock: 4, hold: 5, diode: 6 }, ORDER = [];
+  for (var oi = 0; oi < NU; oi++) ORDER.push(oi);
+  ORDER.sort(function (a, b) { return RANK[CLS[a]] - RANK[CLS[b]] || a - b; });
+
+  // ---- the state of every cell at position p -----------------------------------------------
+  var SX = new Float32Array(NU), SY = new Float32Array(NU), SWD = new Float32Array(NU), SA = new Float32Array(NU);
+  var SXX = new Float32Array(NU), SYY = new Float32Array(NU), SFX = new Uint8Array(NU), SFY = new Uint8Array(NU);
+  var STY = new Uint8Array(NU), TX = new Float32Array(NU), TY = new Float32Array(NU), TA = new Float32Array(NU);
+  function put(Sg, i) {
+    SX[i] = Sg.xy[2 * i]; SY[i] = Sg.xy[2 * i + 1]; STY[i] = Sg.ty[i]; SWD[i] = WT[Sg.ty[i]];
+    SFX[i] = flipX(Sg.or[i]); SFY[i] = flipY(Sg.or[i]); SA[i] = 1;
+  }
+  // A to B by adding and removing cells: the new ones pop in, each from its time popAt(i),
+  // removed ones fade, resized ones change width.
+  function popIn(A, B, t, popAt) {
+    for (var i = 0; i < NU; i++) {
+      var a = has(A, i), b = has(B, i);
+      if (a && b) {
+        put(B, i);
+        if (A.ty[i] !== B.ty[i]) {
+          var w = ease(clamp01((t - 0.6) / 0.3));
+          SWD[i] = WT[A.ty[i]] + (WT[B.ty[i]] - WT[A.ty[i]]) * w;
+          if (w < 0.5) STY[i] = A.ty[i];
+        }
+      } else if (a) {
+        put(A, i); SA[i] = 1 - ease(clamp01((t - 0.05 * hash01(i)) / 0.25));
+      } else if (b) {
+        put(B, i);
+        var tp = clamp01((t - popAt(i)) / 0.22);
+        SA[i] = tp > 0 ? 1 : 0; SXX[i] = SYY[i] = ease(tp);
+      }
+    }
+  }
+  // A to B by legalisation: each cell slides to its new site (bottom rows first, for display),
+  // taking its new row's orientation on the way (a flip top to bottom), leaving a short trail;
+  // then the cells mirrored left to right flip.
+  function legalise(A, B, t) {
+    for (var i = 0; i < NU; i++) {
+      if (!has(B, i)) continue;
+      put(B, i);
+      if (!has(A, i)) continue;
+      var ax = A.xy[2 * i], ay = A.xy[2 * i + 1], bx = B.xy[2 * i], by = B.xy[2 * i + 1];
+      var s0 = 0.3 * clamp01((by - CORE[1]) / (CORE[3] - CORE[1])) + 0.04 * hash01(i);
+      var m = ease(clamp01((t - s0) / 0.4));
+      SX[i] = ax + (bx - ax) * m; SY[i] = ay + (by - ay) * m;
+      if (ax !== bx || ay !== by) {
+        TX[i] = ax; TY[i] = ay;
+        TA[i] = m > 0 ? 1 - clamp01((t - s0 - 0.4) / 0.12) : 0;
+      }
+      var ya = flipY(A.or[i]), yb = flipY(B.or[i]), xa = flipX(A.or[i]), xb = flipX(B.or[i]);
+      if (ya !== yb) { SYY[i] = Math.abs(Math.cos(Math.PI * m)); SFY[i] = m > 0.5 ? yb : ya; }
+      if (xa !== xb) {
+        var q = clamp01((t - 0.74 - 0.1 * hash01(i + 7)) / 0.16);
+        SXX[i] = Math.abs(Math.cos(Math.PI * q)); SFX[i] = q > 0.5 ? xb : xa;
+      }
+    }
+  }
+  var CTS_SPLIT = 0.55, HOLD_SPLIT = 0.45, ANT_SPLIT = 0.6;   // each step's share for adding cells, then legalising
+  function popRepair(i) { return 0.2 + 0.45 * hash01(i); }
+  function popClock(i) { var j = FEED[i]; return j === undefined ? 0.5 : lvStart(CLOCK[j].lv) + 0.2; }
+  function popHold(i) { return 0.08 + 0.62 * hash01(i); }
+  function putAll(Sg) { for (var i = 0; i < NU; i++) if (has(Sg, i)) put(Sg, i); }
+  function cellState(p) {
+    if (p <= S.PINS) return false;
+    var i;
+    for (i = 0; i < NU; i++) { SA[i] = 0; SXX[i] = 1; SYY[i] = 1; TA[i] = 0; }
+    if (p <= S.PLACE) {
+      var g = gplAt(within(p, S.PLACE)), nx = GF[Math.min(g.i + 1, GF.length - 1)], a = GF[g.i].xy, b = nx.xy;
+      var f = nx.rewind ? ease(clamp01((g.f - 0.3) / 0.4)) : g.f;
+      var aIn = Math.min(1, within(p, S.PLACE) / FADE);
+      for (i = 0; i < NC; i++) {
+        SX[i] = a[2 * i] + (b[2 * i] - a[2 * i]) * f; SY[i] = a[2 * i + 1] + (b[2 * i + 1] - a[2 * i + 1]) * f;
+        STY[i] = NL.type[i]; SWD[i] = WT[STY[i]]; SFX[i] = SFY[i] = 0; SA[i] = aIn;
+      }
+    } else if (p <= S.REPAIR) popIn(K.G, K.rszB, within(p, S.REPAIR), popRepair);
+    else if (p <= S.LEGAL) legalise(K.rszB, K.dpl, within(p, S.LEGAL));
+    else if (p <= S.CTS) {
+      var u = within(p, S.CTS);
+      if (u < CTS_SPLIT) popIn(K.dpl, K.ctsB, u / CTS_SPLIT, popClock); else legalise(K.ctsB, K.cts, (u - CTS_SPLIT) / (1 - CTS_SPLIT));
+    } else if (p <= S.HOLD) {
+      var v = within(p, S.HOLD);
+      if (v < HOLD_SPLIT) popIn(K.cts, K.holdB, v / HOLD_SPLIT, popHold); else legalise(K.holdB, K.hold, (v - HOLD_SPLIT) / (1 - HOLD_SPLIT));
+    } else if (p <= S.GRT) putAll(K.hold);
+    else if (p <= S.ANT) {
+      // antenna repair: the diode pops in, then the cells whose mirroring is lost flip back
+      var w = within(p, S.ANT);
+      if (w < ANT_SPLIT) popIn(K.hold, K.ant, w / ANT_SPLIT, function () { return 0.55; });
+      else legalise(K.hold, K.ant, 0.7 + 0.3 * (w - ANT_SPLIT) / (1 - ANT_SPLIT));
+    } else putAll(K.ant);
+    return true;
+  }
+
+  // ---- global routing guides ------------------------------------------------------------------
+  LC.grt.nets = LC.grt.nets.map(function (nm) { return nm.replace(/\\/g, ""); });   // DEF escapes brackets
+  var GR = LC.grt, GG = GR.g, GLAY = GR.layers, GRAW = bytes(GR.rects), GNX = GR.nx, GNY = GR.ny;
+  // FastRoute's grid: whole g-cells, the last column and row stretched to the die's edge
+  function gX(i) { return i >= GNX ? DIE[2] : i * GG; }
+  function gY(j) { return j >= GNY ? DIE[3] : j * GG; }
+  function gCol(x) { return Math.max(0, Math.min(GNX - 1, Math.floor(x / GG))); }
+  function gRow(y) { return Math.max(0, Math.min(GNY - 1, Math.floor(y / GG))); }
+  var COV = GLAY.map(function () { return new Uint16Array(GNX * GNY); });   // nets per g-cell, per layer
+  var COVALL = new Uint16Array(GNX * GNY);                                   // nets per g-cell, met1 to met4
+  var GSTART = [];
+  (function () {
+    var k = 0, seen = new Uint8Array(GNX * GNY * GLAY.length), seenAll = new Uint8Array(GNX * GNY), touched = [], touchedAll = [];
+    GR.count.forEach(function (cnt) {
+      GSTART.push(k);
+      touched.length = 0; touchedAll.length = 0;
+      for (var j = 0; j < cnt; j++, k++) {
+        var x0 = GRAW[5 * k], y0 = GRAW[5 * k + 1], x1 = GRAW[5 * k + 2], y1 = GRAW[5 * k + 3], l = GRAW[5 * k + 4];
+        for (var y = y0; y < y1; y++) for (var x = x0; x < x1; x++) {
+          var c = (l * GNY + y) * GNX + x, ca = y * GNX + x;
+          if (!seen[c]) { seen[c] = 1; touched.push(c); COV[l][ca]++; }
+          if (l > 0 && !seenAll[ca]) { seenAll[ca] = 1; touchedAll.push(ca); COVALL[ca]++; }
+        }
+      }
+      touched.forEach(function (c) { seen[c] = 0; });
+      touchedAll.forEach(function (c) { seenAll[c] = 0; });
+    });
+  })();
+  // tracks crossing a g-cell on each layer (li1 carries no routing); and crowding: the nets with
+  // guides in a g-cell, relative to the busiest g-cell (not the router's capacity measure)
+  var TRACKS = GR.pitch.map(function (p, l) { return l === 0 ? 0 : GG / U / p; });
+  var MAXALL = 0, MINALL = Infinity;
+  for (var mi = 0; mi < COVALL.length; mi++) { MAXALL = Math.max(MAXALL, COVALL[mi]); MINALL = Math.min(MINALL, COVALL[mi]); }
+  function crowding(gx, gy) { return COVALL[gy * GNX + gx] / MAXALL; }
+  function crowdAlpha(u) { return 0.08 + 0.9 * u * u; }   // a tile's opacity (the legend's ramp matches)
+  // the busiest g-cell, and the quietest inside the core, for the callouts
+  var BUSY = null, QUIET = null;
+  for (var by0 = 0; by0 < GNY; by0++) for (var bx0 = 0; bx0 < GNX; bx0++) {
+    var bc = { gx: bx0, gy: by0, nets: COVALL[by0 * GNX + bx0] };
+    if (!BUSY || bc.nets > BUSY.nets) BUSY = bc;
+    var inside = bx0 > 1 && bx0 < GNX - 2 && by0 > 0 && by0 < GNY - 2;
+    if (inside && bc.nets > 0 && (!QUIET || bc.nets < QUIET.nets)) QUIET = bc;
+  }
+  function gRect(arr, k, inset) {
+    var x0 = gX(arr[5 * k]), y0 = gY(arr[5 * k + 1]), x1 = gX(arr[5 * k + 2]), y1 = gY(arr[5 * k + 3]);
+    rect(x0 + inset, y0 + inset, x1 - inset, y1 - inset);
+  }
+  // the example nets: their guides (the global router's, and those detailed routing followed),
+  // layers and pins, and a guide near their middle for the callout
+  var ROUTE_EX = GR.examples.map(function (e) {
+    var s0 = GSTART[e.net], cnt = GR.count[e.net], lay = {}, x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+    for (var i = s0; i < s0 + cnt; i++) {
+      lay[GLAY[GRAW[5 * i + 4]]] = 1;
+      x0 = Math.min(x0, GRAW[5 * i]); y0 = Math.min(y0, GRAW[5 * i + 1]); x1 = Math.max(x1, GRAW[5 * i + 2]); y1 = Math.max(y1, GRAW[5 * i + 3]);
+    }
+    var mx = (x0 + x1) / 2, my = (y0 + y1) / 2, best = s0, bd = 1e9;
+    for (var j = s0; j < s0 + cnt; j++) {
+      if (GRAW[5 * j + 4] === 0) continue;   // not a pin-access guide
+      var cx = (GRAW[5 * j] + GRAW[5 * j + 2]) / 2, cy = (GRAW[5 * j + 1] + GRAW[5 * j + 3]) / 2, dd = Math.hypot(cx - mx, cy - my);
+      if (dd < bd) { bd = dd; best = j; }
+    }
+    return { name: GR.nets[e.net], net: e.net, start: s0, count: cnt, cells: e.cells, npins: e.cells.length + e.pins.length,
+             layers: GLAY.filter(function (l) { return lay[l]; }), post: bytes(e.guides), offlayer: e.offlayer,
+             mid: [(gX(GRAW[5 * best]) + gX(GRAW[5 * best + 2])) / 2, (gY(GRAW[5 * best + 1]) + gY(GRAW[5 * best + 3])) / 2] };
+  });
+
+  // ---- antenna repair, detailed routing, fill ------------------------------------------------------
+  var AM = M.ant, CLKNET = GR.nets.indexOf(AM.net), ROOTNAME = AM.pin.split("/")[0];
+  var ROOTBUF = NAMES.indexOf(ROOTNAME), DIODE = CLS.indexOf("diode");
+  var DR = LC.drt, WRAW = bytes(DR.segs), VRAW = bytes(DR.vias), NW = WRAW.length / 9, NV = VRAW.length / 5;
+  var WSTART = [], VSTART = [];
+  (function () { var a = 0, b = 0; DR.scount.forEach(function (c, i) { WSTART.push(a); a += c; VSTART.push(b); b += DR.vcount[i]; }); })();
+  function netAt(starts, k) {
+    var lo = 0, hi = starts.length - 1;
+    while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (starts[mid] <= k) lo = mid; else hi = mid - 1; }
+    return lo;
+  }
+  var WL = DR.layers;   // the wires' layers, by index
+  var WIDTH = WL.map(function (l) { return { li1: 170, met1: 140, met2: 140, met3: 300, met4: 300 }[l]; });   // default widths, DBU (sky130 tech LEF)
+  // each via type shows with the upper of its two layers (L1M1_PR: met1, M1M2_PR: met2, ...)
+  var VIALAYER = DR.vtypes.map(function (v) { var m = v.match(/^M\dM(\d)/); return WL.indexOf(m ? "met" + m[1] : "met1"); });
+  // each layer's wires as one path in world units, built once
+  var WPATH = DR.layers.map(function (ln, l) {
+    var p = new Path2D();
+    for (var k = 0; k < NW; k++) if (WRAW[9 * k + 8] === l) {
+      var b = 9 * k;
+      p.moveTo(u16(WRAW, b) * 5, u16(WRAW, b + 2) * 5); p.lineTo(u16(WRAW, b + 4) * 5, u16(WRAW, b + 6) * 5);
+    }
+    return p;
+  });
+  var FILL = LC.fill.map(function (f) { return { type: D.types[f[0]], site: f[1], row: f[2], w: f[3], kind: /decap/.test(D.types[f[0]]) ? "decap" : "fill" }; });
+  var FILLT = {};
+  FILL.forEach(function (f) { FILLT[shortName(f.type)] = (FILLT[shortName(f.type)] || 0) + 1; });
+
+  // ---- signoff timing ---------------------------------------------------------------------------
+  // the worst setup path (slow corner) and the worst hold path (fast corner), stage by stage: a
+  // pin, its cell's master, the arrival time there, the cell and the net on it
+  var ST = LC.sta;
+  function staPath(q, key) {
+    var st = q.stages.map(function (s0) { return { pin: s0[0], cell: s0[1], t: s0[2], ci: s0[3], ni: s0[4], out: /\/(Q|X|Y)$/.test(s0[0]) }; });
+    var cells = [];
+    st.forEach(function (x) { if (x.ci >= 0 && cells.indexOf(x.ci) < 0) cells.push(x.ci); });
+    // the cells between launch and capture (a flip-flop feeding itself is both)
+    var between = cells.filter(function (c) { return c !== st[0].ci && c !== st[st.length - 1].ci; }).length;
+    return { key: key, q: q, st: st, t0: st[0].t, t1: st[st.length - 1].t, cells: cells, between: between };
+  }
+  // The wires of net ni from cell a to cell b: the shortest way through the net's segments (split
+  // where one ends on another) between points inside the two cells. Falls back to the whole net.
+  function routeBetween(ni, a, b) {
+    var segs = [], pts = {}, adj = {};
+    for (var k = WSTART[ni]; k < WSTART[ni] + DR.scount[ni]; k++) {
+      var o = 9 * k, sg = [u16(WRAW, o) * 5, u16(WRAW, o + 2) * 5, u16(WRAW, o + 4) * 5, u16(WRAW, o + 6) * 5, k];
+      segs.push(sg); pts[sg[0] + "," + sg[1]] = [sg[0], sg[1]]; pts[sg[2] + "," + sg[3]] = [sg[2], sg[3]];
+    }
+    var all = Object.keys(pts).map(function (q) { return pts[q]; });
+    segs.forEach(function (sg) {
+      var on = all.filter(function (q) { return q[0] >= Math.min(sg[0], sg[2]) && q[0] <= Math.max(sg[0], sg[2]) && q[1] >= Math.min(sg[1], sg[3]) && q[1] <= Math.max(sg[1], sg[3]); });
+      on.sort(function (q, r) { return Math.abs(q[0] - sg[0]) + Math.abs(q[1] - sg[1]) - Math.abs(r[0] - sg[0]) - Math.abs(r[1] - sg[1]); });
+      for (var i = 0; i + 1 < on.length; i++) {
+        var p0 = on[i][0] + "," + on[i][1], p1 = on[i + 1][0] + "," + on[i + 1][1], d = Math.abs(on[i][0] - on[i + 1][0]) + Math.abs(on[i][1] - on[i + 1][1]);
+        (adj[p0] = adj[p0] || []).push([p1, d, sg[4]]); (adj[p1] = adj[p1] || []).push([p0, d, sg[4]]);
+      }
+    });
+    function inCell(c, q) {
+      var x0 = K.ant.xy[2 * c], y0 = K.ant.xy[2 * c + 1], m = 100;
+      return q[0] >= x0 - m && q[0] <= x0 + WT[K.ant.ty[c]] + m && q[1] >= y0 - m && q[1] <= y0 + RH + m;
+    }
+    var whole = { path: null, segs: {} };
+    segs.forEach(function (sg) { whole.segs[sg[4]] = 1; });
+    if (a < 0 || b < 0 || a === b) return whole;
+    // Dijkstra from every point in a to the first point reached in b (the nets are small)
+    var dist = {}, prev = {}, open = {}, end = null;
+    all.forEach(function (q) { var key = q[0] + "," + q[1]; if (inCell(a, q)) { dist[key] = 0; open[key] = 1; } });
+    while (Object.keys(open).length) {
+      var cur = null;
+      for (var key in open) if (cur === null || dist[key] < dist[cur]) cur = key;
+      delete open[cur];
+      if (inCell(b, pts[cur])) { end = cur; break; }
+      (adj[cur] || []).forEach(function (e) {
+        var nd = dist[cur] + e[1];
+        if (dist[e[0]] === undefined || nd < dist[e[0]]) { dist[e[0]] = nd; prev[e[0]] = [cur, e[2]]; open[e[0]] = 1; }
+      });
+    }
+    if (end === null) return whole;
+    var out = { path: new Path2D(), segs: {} };
+    for (var at = end; prev[at]; at = prev[at][0]) {
+      var p = pts[at], q = pts[prev[at][0]];
+      out.path.moveTo(p[0], p[1]); out.path.lineTo(q[0], q[1]); out.segs[prev[at][1]] = 1;
+    }
+    return out;
+  }
+  var PSETUP = staPath(ST.setup, "setup"), PHOLD = staPath(ST.hold, "holdp");
+  [PSETUP, PHOLD].forEach(function (P) {
+    P.wires = P.st.map(function (x, i) {
+      if (!x.out || x.ni < 0) return null;
+      var r = routeBetween(x.ni, x.ci, P.st[i + 1] ? P.st[i + 1].ci : -1);
+      if (!r.path) {   // the whole net
+        r.path = new Path2D();
+        for (var k = WSTART[x.ni]; k < WSTART[x.ni] + DR.scount[x.ni]; k++) { var b = 9 * k; r.path.moveTo(u16(WRAW, b) * 5, u16(WRAW, b + 2) * 5); r.path.lineTo(u16(WRAW, b + 4) * 5, u16(WRAW, b + 6) * 5); }
+      }
+      return r;
+    });
+  });
+  var ONPATH = {};   // cell -> which paths it is on
+  [PSETUP, PHOLD].forEach(function (P) { P.cells.forEach(function (c) { ONPATH[c] = (ONPATH[c] || []).concat([P]); }); });
+  var STA_SET0 = 0.04, STA_SET1 = 0.5, STA_HOLD0 = 0.56, STA_HOLD1 = 0.86;
+  function staSpan(P) { return P === PSETUP ? [STA_SET0, STA_SET1] : [STA_HOLD0, STA_HOLD1]; }
+  // the time the signal has reached on a path at step progress u (-1 before it starts)
+  function staTime(P, u) {
+    var sp = staSpan(P);
+    if (u < sp[0]) return -1;
+    return P.t0 + (P.t1 - P.t0) * clamp01((u - sp[0]) / (sp[1] - sp[0]));
+  }
+  var CORNERS = Object.keys(ST.corners);
+  // the most pins over the slew limit in any corner of a process ("ss", "tt", "ff")
+  function slewMax(proc) { return Math.max.apply(null, CORNERS.filter(function (c) { return c.split("_")[1] === proc; }).map(function (c) { return ST.corners[c].slew; })); }
+  function cornerName(c) { var m = c.split("_"); return m[1] + ", " + m[2].replace("n", "−").replace("C", " °C") + ", " + m[3].replace("v", ".") + " V"; }
+
+  // ---- IR drop -----------------------------------------------------------------------------------
+  // each instance's supply voltage, as a drop (uV) at its power pin; drawn as strips along each
+  // net's rails, every pin covering the stretch to midway to its neighbours
+  var IR = LC.ir, IRNETS = ["VPWR", "VGND"], IRSTRIPS = {}, IRMAX = 0;
+  IRNETS.forEach(function (net) {
+    var raw = bytes(IR[net]), rails = PDN.rails.filter(function (r) { return r[0] === net; }).map(function (r) { return r[1]; });
+    var byRail = {};
+    for (var i = 0; i < raw.length; i += 6) {
+      var x = u16(raw, i) * 10, y = u16(raw, i + 2) * 10, dr = u16(raw, i + 4) / 100, ry = rails[0];
+      rails.forEach(function (r) { if (Math.abs(r - y) < Math.abs(ry - y)) ry = r; });
+      (byRail[ry] = byRail[ry] || []).push([x, dr]);
+      IRMAX = Math.max(IRMAX, dr);
+    }
+    var strips = [];
+    Object.keys(byRail).forEach(function (ry) {
+      var pts = byRail[ry].sort(function (a, b) { return a[0] - b[0]; });
+      pts.forEach(function (pt, j) {
+        var x0 = j ? (pts[j - 1][0] + pt[0]) / 2 : CORE[0], x1 = j < pts.length - 1 ? (pt[0] + pts[j + 1][0]) / 2 : CORE[2];
+        strips.push({ y: +ry, x0: x0, x1: x1, x: pt[0], d: pt[1] });
+      });
+    });
+    IRSTRIPS[net] = strips;
+  });
+  function irWorst(net) { return IRSTRIPS[net].reduce(function (a, b) { return b.d > a.d ? b : a; }); }
+  // a sequential ramp for the drop, from the theme (--ir0 to --ir3)
+  var IRSTOPS = [];
+  function irColour(t) {
+    t = clamp01(t) * (IRSTOPS.length - 1);
+    var i = Math.min(IRSTOPS.length - 2, Math.floor(t)), f = t - i, a = IRSTOPS[i], b = IRSTOPS[i + 1];
+    return "rgb(" + Math.round(a[0] + (b[0] - a[0]) * f) + "," + Math.round(a[1] + (b[1] - a[1]) * f) + "," + Math.round(a[2] + (b[2] - a[2]) * f) + ")";
+  }
+  var IR_V0 = 0.04, IR_V1 = 0.42, IR_G0 = 0.52, IR_G1 = 0.9;
+  function irNetAt(u) { return u < IR_G0 ? "VPWR" : "VGND"; }
+
+  // ---- the GDS -------------------------------------------------------------------------------------
+  // Each master's rectangles (from the GDS), placed for every instance as the GDS places it; the
+  // routing and vias from the routed DEF and the via definitions, as stream-out merges them.
+  // Built into one path per layer, in world units, the first time the step is reached.
+  var GD = LC.gds, GDS_ORDER = [
+    { l: "nwell", c: "nwell", a: 0.35, what: "n-well: where the PMOS transistors sit" },
+    { l: "diff", c: "diff", a: 0.85, also: ["tap"], what: "diffusion: transistors' source and drain areas, and the taps" },
+    { l: "poly", c: "poly", a: 0.8, what: "poly: the gates; a transistor is where poly crosses diffusion" },
+    { l: "licon", c: "cut", a: 0.9, what: "licon: contacts from diffusion and poly up to li1" },
+    { l: "li1", c: "li1", o: 1, what: "li1: local interconnect, the wiring inside the cells" },
+    { l: "mcon", c: "cut", a: 0.9, what: "mcon: contacts from li1 up to met1" },
+    { l: "met1", c: "met1", o: 1, what: "met1: power rails and short wires" },
+    { l: "via", c: "cut", a: 0.9, what: "via: cuts between met1 and met2" },
+    { l: "met2", c: "met2", o: 1, what: "met2: vertical routing" },
+    { l: "via2", c: "cut", a: 0.9, what: "via2: cuts between met2 and met3" },
+    { l: "met3", c: "met3", o: 1, what: "met3: horizontal routing" },
+    { l: "via3", c: "cut", a: 0.9, what: "via3: cuts between met3 and met4" },
+    { l: "met4", c: "met4", o: 1, what: "met4: power stripes, pins and long wires" }];
+  var GPATH = null, GFOCUS = null;
+  function gdsBuild() {
+    if (GPATH) return;
+    GPATH = {};
+    GD.layers.forEach(function (l) { GPATH[l] = new Path2D(); });
+    var masters = GD.mrects.map(function (b64) {
+      var b = bytes(b64), out = [];
+      for (var i = 0; i < b.length; i += 9) {
+        var dv = new DataView(b.buffer, i + 1, 8);
+        out.push([GD.layers[b[i]], dv.getInt16(0, true), dv.getInt16(2, true), dv.getInt16(4, true), dv.getInt16(6, true)]);
+      }
+      return out;
+    });
+    var ib = bytes(GD.insts);
+    function tr(x, y, rot, mir) {   // mirror about x, then rotate by rot quarter turns
+      if (mir) y = -y;
+      return rot === 1 ? [-y, x] : rot === 2 ? [-x, -y] : rot === 3 ? [y, -x] : [x, y];
+    }
+    var fy = (CORE[1] + CORE[3]) / 2, fx = (CORE[0] + CORE[2]) / 2, best = null;
+    for (var k = 0; k < ib.length; k += 6) {
+      var mi = ib[k], dx = u16(ib, k + 1) * 5, dy = u16(ib, k + 3) * 5, rot = ib[k + 5] & 3, mir = ib[k + 5] >> 2;
+      masters[mi].forEach(function (r) {
+        var a = tr(r[1], r[2], rot, mir), c = tr(r[3], r[4], rot, mir);
+        GPATH[r[0]].rect(dx + Math.min(a[0], c[0]), dy + Math.min(a[1], c[1]), Math.abs(c[0] - a[0]), Math.abs(c[1] - a[1]));
+      });
+      // the flip-flop nearest the core centre, for the close-up and the transistor callout
+      if (/^dfxtp/.test(GD.masters[mi])) {
+        var dd = Math.hypot(dx - fx, dy - fy);
+        if (!best || dd < best.d) best = { d: dd, mi: mi, x: dx, y: dy, rot: rot, mir: mir };
+      }
+    }
+    // a transistor in that flip-flop: the first poly rectangle crossing a diffusion rectangle
+    if (best) {
+      var rs = masters[best.mi], polys = rs.filter(function (r) { return r[0] === "poly"; }), diffs = rs.filter(function (r) { return r[0] === "diff"; });
+      for (var i2 = 0; i2 < polys.length && !GFOCUS; i2++) for (var j2 = 0; j2 < diffs.length && !GFOCUS; j2++) {
+        var pr = polys[i2], dr = diffs[j2], x0 = Math.max(pr[1], dr[1]), x1 = Math.min(pr[3], dr[3]), y0 = Math.max(pr[2], dr[2]), y1 = Math.min(pr[4], dr[4]);
+        if (x1 > x0 && y1 > y0) { var m = tr((x0 + x1) / 2, (y0 + y1) / 2, best.rot, best.mir); GFOCUS = { x: best.x + m[0], y: best.y + m[1], ff: best }; }
+      }
+      // the instance it belongs to
+      for (var c = 0; c < NU && GFOCUS; c++) {
+        if (CLS[c] !== "ff" || !has(K.ant, c)) continue;
+        var cx0 = K.ant.xy[2 * c], cy0 = K.ant.xy[2 * c + 1];
+        if (GFOCUS.x >= cx0 && GFOCUS.x <= cx0 + WT[K.ant.ty[c]] && GFOCUS.y >= cy0 && GFOCUS.y <= cy0 + RH) { GFOCUS.cell = c; break; }
+      }
+    }
+    // routing: wires at their width, each via from its definition, the power grid and pins
+    for (var w = 0; w < NW; w++) {
+      var l = WRAW[9 * w + 8];
+      if (!l) continue;
+      var bb = 9 * w, ax = u16(WRAW, bb) * 5, ay = u16(WRAW, bb + 2) * 5, bx = u16(WRAW, bb + 4) * 5, by2 = u16(WRAW, bb + 6) * 5, hw = WIDTH[l] / 2;
+      GPATH[WL[l]].rect(Math.min(ax, bx) - hw, Math.min(ay, by2) - hw, Math.abs(bx - ax) + 2 * hw, Math.abs(by2 - ay) + 2 * hw);
+    }
+    for (var v = 0; v < NV; v++) {
+      var vx = u16(VRAW, 5 * v) * 5, vy = u16(VRAW, 5 * v + 2) * 5;
+      (GD.vias[DR.vtypes[VRAW[5 * v + 4]]] || []).forEach(function (r) { GPATH[r[0]].rect(vx + r[1], vy + r[2], r[3] - r[1], r[4] - r[2]); });
+    }
+    PDN.rails.forEach(function (r) { GPATH.met1.rect(r[2], r[1] - r[4] / 2, r[3] - r[2], r[4]); });
+    PDN.stripes.forEach(function (st) { GPATH.met4.rect(st[2] - st[5] / 2, st[3], st[5], st[4] - st[3]); });
+    PDN.vias.forEach(function (pv) { GD.pdnvias.forEach(function (rr) { rr.forEach(function (r) { GPATH[r[0]].rect(pv[1] + r[1], pv[2] + r[2], r[3] - r[1], r[4] - r[2]); }); }); });
+    PINS.forEach(function (q) { GPATH.met4.rect(q.x0, q.y0, q.x1 - q.x0, q.y1 - q.y0); });
+  }
+  // the step glides in to a flip-flop over the cell boxes, then builds the layers
+  var GDS_MS = 12000, GDS_GLIDE = 1500, GDS_CAM = GDS_GLIDE / GDS_MS;
+  function gdsLayerAt(u, i) { return clamp01((u - GDS_CAM - 0.06 * i) / 0.06); }
+
+  // the pins this design leaves unconnected (from the routed DEF: their nets have no wiring)
+  var UNUSED = {};
+  LC.unusedPins.forEach(function (nm) { UNUSED[nm] = 1; });
+  var unusedList = Object.keys(UNUSED);
+  function busList(names) {
+    // ui_in[7], uio_in[0..7] -> "ui_in[7], uio_in[7:0]"
+    var by = {};
+    names.forEach(function (nm) { var m = nm.match(/^(.*)\[(\d+)\]$/); if (m) (by[m[1]] = by[m[1]] || []).push(+m[2]); else by[nm] = null; });
+    return Object.keys(by).map(function (b) {
+      var ix = by[b];
+      if (!ix) return "<code>" + b + "</code>";
+      ix.sort(function (a, c) { return a - c; });
+      return "<code>" + b + (ix.length > 1 && ix[ix.length - 1] - ix[0] === ix.length - 1 ? "[" + ix[ix.length - 1] + ":" + ix[0] + "]" : "[" + ix.join("], " + b + "[") + "]") + "</code>";
+    }).join(", ");
+  }
+
+  // ---- what each step focuses on -----------------------------------------------------------------
+  // Everything else is dimmed, on the die and in the legend.
+  var DIM = 0.25;
+  var FOCUS = {};
+  FOCUS[S.DIE] = ["die"]; FOCUS[S.FLOOR] = ["rows"]; FOCUS[S.TAPS] = ["fixed"]; FOCUS[S.PDN] = ["pdn"]; FOCUS[S.PINS] = ["pins"];
+  FOCUS[S.PLACE] = ["logic", "ff", "hot"]; FOCUS[S.REPAIR] = ["buf", "tie", "changed"];
+  FOCUS[S.LEGAL] = ["rows", "logic", "ff", "buf", "tie", "changed"]; FOCUS[S.CTS] = ["clock", "clknet", "ff"]; FOCUS[S.HOLD] = ["hold"];
+  FOCUS[S.GRT] = ["route"]; FOCUS[S.ANT] = ["diode", "antnet"]; FOCUS[S.DRT] = ["wire"]; FOCUS[S.FILL] = ["decap", "fill"];
+  FOCUS[S.STA] = ["path"]; FOCUS[S.IR] = ["ir", "pdn"];
+  FOCUS[S.GDS] = ["gds", "logic", "ff", "buf", "tie", "clock", "hold", "diode", "decap", "fill", "fixed"];
+  var STEPDIM = {};   // steps whose subject is fine detail fade the rest further
+  STEPDIM[S.GRT] = 0.1; STEPDIM[S.DRT] = 0.12; STEPDIM[S.FILL] = 0.18; STEPDIM[S.STA] = 0.12; STEPDIM[S.IR] = 0.12; STEPDIM[S.GDS] = 0.12;
+  var DIMIN = {};   // how much of the step the change of focus takes, where not a quarter
+  DIMIN[S.GDS] = 0.08;
+  function focusOf(k, g) { return g === "die" || (FOCUS[k] || []).indexOf(g) >= 0 ? 1 : (STEPDIM[k] || DIM); }
+  function dimAt(p, g) {
+    var k = Math.ceil(p - 1e-9);
+    if (k <= 0) return focusOf(0, g);
+    var a = focusOf(k - 1, g), b = focusOf(k, g);
+    return a + (b - a) * ease(clamp01((p - (k - 1)) / (DIMIN[k] || 0.25)));
+  }
+  var DIMC = {};
+  ["rows", "fixed", "pdn", "pins", "logic", "ff", "buf", "tie", "clock", "hold", "changed", "clknet", "route", "hot", "diode", "antnet", "wire", "decap", "fill", "path", "ir", "gds"].forEach(function (g) { DIMC[g] = 1; });
+  function updateDims() {
+    // while a step sits still (waiting to play, paused, scrubbed) it shows its own focus
+    var settled = !anim && pos > target - 1;
+    for (var g in DIMC) DIMC[g] = settled ? focusOf(target, g) : dimAt(pos, g);
+  }
+
+  // ---- the steps, in the order the flow runs them ---------------------------------------------
+  var STEPS = [];
+  STEPS[S.DIE] = { short: "Die", title: "The die area", tool: "Tiny Tapeout's 1×1 tile",
+    body:
+      "<p>The <b>die area</b> is fixed before the flow starts: one Tiny Tapeout tile, " + fmt(um(DIE[2])) + " × " + fmt(um(DIE[3])) + " µm (" + n(Math.round(um(DIE[2]) * um(DIE[3]))) + " µm²), set in the configuration and checked against Tiny Tapeout's tile template.</p>" +
+      "<p>Synthesis has already mapped the RTL to a gate-level <b>netlist</b>: " + n(D.netlistCells) + " <b>instances</b> of standard cells from <code>sky130_fd_sc_hd</code>, SkyWater's 130 nm high-density library, and the <b>nets</b> that connect their pins. A netlist is connectivity only. <b>Physical design</b>, or place and route (PnR), decides where every instance and every wire goes.</p>",
+    note: "Shows one run of the flow, in November 2026: <a href=\"https://github.com/zvea/tiny-breakout/tree/8e82a8f\">commit 8e82a8f</a>, LibreLane 3.0.14, sky130." };
+  STEPS[S.FLOOR] = { short: "Floorplan", title: "Floorplan", tool: "OpenROAD <code>ifp</code>: <code>initialize_floorplan</code>",
+    body:
+      "<p>The <b>core area</b> is the die less a <b>core margin</b> (" + fmt(um(CORE[0])) + " µm left and right, " + fmt(um(CORE[1])) + " µm top and bottom). Standard cells may be placed only inside the core: " + fmt(um(CORE[2] - CORE[0])) + " × " + fmt(um(CORE[3] - CORE[1])) + " µm, or " + n(Math.round(um(CORE[2] - CORE[0]) * um(CORE[3] - CORE[1]))) + " µm². <b>Utilisation</b>, the cells' total area as a share of it, is the usual measure of how full a design is.</p>" +
+      "<p>The core is divided into <b>placement rows</b>, " + NROWS + " of them, each " + D.sitesPerRow + " <b>sites</b> long. The site (<code>unithd</code>) is " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm. Every standard cell is one row high and a whole number of sites wide, so a legal placement gives each instance a row, a site and an orientation. The floorplan also lays out each layer's <b>routing tracks</b>, the lines wires will follow.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>Rows alternate orientation: <b>N</b>, then <b>FS</b> (flipped about the x axis). A cell has its power rail (<code>VPWR</code>) along the top and its ground rail (<code>VGND</code>) along the bottom, with the PMOS transistors in an n-well under <code>VPWR</code>. Flipping alternate rows puts like rails back to back, so abutting rows share one rail, and the n-wells of each pair of rows merge. Nothing is optimised: the rows follow from the core size and the site.</p>" };
+  STEPS[S.TAPS] = { short: "Taps", title: "Tap and endcap insertion", tool: "OpenROAD <code>tapcell</code>",
+    body:
+      "<p>Two kinds of physical-only cell go in before any logic, as <code>FIXED</code> instances that placement must work around.</p>" +
+      "<p><b>Well taps</b> (" + n(nTap) + " × <code>tapvpwrvgnd_1</code>) tie the n-well to <code>VPWR</code> and the p-substrate to <code>VGND</code>. <code>sky130_fd_sc_hd</code> is a <b>tapless</b> library: its cells have no well or substrate contacts of their own. Far from a tap, current in the well and substrate can raise their potential until the parasitic PNPN thyristor of neighbouring PMOS and NMOS turns on and shorts <code>VPWR</code> to <code>VGND</code>: <b>latch-up</b>. The design rules cap the distance from any transistor to a tap.</p>" +
+      "<p><b>Endcaps</b> (" + nEnd + ") terminate the wells at both ends of every row; LibreLane uses <code>decap_3</code> for them.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>A fixed pattern: an endcap at each row end, then taps in a checkerboard, one every " + fmt(um(TAPPITCH)) + " µm in a row, alternate rows offset by half that. The columns are " + fmt(um(TAPPITCH / 2)) + " µm apart: the configured 13 µm (<code>FP_TAPCELL_DIST</code>) rounded down to whole sites. The first and last rows take every column, having a neighbour on one side only.</p>" };
+  STEPS[S.PDN] = { short: "Power", title: "Power distribution network", tool: "OpenROAD <code>pdngen</code>",
+    body:
+      "<p>The <b>power distribution network</b> (PDN) carries <code>VPWR</code> and <code>VGND</code> to every cell. Here it has two levels:</p>" +
+      "<p><b>Follow-pin rails</b> on met1, " + fmt(um(RAILW)) + " µm wide, along every row boundary: " + nRail.VGND + " <code>VGND</code> and " + nRail.VPWR + " <code>VPWR</code>, alternating. They lie exactly over the cells' own power rails, so each cell connects by abutment, with no routing.</p>" +
+      "<p><b>Stripes</b> on met4, " + fmt(um(STRW)) + " µm wide and vertical: " + nStripe / 2 + " pairs of <code>VPWR</code> and <code>VGND</code>, repeating every " + fmt(um(STRPITCH)) + " µm. They are also the tile's power pins. Tiny Tapeout reserves met5 for its chip-level power grid, which feeds each project's <code>VPWR</code> through a power switch (so a project can be turned off) and connects to these stripes.</p>" +
+      "<p>Where a stripe crosses a rail of its own net, a <b>via stack</b> joins them: met1 to met2 to met3 to met4, each via an array of cuts. There are " + PDN.vias.length + ".</p>" +
+      "<h3>How it works</h3>" +
+      "<p><code>pdngen</code> builds the grid from a specification, not from the logic: which layers carry rails and stripes, with their widths, pitches and offsets (here Tiny Tapeout's, for a 1×1 tile). Met2 and met3 carry no power outside the via stacks, which leaves them free for signal routing.</p>" };
+  STEPS[S.PINS] = { short: "Pins", title: "Pins", tool: "LibreLane <code>ApplyDEFTemplate</code>",
+    body:
+      "<p>Every Tiny Tapeout tile has the same " + PINS.length + " signal pins in the same places, so the chip-level routing can reach any project. All sit on the top edge, on met4, each " + fmt(um(PINW)) + " × " + fmt(um(PINH)) + " µm, " + fmt(um(PINPITCH)) + " µm apart:</p>" +
+      "<p><code>clk</code>, <code>ena</code> and <code>rst_n</code>; <code>ui_in[7:0]</code>, the dedicated inputs; <code>uo_out[7:0]</code>, the dedicated outputs; and the bidirectional IOs, each with three pins: <code>uio_in</code> (in), <code>uio_out</code> (out) and <code>uio_oe</code> (output enable). This design leaves " + unusedList.length + " unused (" + busList(unusedList) + "): their pins are there, with nothing connected.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>No algorithm: the step copies the pin shapes from Tiny Tapeout's template DEF. Without a fixed pin-out, OpenROAD's pin placer (<code>place_pins</code>) would choose positions that shorten the wiring, which is why LibreLane normally runs a rough global placement first. Here those steps are skipped.</p>" };
+  STEPS[S.PLACE] = { short: "Place", title: "Global placement", tool: "OpenROAD <code>gpl</code> (RePlAce)", play: PLACE_MS,
+    body:
+      "<p><b>Global placement</b> gives each of the " + n(NC) + " instances a position that keeps connected cells close while spreading them evenly over the core. Positions are continuous: cells may overlap and sit between rows until legalisation.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>Every instance starts at the core centre. <b>Initial placement</b> minimises a quadratic wirelength model by conjugate gradient (" + nIP + " iterations). With the pins, all on the top edge, as its only anchors, it pulls the netlist into a heap under them.</p>" +
+      "<p><b>Nesterov placement</b> then treats cells as charges in an electrostatic field that pushes them out of dense regions, against a smooth wirelength model pulling connected cells together; the density penalty rises as it goes. Density is measured on a " + BINS + " × " + BINS + " grid of <b>bins</b> against a <b>target density</b> of " + fmt(TARGET) + " (" + fmt(M.gpl.asked) + " was asked for; the tool raised it to fit its " + fmt(M.gpl.util, 0) + "% utilisation, which pads cells where pins are dense; unpadded, the cells fill " + fmt(100 * M.gpl.area / um(CORE[2] - CORE[0]) / um(CORE[3] - CORE[1]), 0) + "% of the core). <b>Overflow</b>, the movable cell area above the target as a share of all movable cell area, measures progress; the placer stops below 0.1.</p>" +
+      "<p>The run is <b>routability-driven</b>: near 0.3 overflow it estimates congestion, inflates cells where it is high and rewinds to a snapshot taken at about 0.6. It did so " + LASTF.rounds + " times without reaching its congestion target, then kept the least congested round's inflation for the final pass.</p>",
+    note: "Hatched: bins over the target (recomputed here, approximate). Shown: the first descent, one rewind, the final pass." };
+  STEPS[S.REPAIR] = { short: "Repair", title: "Repair design", tool: "OpenROAD <code>rsz</code>: <code>buffer_ports</code>, <code>repair_design</code>, <code>repair_tie_fanout</code>", play: 5000,
+    body:
+      "<p>With every cell placed, each net's wire length can be estimated, and with it the net's capacitance and the slew (transition time) at its pins. The resizer checks these against the design's limits (from the SDC: " + fmt(M.sdc.slew) + " ns slew, " + fmt(M.sdc.cap) + " pF, fanout " + M.sdc.fanout + ") and the library's pin limits, and repairs the violations, before any timing optimisation.</p>" +
+      "<p><b>Input buffers</b> (" + M.rsz.inbuf + "): each input pin in use (" + M.inputs.map(function (x) { return "<code>" + x + "</code>"; }).join(", ").replace(/<code>ui_in\[0\]<\/code>.*<code>ui_in\[6\]<\/code>/, "<code>ui_in[6:0]</code>") + ") now drives one small buffer, which starts on its pin, mostly outside the die.</p>" +
+      "<p><b>Buffering and sizing</b>: " + M.rsz.slew + " slew and " + M.rsz.fanout + " fanout violations, fixed by inserting " + M.rsz.buffers + " buffers into " + M.rsz.nets + " nets, which split heavy loads into trees, and by sizing up " + M.rsz.resized + " instances.</p>" +
+      "<p><b>Tie cells</b>: constant 0s and 1s come from <code>conb_1</code> tie cells. Synthesis gave each of the " + nTie + " constant outputs its own, placed wherever global placement put it; <code>repair_tie_fanout</code> replaces each with a new one beside the pin it drives.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>Each net's length comes from a Steiner tree over its pins, times the resistance and capacitance per µm averaged over met1 to met4. Where a limit is broken (with a " + M.sdc.slewpct + "% margin), <code>repair_design</code> inserts buffers or swaps in a stronger cell.</p>",
+    note: "New cells pop in where the resizer put them, overlapping others until legalisation; the resized cells grow." };
+  STEPS[S.LEGAL] = { short: "Legalise", title: "Detailed placement", tool: "OpenROAD <code>dpl</code>: <code>detailed_placement</code>, <code>optimize_mirroring</code>", play: 6500,
+    body:
+      "<p><b>Legalisation</b> moves every instance from its global position to a legal one: on a row, aligned to a site, overlapping nothing, taps and endcaps included. Each takes its row's orientation, N or FS. The moves are small (in a straight line, " + fmt(M.dpl.disp[3]) + " µm on average, " + fmt(M.dpl.disp[1]) + " µm at most) but they cost wirelength: HPWL rises " + Math.round(100 * (M.dpl.hpwl[1] / M.dpl.hpwl[0] - 1)) + "%, from " + n(Math.round(M.dpl.hpwl[0])) + " to " + n(Math.round(M.dpl.hpwl[1])) + " µm.</p>" +
+      "<p>Then <code>optimize_mirroring</code> flips instances left to right (FN or S) where that shortens their nets: " + n(M.dpl.mirrored) + " of them, winning back " + fmt(100 * (1 - M.dpl.hpwl[2] / M.dpl.hpwl[1]), 1) + "% (to " + n(Math.round(M.dpl.hpwl[2])) + " µm).</p>" +
+      "<h3>How it works</h3>" +
+      "<p><code>dpl</code> searches outward from each cell's global position for the nearest free run of sites. Global placement has already spread the cells to the target density, so a free spot is never far. In LibreLane the repair step ends by legalising; the Detailed placement step after it finds nothing left to move.</p>",
+    note: "Each cell leaves a short trail from its global position (bottom rows go first only for display); then the mirrored cells flip." };
+  STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", tool: "OpenROAD <code>cts</code> (TritonCTS): <code>clock_tree_synthesis</code>", play: 8000,
+    body:
+      "<p>Until now <code>clk</code> was an ideal net, reaching all " + M.cts.sinks + " flip-flops at the same instant. As a real wire it would be far too heavily loaded, and the clock edge would reach near and far flip-flops at different times. That difference, <b>skew</b>, comes straight out of every timing path's budget.</p>" +
+      "<p><b>Clock tree synthesis</b> replaces it with a tree of " + M.cts.buffers + " clock buffers (<code>clkbuf_4</code>): the root buffer, " + NBRANCH + " branch buffers and " + M.cts.clusters + " leaf buffers, so that every flip-flop is " + (M.cts.mindepth === M.cts.depth ? "exactly " + M.cts.depth : M.cts.mindepth + " to " + M.cts.depth) + " buffers from the pin.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>TritonCTS first <b>clusters</b> the sinks: " + M.cts.sinks + " flip-flops into " + M.cts.clusters + " groups of at most " + M.cts.maxsinks + " close together, each driven by one leaf buffer. It then builds an <b>H-tree</b> over the clusters: a symmetric trunk, halved at each level, that gives the branches matched lengths. " + M.cts.dummies + " <b>dummy loads</b>, clock cells whose outputs drive nothing, even out the load on the branches. The nets at the top of the tree, " + M.cts.ndr.map(function (x) { return "<code>" + x + "</code>"; }).join(" and ") + ", get a non-default rule, double spacing, to cut coupling.</p>" +
+      "<p>The buffers go where the tree wants them; then legalisation makes room, moving " + M.cts.disp[2] + " cells " + fmt(M.cts.disp[3], 1) + " µm on average.</p>",
+    note: "Lines join each clock net's driver to its loads, level by level from the pin." };
+  STEPS[S.HOLD] = { short: "Hold", title: "Hold repair", tool: "OpenROAD <code>rsz</code>: <code>repair_timing -hold</code>", play: 6000,
+    body:
+      "<p>With the clock tree built, timing analysis uses real clock arrival times, so hold can be checked meaningfully. A <b>hold violation</b> is a path so fast that new data reaches a flip-flop before it has finished capturing the old: the data must stay stable for a short time after the clock edge, and skew can shorten that window further.</p>" +
+      "<p>Setup was checked first and had no violations. For hold, " + M.hold.endpoints + " endpoints needed fixing, the worst at " + fmt(M.hold.wns[0], 3) + " ns of slack, counting " + fmt(M.sdc.uncertainty) + " ns of clock uncertainty. The resizer fixed them with <b>delay cells</b> (<code>dlygate4sd3_1</code>, a buffer built to be slow): " + M.hold.buffers + " of them, adding " + M.hold.area.replace("+", "") + " to cell area, until every endpoint has at least the " + fmt(M.hold.margin) + " ns hold margin.</p>" +
+      "<h3>How it works</h3>" +
+      "<p><code>repair_timing</code> works from the worst endpoint up, inserting a delay cell into each violating path and checking each insertion against setup on the same paths. Then legalisation makes room, moving " + M.hold.disp[2] + " cells " + fmt(M.hold.disp[3], 1) + " µm on average, and the mirroring is optimised again.</p>",
+    note: "Delay cells pop in where the resizer put them; then legalisation makes room." };
+  STEPS[S.GRT] = { short: "Route", title: "Global routing", tool: "OpenROAD <code>grt</code> (FastRoute)", play: 13000,
+    body:
+      "<p><b>Global routing</b> plans every net's route before any wire is drawn. It lays a grid of <b>g-cells</b> over the die (" + fmt(um(GG)) + " µm, " + GNX + " × " + GNY + ", the last column and row a little wider) and, for each of the " + n(GR.routed) + " nets, picks the g-cells its wires will pass through and a layer in each: the net's <b>route guides</b>, a corridor for detailed routing.</p>" +
+      "<p>Its job is to keep every g-cell edge within capacity. Only so many wires fit across an edge, one per track (" + Math.floor(TRACKS[GLAY.indexOf("met1")]) + " on met1, " + Math.floor(TRACKS[GLAY.indexOf("met4")]) + " on met4), less a " + GR.adjust + "% margin and what the power grid blocks; where too many nets would cross, the router detours some through quieter g-cells. The first pass did overflow; " + GR.extra + " more rounds of rip-up and reroute cleared it.</p>" +
+      "<p>Routing uses met1 to met4, alternating: met1 and met3 horizontal, met2 and met4 vertical; li1, the cells' pin layer, appears only where a pin is reached. Overall " + ["met1", "met2", "met3", "met4"].map(function (l) { return l + " uses " + fmt(GR.usage[l], 0) + "%"; }).join(", ") + " of its capacity.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>FastRoute routes each net in two dimensions as a tree through g-cells, rips up and reroutes the nets through over-full edges until none remain, and then assigns each stretch a layer.</p>",
+    note: "The guides of " + ROUTE_EX.length + " example nets, one at a time; then, for every g-cell, how many nets have guides in it: a picture of crowding, not the router's own capacity count." };
+  STEPS[S.ANT] = { short: "Antenna", title: "Antenna repair", tool: "OpenROAD <code>grt</code>: <code>repair_antennas</code>", play: 6500,
+    body:
+      "<p>During fabrication the chip is built up layer by layer, and plasma etching charges every exposed wire. A wire that connects only to transistor gates has nowhere to discharge, and a long one can collect enough charge to damage the thin gate oxide: the <b>antenna effect</b>. In sky130 the rule limits the area of a wire's sidewalls (perimeter × thickness) on each layer relative to the gate area it connects to.</p>" +
+      "<p>The check after global routing found one violation: net <code>" + AM.net + "</code> at <code>" + AM.pin + "</code> on " + AM.layer + ", ratio " + fmt(AM.partial) + " against a limit of " + fmt(AM.required, 0) + " (" + Math.round(100 * (AM.pr - 1)) + "% over). The clock pin's long route to the root buffer ends at a single gate.</p>" +
+      "<p>The repair inserts one <b>antenna diode</b> (<code>diode_2</code>) beside the gate: a reverse-biased junction that gives the charge a safe path to the substrate and does nothing in normal operation. The check after detailed routing finds no violations.</p>" +
+      "<h3>How it works</h3>" +
+      "<p><code>repair_antennas</code> estimates each net's metal from its global route and adds diodes, or moves wiring to a higher layer, until every ratio passes. Placing the diode re-legalises the cells, which puts almost every cell back in its row's orientation, and LibreLane 3.0 does not mirror them again afterwards: " + n(AM.flipped) + " cells lose their mirroring here, at some cost in wirelength. The guides of " + n(AM.rerouted) + " nets are re-made, and detailed routing follows those.</p>",
+    note: "The clk net's guides from the pin to the root buffer; the diode; then the cells that lose their mirroring flip back." };
+  STEPS[S.DRT] = { short: "Detail", title: "Detailed routing", tool: "OpenROAD <code>drt</code> (TritonRoute)", play: 14000,
+    body:
+      "<p><b>Detailed routing</b> draws the actual wires: for every net, metal shapes on the routing tracks of each layer, joined by vias, following the net's route guides and obeying every width and spacing rule. The guide's layer is a preference: the router may move a stretch to another layer.</p>" +
+      "<p>The result: " + n(DR.wirelength) + " µm of wire (" + ["met1", "met2", "met3", "met4"].map(function (l) { return l + " " + n(DR.length[l]); }).join(", ") + ") and " + n(DR.nvias) + " vias. The first pass left " + n(DR.iters[0]) + " design-rule violations; " + (DR.iters.length - 1) + " more passes brought them to " + DR.iters[DR.iters.length - 1] + ". It took " + runtimeText(DR.runtime) + ", the slowest step of the flow.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>TritonRoute first works out how to reach each pin and assigns wires to tracks, then divides the die into small regions and routes each one's nets with a maze search, many regions in parallel. Each later pass rips up and reroutes only where violations remain, raising the cost of the shapes that cause them.</p>",
+    note: "Three example nets' wires over the guides detailed routing followed, as antenna repair re-made them (the wires stay inside in plan view; net " + ROUTE_EX[0].name + " runs " + fmt(ROUTE_EX[0].offlayer, 1) + " µm on another layer than planned); then all the wiring, shown layer by layer. Vias show when zoomed in." };
+  STEPS[S.FILL] = { short: "Fill", title: "Fill insertion", tool: "OpenROAD <code>dpl</code>: <code>filler_placement</code>", play: 4000,
+    body:
+      "<p>Every empty site now gets a cell: " + n(FILL.length) + " of them. <b>Fill cells</b> (" + Object.keys(FILLT).filter(function (t) { return /^fill/.test(t); }).sort().map(function (t) { return "<code>" + t + "</code> × " + FILLT[t]; }).join(", ") + ") hold no transistors: they continue the wells, implants and power rails across the gaps, so every row is unbroken. Where there is room, <b>decap cells</b> (<code>decap_3</code> × " + (FILLT.decap_3 || 0) + ") go in instead: capacitors between <code>VPWR</code> and <code>VGND</code> that steady the supply when nearby cells switch.</p>" +
+      "<p>That completes the layout. The flow then extracts the parasitics, checks timing again on the routed design, and writes the GDS for the final DRC and LVS checks.</p>" +
+      "<h3>How it works</h3>" +
+      "<p><code>filler_placement</code> walks each row and fills each gap from the cells it is given, largest first.</p>",
+    note: "Fill cells hatched, decap cells solid." };
+  STEPS[S.STA] = { short: "Timing", title: "Signoff timing", tool: "OpenROAD <code>rcx</code> (OpenRCX), <code>sta</code> (OpenSTA)", play: 9000,
+    body:
+      "<p><b>Parasitic extraction</b> works out each wire's resistance and capacitance from its geometry; <b>static timing analysis</b> then checks every path against the clock with them, in " + CORNERS.length + " corners: slow, typical and fast process, voltage and temperature, each with minimum, nominal and maximum parasitics. No corner violates setup or hold.</p>" +
+      "<p><b>Setup</b> is tightest in the slow corner (" + cornerName("max_ss_100C_1v60") + "). The worst register-to-register path runs from <code>" + PSETUP.q.start + "</code> through " + PSETUP.between + " cells to <code>" + PSETUP.q.end + "</code>: data arrives at " + fmt(PSETUP.t1) + " ns, required by " + fmt(PSETUP.q.required) + " ns (the next clock edge at the capture flip-flop, less " + fmt(-PSETUP.q.uncertainty) + " ns uncertainty and " + fmt(-PSETUP.q.libtime) + " ns setup time, plus " + fmt(PSETUP.q.crpr, 3) + " ns CRPR): slack " + fmt(PSETUP.q.slack) + " ns. Counting input and output paths, the worst is " + fmt(ST.worst.slack) + " ns, from <code>" + ST.worst.start + "</code>.</p>" +
+      "<p><b>Hold</b> is tightest in the fast corner (" + cornerName("min_ff_n40C_1v95") + "). <code>" + PHOLD.q.start + "</code> feeds itself back through " + PHOLD.between + " cells: the new value arrives at " + fmt(PHOLD.t1, 3) + " ns, allowed from " + fmt(PHOLD.q.required, 3) + " ns (the clock edge plus " + fmt(PHOLD.q.uncertainty) + " ns uncertainty and the hold time, " + (PHOLD.q.libtime < 0 ? "−" : "") + fmt(Math.abs(PHOLD.q.libtime), 3) + " ns, less " + fmt(-PHOLD.q.crpr, 3) + " ns CRPR): slack " + fmt(PHOLD.q.slack, 3) + " ns.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>No test vectors: OpenSTA propagates the latest and earliest arrival times through every cell and net, from the library's delay tables and each wire's extracted RC. Every delay is derated ±" + fmt(ST.derate, 0) + "% for on-chip variation; where launch and capture share part of the clock tree, <b>clock reconvergence pessimism removal</b> (CRPR) takes back what that counts twice. Up to " + slewMax("ss") + " pins exceed the slew limit in the slow corners and " + slewMax("tt") + " in the typical: warnings.</p>",
+    note: "Each path's signal travels at its real arrival times." };
+  STEPS[S.IR] = { short: "IR drop", title: "IR drop analysis", tool: "OpenROAD <code>psm</code> (PDNSim)", play: 7000,
+    body:
+      "<p>The power grid has resistance, so the supply sags on its way to the cells: a cell far from where power enters sees a little less than 1.8 V on <code>VPWR</code>, and a little more than 0 V on <code>VGND</code>. Too much <b>IR drop</b> slows cells down and can break timing.</p>" +
+      "<p>This design draws an estimated " + fmt(IR.power * 1000, 2) + " mW (typical corner, default switching activity), so the drop is tiny: at worst " + fmt(IR.worst[0], 1) + " µV on <code>VPWR</code> and " + fmt(IR.worst[1], 1) + " µV on <code>VGND</code>, about " + fmt(IR.worst[0] / 18000, 4) + "% of the supply; " + fmt(IR.average[0], 0) + " µV on average. It is largest at the far ends of the rails, beyond the outermost met4 stripes, and smallest beside the stripes, where power enters the rails.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>PDNSim models every rail, stripe and via of a power net as a resistor network, places a current source at each cell according to its estimated power and a voltage source at each met4 stripe (the tile's power pins), and solves for the voltage at every node.</p>",
+    note: "Each power pin's drop, drawn along its rail: first VPWR, then VGND." };
+  STEPS[S.GDS] = { short: "GDS", title: "GDS stream-out", tool: "Magic, KLayout", play: GDS_MS,
+    body:
+      "<p>Finally the layout is <b>streamed out</b> to GDSII, the file the fab makes the masks from: every shape on every layer. Until now each cell was a box; stream-out replaces each with its real layout from the library's GDS and merges in the routing, vias and power grid. Magic writes the GDS that is delivered; KLayout writes a second, and the XOR check that would compare the two is off in this configuration.</p>" +
+      "<p>The layers build up here from the substrate up: the n-well, diffusion, poly, contacts and li1 inside the cells, then the metals and the vias between them. Each standard cell's layout is stored once and placed by reference: " + n(GD.masters.length) + " masters, " + n(u16len(GD.insts) / 6) + " instances, with the routing (" + n(GD.topcount.li1) + " li1 pads, " + n(GD.topcount.met1 + GD.topcount.met2 + GD.topcount.met3 + GD.topcount.met4) + " metal shapes and " + n(GD.topcount.mcon + GD.topcount.via + GD.topcount.via2 + GD.topcount.via3) + " via cuts) as shapes of the top cell.</p>" +
+      "<h3>How it works</h3>" +
+      "<p>Two checks remain. <b>DRC</b>: Magic checks this GDS against every layer's design rules. <b>LVS</b> (layout versus schematic): Magic extracts a netlist from the layout and Netgen compares it with the synthesised one. LibreLane extracts from the DEF, with each standard cell as a black box, so LVS here checks how the cells are connected, not the transistors inside them. Both are clean.</p>",
+    note: "Zoomed in to show transistors; fit (0) shows the whole die. Metals are drawn as outlines, so the layers beneath show through. The cells' shapes are from their GDS; the routing and vias are drawn from the routed DEF and the via definitions, the same geometry stream-out merges." };
+  function u16len(b64) { return Math.floor(b64.length * 3 / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0); }
+  function runtimeText(t) {
+    var p = t.split(":"), h = +p[0], m = +p[1], s = Math.round(parseFloat(p[2]));
+    return (h ? h + " h " : "") + (m ? m + " min " : "") + s + " s";
+  }
+
+  // ---- canvas and view -------------------------------------------------------------------
+  var view = document.getElementById("view"), canvas = document.getElementById("canvas");
+  var ctx = canvas.getContext("2d");
+  var W = 0, H = 0, DPR = 1;
+  var cam = { x: (DIE[0] + DIE[2]) / 2, y: (DIE[1] + DIE[3]) / 2, s: 1 };
+  var fitS = 1, C = {}, colourGen = 0, pos = 0, target = 0, anim = null;
+  var narrow = window.matchMedia("(max-width: 760px)");
+
+  function readColours() {
+    var cs = getComputedStyle(document.documentElement);
+    ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "tap", "endcap", "cell-edge", "ir0", "ir1", "ir2", "ir3",
+     "vpwr", "vgnd", "via", "pin", "logic", "ff", "hot", "buf", "tie", "clock", "clknet", "hold", "trail",
+     "li1", "met1", "met2", "met3", "met4", "pick", "diode", "decap", "fill", "wvia", "setup", "holdp", "nwell", "diff", "gtap", "poly", "cut", "ink", "muted", "bg", "font"]
+      .forEach(function (k) { C[k] = cs.getPropertyValue("--" + k).trim(); });
+    hatches = {};
+    IRSTOPS = [0, 1, 2, 3].map(function (i) { var h = C["ir" + i].slice(1); return [0, 2, 4].map(function (j) { return parseInt(h.slice(j, j + 2), 16); }); });
+    colourGen++;
+  }
+  // Room round the whole die: the legend above (at its fullest), the foot band below, equal
+  // sides so the die stays centred. The die's size labels (first step) and the pins' bus labels
+  // (pins step) fit in the margin above.
+  var legendH = 0, footH = 0;
+  function margins() { return { l: 60, r: 60, t: legendH + 50, b: footH + 18 }; }
+  function fitScale() { var m = margins(); return Math.min((W - m.l - m.r) / (DIE[2] - DIE[0]), (H - m.t - m.b) / (DIE[3] - DIE[1])); }
+  function fitX() { var m = margins(); return (DIE[0] + DIE[2]) / 2 + (m.r - m.l) / 2 / fitS; }
+  function fitY() { var m = margins(); return (DIE[1] + DIE[3]) / 2 - (m.b - m.t) / 2 / fitS; }
+  function measure() {
+    // the legend at its fullest: everything that is ever shown at once, at the last step
+    var el = document.getElementById("legend"), keep = el.innerHTML;
+    el.innerHTML = legendHTML(legendItems(STEPS.length - 1, true));
+    legendH = el.offsetHeight; el.innerHTML = keep;
+    footH = Math.max(44, document.getElementById("foot").offsetHeight);
+  }
+  function resize() {
+    track.classList.remove("numbered");
+    if (Array.prototype.some.call(track.children, function (b) { return b.scrollWidth > b.clientWidth + 1; })) track.classList.add("numbered");
+    measure();
+    var r = view.getBoundingClientRect();
+    var wasFit = Math.abs(cam.s - fitS) < 1e-9;
+    DPR = window.devicePixelRatio || 1;
+    W = r.width; H = r.height;
+    canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+    fitS = fitScale();
+    if (wasFit || !cam.init) { cam.s = fitS; cam.x = fitX(); cam.y = fitY(); cam.init = true; }
+    draw();
+  }
+  function sx(x) { return (x - cam.x) * cam.s + W / 2; }
+  function sy(y) { return H / 2 - (y - cam.y) * cam.s; }
+  function wx(px) { return (px - W / 2) / cam.s + cam.x; }
+  function wy(py) { return cam.y - (py - H / 2) / cam.s; }
+  function rect(x0, y0, x1, y1) { ctx.rect(sx(x0), sy(y1), (x1 - x0) * cam.s, (y1 - y0) * cam.s); }
+  // the canvas transform for drawing in world units (DBU, y up)
+  function worldTransform() { ctx.setTransform(DPR * cam.s, 0, 0, -DPR * cam.s, DPR * (W / 2 - cam.x * cam.s), DPR * (H / 2 + cam.y * cam.s)); }
+  function screenTransform() { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+
+  // ---- drawing ---------------------------------------------------------------------------
+  var drawQueued = false;
+  function requestDraw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(function () { drawQueued = false; draw(); }); } }
+  function draw() {
+    var ck = cam.x + "," + cam.y + "," + cam.s;
+    if (ck !== lastCam) { lastCam = ck; camMovedAt = performance.now(); }
+    updateDims();
+    screenTransform();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = C.stage; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = C.die; ctx.beginPath(); rect(DIE[0], DIE[1], DIE[2], DIE[3]); ctx.fill();
+    drawRows();
+    drawFixed();
+    var cells = cellState(pos);
+    if (cells) { drawCells(); drawFill(); drawBins(); drawTrails(); }
+    drawPower();
+    drawGuides();
+    drawAntenna();
+    drawWires();
+    if (cells) { drawClockNets(); drawTiming(); }
+    drawIR();
+    if (pos > S.STA && pos <= S.IR + 0.25) drawStripesOnTop();
+    drawGDS();
+    drawPins();
+    ctx.globalAlpha = 1; ctx.strokeStyle = C["die-edge"]; ctx.lineWidth = 1.5;
+    ctx.beginPath(); rect(DIE[0], DIE[1], DIE[2], DIE[3]); ctx.stroke();
+    drawNotes();
+    drawScale();
+    refreshTip();
+  }
+
+  // core and rows (floorplan)
+  function drawRows() {
+    var aCore = ease(appear(pos, S.FLOOR, 0));
+    if (aCore <= 0) return;
+    var d = DIMC.rows;
+    ctx.globalAlpha = aCore * d; ctx.fillStyle = C.core;
+    ctx.beginPath(); rect(CORE[0], CORE[1], CORE[2], CORE[3]); ctx.fill();
+    for (var r = 0; r < NROWS; r++) {
+      var a = ease(appear(pos, S.FLOOR, 0.15 + 0.85 * r / NROWS));
+      if (a <= 0) continue;
+      var y0 = CORE[1] + r * RH, x1 = CORE[0] + (CORE[2] - CORE[0]) * a;
+      ctx.globalAlpha = d; ctx.fillStyle = D.rows[r] ? C["row-flip"] : C.row;
+      ctx.beginPath(); rect(CORE[0], y0, x1, y0 + RH); ctx.fill();
+    }
+    ctx.globalAlpha = aCore * d; ctx.strokeStyle = C["row-edge"]; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var r2 = 0; r2 <= NROWS; r2++) { var yy = Math.round(sy(CORE[1] + r2 * RH)) + 0.5; ctx.moveTo(sx(CORE[0]), yy); ctx.lineTo(sx(CORE[2]), yy); }
+    ctx.stroke();
+    var sitePx = SW * cam.s;
+    if (sitePx > 3) {
+      ctx.globalAlpha = aCore * d * Math.min(1, (sitePx - 3) / 4);
+      ctx.strokeStyle = C.site; ctx.beginPath();
+      var i0 = Math.max(0, Math.floor((wx(0) - CORE[0]) / SW)), i1 = Math.min(D.sitesPerRow, Math.ceil((wx(W) - CORE[0]) / SW));
+      var top = Math.max(sy(CORE[3]), 0), bot = Math.min(sy(CORE[1]), H);
+      for (var i = i0; i <= i1; i++) { var xx = Math.round(sx(CORE[0] + i * SW)) + 0.5; ctx.moveTo(xx, top); ctx.lineTo(xx, bot); }
+      ctx.stroke();
+    }
+    if (RH * cam.s > 24) {
+      // each row's name and orientation in the margin to its left
+      var fs = Math.min(11, RH * cam.s * 0.45);
+      ctx.font = "500 " + fs + "px " + C.font; ctx.textBaseline = "middle"; ctx.textAlign = "right"; ctx.fillStyle = C.muted;
+      for (var r3 = 0; r3 < NROWS; r3++) {
+        var ym = sy(CORE[1] + (r3 + 0.5) * RH);
+        if (ym < -20 || ym > H + 20) continue;
+        ctx.fillText("ROW_" + r3 + "  " + (D.rows[r3] ? "FS" : "N"), sx(CORE[0]) - 6, ym);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // taps and endcaps
+  function drawFixed() {
+    if (pos <= S.FLOOR) return;
+    for (var k = 0; k < fixed.length; k++) {
+      var c = fixed[k], t = appear(pos, S.TAPS, c.s);
+      if (t <= 0) continue;
+      var e = ease(t), x0 = CORE[0] + c.site * SW, yb = CORE[1] + c.row * RH;
+      var h = RH * (0.35 + 0.65 * e), yc = yb + (RH - h) / 2;
+      ctx.globalAlpha = e * DIMC.fixed;
+      ctx.fillStyle = c.kind === "tap" ? C.tap : C.endcap;
+      ctx.beginPath(); rect(x0, yc, x0 + c.w * SW, yc + h); ctx.fill();
+      if (c.w * SW * cam.s > 4) { ctx.strokeStyle = C["cell-edge"]; ctx.lineWidth = 1; ctx.stroke(); }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function cellGroup(k) { return CHANGED[k] && pos > S.PLACE && pos <= S.REPAIR + 0.5 ? "changed" : CLS[k]; }
+  function inView(x0, y0, x1, y1) { return sx(x1) >= -4 && sx(x0) <= W + 4 && sy(y0) >= -4 && sy(y1) <= H + 4; }
+  function drawCells() {
+    var edge = SW * cam.s > 2.5;
+    ctx.lineWidth = 0.75;
+    for (var oi = 0; oi < NU; oi++) {
+      var k = ORDER[oi];
+      if (SA[k] <= 0.01) continue;
+      var w = SWD[k] * SXX[k], h = RH * SYY[k], x0 = SX[k] + (SWD[k] - w) / 2, y0 = SY[k] + (RH - h) / 2;
+      if (!inView(x0, y0, x0 + w, y0 + h)) continue;
+      var a = SA[k] * DIMC[cellGroup(k)];
+      ctx.globalAlpha = a * 0.9; ctx.fillStyle = C[CLS[k]];
+      ctx.beginPath(); rect(x0, y0, x0 + w, y0 + h); ctx.fill();
+      if (edge) { ctx.globalAlpha = a * 0.6; ctx.strokeStyle = C["cell-edge"]; ctx.stroke(); }
+    }
+    ctx.globalAlpha = 1;
+  }
+  // each legalising cell's way from where it was
+  function drawTrails() {
+    var any = false;
+    for (var k = 0; k < NU; k++) if (TA[k] > 0.01) { any = true; break; }
+    if (!any) return;
+    ctx.strokeStyle = C.trail; ctx.lineWidth = 1.2;
+    for (var i = 0; i < NU; i++) {
+      if (TA[i] <= 0.01) continue;
+      ctx.globalAlpha = TA[i] * DIMC[cellGroup(i)];
+      var hw = SWD[i] / 2, hh = RH / 2;
+      ctx.beginPath(); ctx.moveTo(sx(TX[i] + hw), sy(TY[i] + hh)); ctx.lineTo(sx(SX[i] + hw), sy(SY[i] + hh)); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Overfull placement bins, hatched over the cells, while global placement is current. This is
+  // the page's own recomputation (fixed cells at full area, no fillers), so approximate.
+  var binW = (CORE[2] - CORE[0]) / BINS, binH = (CORE[3] - CORE[1]) / BINS;
+  var binFixed = new Float32Array(BINS * BINS), binArea = new Float32Array(BINS * BINS);
+  function addArea(arr, x0, y0, x1, y1) {
+    var i0 = Math.max(0, Math.floor((x0 - CORE[0]) / binW)), i1 = Math.min(BINS - 1, Math.floor((x1 - CORE[0]) / binW));
+    var j0 = Math.max(0, Math.floor((y0 - CORE[1]) / binH)), j1 = Math.min(BINS - 1, Math.floor((y1 - CORE[1]) / binH));
+    for (var j = j0; j <= j1; j++) for (var i = i0; i <= i1; i++) {
+      var bx = CORE[0] + i * binW, by = CORE[1] + j * binH;
+      var ox = Math.min(x1, bx + binW) - Math.max(x0, bx), oy = Math.min(y1, by + binH) - Math.max(y0, by);
+      if (ox > 0 && oy > 0) arr[j * BINS + i] += ox * oy;
+    }
+  }
+  fixed.forEach(function (c) { var x0 = CORE[0] + c.site * SW, y0 = CORE[1] + c.row * RH; addArea(binFixed, x0, y0, x0 + c.w * SW, y0 + RH); });
+  function binDensity() {
+    binArea.set(binFixed);
+    for (var k = 0; k < NU; k++) if (SA[k] > 0) addArea(binArea, SX[k], SY[k], SX[k] + SWD[k], SY[k] + RH);
+    var cap = binW * binH;
+    for (var b = 0; b < binArea.length; b++) binArea[b] /= cap;
+  }
+  var hatches = {};
+  function hatch(key) {
+    // diagonal lines in a colour, redrawn when the theme or the pixel ratio changes
+    var id = key + DPR;
+    if (hatches[id]) return hatches[id];
+    var c = document.createElement("canvas"), m = Math.round(7 * DPR);
+    c.width = c.height = m;
+    var g = c.getContext("2d");
+    g.strokeStyle = C[key]; g.lineWidth = 1.6 * DPR;
+    g.beginPath(); g.moveTo(-1, m + 1); g.lineTo(m + 1, -1); g.moveTo(-1, 1); g.lineTo(1, -1); g.moveTo(m - 1, m + 1); g.lineTo(m + 1, m - 1); g.stroke();
+    var pat = ctx.createPattern(c, "repeat");
+    if (pat.setTransform) pat.setTransform(new DOMMatrix().scale(1 / DPR));
+    hatches[id] = pat;
+    return pat;
+  }
+  function drawBins() {
+    if (pos <= S.PINS || pos > S.PLACE + 0.34) return;
+    var aHot = (pos <= S.PLACE ? 1 : 1 - (pos - S.PLACE) * 3) * Math.min(1, within(pos, S.PLACE) / FADE) * DIMC.hot;
+    if (aHot <= 0.01) return;
+    binDensity();
+    ctx.fillStyle = hatch("hot");
+    for (var j = 0; j < BINS; j++) for (var i = 0; i < BINS; i++) {
+      var d = binArea[j * BINS + i];
+      if (d <= TARGET) continue;
+      ctx.globalAlpha = aHot * Math.min(1, 0.45 + (d - TARGET));
+      ctx.beginPath(); rect(CORE[0] + i * binW, CORE[1] + j * binH, CORE[0] + (i + 1) * binW, CORE[1] + (j + 1) * binH); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // The power grid: rails sweep in row by row, then the stripes drop from the top, then the via
+  // stacks appear where each stripe crosses a rail of its own net.
+  function drawPower() {
+    if (pos <= S.TAPS) return;
+    var i, t, e, d = DIMC.pdn;
+    for (i = 0; i < PDN.rails.length; i++) {
+      var r = PDN.rails[i]; t = appear(pos, S.PDN, 0.35 * i / PDN.rails.length);
+      if (t <= 0) continue;
+      e = ease(t);
+      ctx.globalAlpha = d; ctx.fillStyle = C[r[0] === "VPWR" ? "vpwr" : "vgnd"];
+      var hw = Math.max(r[4] / 2, 0.6 / cam.s);
+      ctx.beginPath(); rect(r[2], r[1] - hw, r[2] + (r[3] - r[2]) * e, r[1] + hw); ctx.fill();
+    }
+    for (i = 0; i < nStripe; i++) {
+      var st = PDN.stripes[i]; t = appear(pos, S.PDN, 0.38 + 0.3 * i / nStripe);
+      if (t <= 0) continue;
+      e = ease(t);
+      var hs = st[5] / 2, ytop = st[4], ybot = ytop - (st[4] - st[3]) * e;
+      ctx.globalAlpha = 0.82 * d; ctx.fillStyle = C[st[0] === "VPWR" ? "vpwr" : "vgnd"];
+      ctx.beginPath(); rect(st[2] - hs, ybot, st[2] + hs, ytop); ctx.fill();
+    }
+    for (i = 0; i < PDN.vias.length; i++) {
+      var v = PDN.vias[i]; t = appear(pos, S.PDN, 0.78 + 0.22 * (v[2] - CORE[1]) / (CORE[3] - CORE[1]));
+      if (t <= 0) continue;
+      ctx.globalAlpha = ease(t) * d; ctx.fillStyle = C.via;
+      var vw = Math.max(STRW / 2, 1.5 / cam.s), vh = Math.max(RAILW / 2, 1 / cam.s);
+      ctx.beginPath(); rect(v[1] - vw, v[2] - vh, v[1] + vw, v[2] + vh); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Global routing: the g-cell grid; then, one at a time, a few nets' pins and the guides chosen
+  // for them; then every net at once, as the number of nets with guides in each g-cell.
+  var EX0 = 0.06, EXSLOT = 0.21, DEM0 = EX0 + EXSLOT * ROUTE_EX.length + 0.02;
+  function routeT() { return within(pos, S.GRT); }
+  function lum(css) {
+    var m = css.match(/[\d.]+/g);
+    if (css[0] === "#") { var h = css.slice(1); m = [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
+    return (0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]) / 255;
+  }
+  function drawGuides() {
+    if (pos <= S.HOLD) return;
+    var t = routeT(), gone = pos > S.GRT ? clamp01(1 - (pos - S.GRT) / 0.3) : 1, d = DIMC.route * gone, i;
+    if (gone <= 0) return;
+    // crowding: a veil over the die, then each g-cell as a tile, pale to deep with the number
+    // of nets that have guides in it; the count itself where the tile is big enough
+    var ad = ease(clamp01((t - DEM0) / 0.22)) * gone;
+    if (ad > 0.01) {
+      ctx.globalAlpha = ad; ctx.fillStyle = C.veil;
+      ctx.beginPath(); rect(DIE[0], DIE[1], DIE[2], DIE[3]); ctx.fill();
+      var gap = 0.6 / cam.s, bigT = GG * cam.s > 30, lh = lum(C.hot), ls = lum(C.stage);
+      ctx.font = "500 11px " + C.font; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      for (var gy = 0; gy < GNY; gy++) for (var gx = 0; gx < GNX; gx++) {
+        var u = crowding(gx, gy), al = crowdAlpha(u), x0 = gX(gx), y0 = gY(gy), x1 = gX(gx + 1), y1 = gY(gy + 1);
+        ctx.globalAlpha = ad * al; ctx.fillStyle = C.hot;
+        ctx.beginPath(); rect(x0 + gap, y0 + gap, x1 - gap, y1 - gap); ctx.fill();
+        if (bigT) {
+          // the text colour that reads on the tile as composited
+          ctx.globalAlpha = ad; ctx.fillStyle = ls + (lh - ls) * al > 0.5 ? "#16181a" : "#f4f5f6";
+          ctx.fillText(String(COVALL[gy * GNX + gx]), sx((x0 + x1) / 2), sy((y0 + y1) / 2));
+        }
+      }
+      // the busiest and quietest tiles ringed
+      if (bigT) [BUSY, QUIET].forEach(function (c) {
+        ctx.globalAlpha = ad; ctx.strokeStyle = C.pick; ctx.lineWidth = 2;
+        ctx.beginPath(); rect(gX(c.gx), gY(c.gy), gX(c.gx + 1), gY(c.gy + 1)); ctx.stroke();
+      });
+    }
+    // the grid
+    var ag = clamp01(t / EX0) * d * (1 - 0.5 * ad);
+    if (ag > 0.01) {
+      ctx.globalAlpha = ag * 0.3; ctx.strokeStyle = C.dim; ctx.lineWidth = 0.5; ctx.beginPath();
+      for (var x = 0; x <= GNX; x++) { var xx = sx(gX(x)); ctx.moveTo(xx, sy(DIE[3])); ctx.lineTo(xx, sy(DIE[1])); }
+      for (var y = 0; y <= GNY; y++) { var yy = sy(gY(y)); ctx.moveTo(sx(DIE[0]), yy); ctx.lineTo(sx(DIE[2]), yy); }
+      ctx.stroke();
+    }
+    // the example nets, one at a time: pins first, then their guides layer by layer
+    ROUTE_EX.forEach(function (ex, k) {
+      var t0 = EX0 + EXSLOT * k, f = (t - t0) / EXSLOT;
+      if (f <= 0) return;
+      var vis = clamp01((t0 + EXSLOT + 0.03 - t) / 0.03) * d;
+      if (vis <= 0.01) return;
+      for (i = ex.start; i < ex.start + ex.count; i++) {
+        var l = GRAW[5 * i + 4], ai = clamp01((f - 0.2 - 0.08 * l) / 0.12) * vis;
+        if (ai <= 0.01) continue;
+        ctx.fillStyle = C[GLAY[l]]; ctx.strokeStyle = C[GLAY[l]];
+        ctx.globalAlpha = ai * 0.3; ctx.beginPath(); gRect(GRAW, i, 0.05 * GG * l); ctx.fill();
+        ctx.globalAlpha = ai; ctx.lineWidth = 1.6; ctx.stroke();
+      }
+      drawPinsOf(ex, clamp01(f / 0.2) * vis);
+    });
+    ctx.globalAlpha = 1;
+  }
+  function drawPinsOf(ex, a) {
+    if (a <= 0.01) return;
+    ctx.globalAlpha = a; ctx.strokeStyle = C.pick; ctx.fillStyle = C.pick; ctx.lineWidth = 1.5;
+    ex.cells.forEach(function (c) {
+      if (SA[c] <= 0) return;
+      ctx.beginPath(); rect(SX[c], SY[c], SX[c] + SWD[c], SY[c] + RH); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx(SX[c] + SWD[c] / 2), sy(SY[c] + RH / 2), 3, 0, 7); ctx.fill();
+    });
+  }
+
+  // Antenna repair: the clk net's route, from the pin down to the root buffer's gate
+  function drawAntenna() {
+    if (pos <= S.GRT || pos > S.ANT + 0.04) return;
+    var a = (pos <= S.ANT ? clamp01(within(pos, S.ANT) / 0.15) : clamp01(1 - (pos - S.ANT) / 0.04)) * DIMC.antnet;
+    if (a <= 0.01) return;
+    for (var i = GSTART[CLKNET]; i < GSTART[CLKNET] + GR.count[CLKNET]; i++) {
+      var l = GRAW[5 * i + 4];
+      ctx.fillStyle = C[GLAY[l]]; ctx.strokeStyle = C[GLAY[l]];
+      ctx.globalAlpha = a * 0.3; ctx.beginPath(); gRect(GRAW, i, 0.05 * GG * l); ctx.fill();
+      ctx.globalAlpha = a; ctx.lineWidth = 1.8; ctx.stroke();
+    }
+    if (SA[ROOTBUF] > 0) {
+      ctx.globalAlpha = a; ctx.strokeStyle = C.pick; ctx.lineWidth = 2;
+      ctx.beginPath(); rect(SX[ROOTBUF], SY[ROOTBUF], SX[ROOTBUF] + SWD[ROOTBUF], SY[ROOTBUF] + RH); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Detailed routing: the example nets' wires over the guides detailed routing followed, one net
+  // at a time; then every wire, layer by layer, with its vias.
+  var WEX0 = 0.03, WEXSLOT = 0.19, WALL0 = WEX0 + WEXSLOT * ROUTE_EX.length + 0.02, WLSTEP = 0.075, WLFADE = 0.08;
+  var WDONE = WALL0 + WLSTEP * (DR.layers.length - 2) + WLFADE;
+  function wireLayerAt(t, l) { return clamp01((t - WALL0 - WLSTEP * (l - 1)) / WLFADE); }
+  function drtT() { return within(pos, S.DRT); }
+  function drawWires() {
+    if (pos <= S.ANT) return;
+    var t = drtT(), d = DIMC.wire, l, k, ex;
+    // the example nets
+    for (ex = 0; ex < ROUTE_EX.length && t < WALL0 + 0.05; ex++) {
+      var e = ROUTE_EX[ex], t0 = WEX0 + WEXSLOT * ex, f = (t - t0) / WEXSLOT;
+      if (f <= 0) continue;
+      var vis = clamp01((t0 + WEXSLOT + 0.02 - t) / 0.02) * d;
+      if (vis <= 0.01) continue;
+      for (k = 0; k < e.post.length / 5; k++) {
+        ctx.globalAlpha = vis * 0.18; ctx.fillStyle = C[GLAY[e.post[5 * k + 4]]];
+        ctx.beginPath(); gRect(e.post, k, 0); ctx.fill();
+      }
+      var wf = clamp01((f - 0.2) / 0.4);
+      worldTransform(); ctx.lineCap = "square";
+      for (k = WSTART[e.net]; k < WSTART[e.net] + DR.scount[e.net] * wf; k++) {
+        l = WRAW[9 * k + 8];
+        var b = 9 * k;
+        ctx.globalAlpha = vis; ctx.strokeStyle = C[WL[l]]; ctx.lineWidth = Math.max(2.2 / cam.s, WIDTH[l]);
+        ctx.beginPath(); ctx.moveTo(u16(WRAW, b) * 5, u16(WRAW, b + 2) * 5); ctx.lineTo(u16(WRAW, b + 4) * 5, u16(WRAW, b + 6) * 5); ctx.stroke();
+      }
+      screenTransform(); ctx.lineCap = "butt";
+      drawPinsOf(e, clamp01(f / 0.2) * vis);
+    }
+    // every wire, each layer one cached path
+    worldTransform(); ctx.lineCap = "square";
+    for (l = 1; l < DR.layers.length; l++) {
+      var a = wireLayerAt(t, l) * d;
+      if (a <= 0.01) continue;
+      ctx.globalAlpha = a * 0.9; ctx.strokeStyle = C[WL[l]]; ctx.lineWidth = Math.max(1 / cam.s, WIDTH[l]);
+      ctx.stroke(WPATH[l]);
+    }
+    screenTransform(); ctx.lineCap = "butt";
+    // vias, once there is room to see them, with the upper of their two layers
+    if (cam.s * U > 12) {
+      ctx.fillStyle = C.wvia;
+      var vs = Math.max(170, 2 / cam.s);
+      for (k = 0; k < NV; k++) {
+        var av = wireLayerAt(t, VIALAYER[VRAW[5 * k + 4]]) * d;
+        if (av <= 0.01) continue;
+        var vx = u16(VRAW, 5 * k) * 5, vy = u16(VRAW, 5 * k + 2) * 5;
+        if (!inView(vx - vs, vy - vs, vx + vs, vy + vs)) continue;
+        ctx.globalAlpha = av;
+        ctx.beginPath(); rect(vx - vs / 2, vy - vs / 2, vx + vs / 2, vy + vs / 2); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Fill: every empty site gets a filler, row by row from the bottom (fill hatched, decap solid)
+  function drawFill() {
+    if (pos <= S.DRT) return;
+    for (var i = 0; i < FILL.length; i++) {
+      var f = FILL[i], tt = pos >= S.FILL ? 1 : clamp01((within(pos, S.FILL) - 0.6 * f.row / NROWS - 0.25 * f.site / D.sitesPerRow) / 0.15);
+      if (tt <= 0) continue;
+      var x0 = CORE[0] + f.site * SW, y0 = CORE[1] + f.row * RH, h = RH * ease(tt);
+      if (!inView(x0, y0, x0 + f.w * SW, y0 + RH)) continue;
+      ctx.globalAlpha = DIMC[f.kind]; ctx.fillStyle = f.kind === "fill" ? hatch("fill") : C.decap;
+      ctx.beginPath(); rect(x0, y0 + (RH - h) / 2, x0 + f.w * SW, y0 + (RH + h) / 2); ctx.fill();
+      if (SW * cam.s > 2.5) { ctx.strokeStyle = C["cell-edge"]; ctx.lineWidth = 0.75; ctx.globalAlpha = DIMC[f.kind] * 0.6; ctx.stroke(); }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Signoff timing: each path's signal travels at its real arrival times; a net's wires from driver
+  // to the next cell light up when the signal reaches the driver, a cell when it reaches its input
+  function drawTiming() {
+    if (pos <= S.FILL) return;
+    var u = within(pos, S.STA), d = DIMC.path;
+    if (d <= 0.01) return;
+    [PSETUP, PHOLD].forEach(function (P) {
+      var T = pos > S.STA ? P.t1 : staTime(P, u);
+      if (T < 0) return;
+      var col = C[P.key];
+      worldTransform(); ctx.lineCap = "square"; ctx.strokeStyle = col; ctx.globalAlpha = d;
+      P.st.forEach(function (x, i) {
+        if (!P.wires[i] || x.t > T) return;
+        ctx.lineWidth = Math.max(2.6 / cam.s, 400);
+        ctx.stroke(P.wires[i].path);
+      });
+      screenTransform(); ctx.lineCap = "butt";
+      P.st.forEach(function (x) {
+        if (x.ci < 0 || x.out || x.t > T) return;
+        var c = x.ci;
+        ctx.globalAlpha = d; ctx.fillStyle = col; ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5;
+        ctx.beginPath(); rect(SX[c], SY[c], SX[c] + SWD[c], SY[c] + RH); ctx.fill(); ctx.stroke();
+      });
+      // the launch flip-flop as soon as the path starts
+      var l = P.st[0].ci;
+      ctx.globalAlpha = d; ctx.fillStyle = col; ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5;
+      ctx.beginPath(); rect(SX[l], SY[l], SX[l] + SWD[l], SY[l] + RH); ctx.fill(); ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function drawStripesOnTop() {
+    var d = DIMC.pdn;
+    PDN.stripes.forEach(function (st) {
+      var hs = st[5] / 2;
+      ctx.globalAlpha = 0.9 * d; ctx.fillStyle = C[st[0] === "VPWR" ? "vpwr" : "vgnd"];
+      ctx.beginPath(); rect(st[2] - hs, st[3], st[2] + hs, st[4]); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+  }
+  // GDS: the layers from the substrate up, over the die. The layers fully in are kept as one image
+  // for the view, added to as each completes; the layer fading in has its own image, and the next
+  // is drawn ahead. While the view moves the images move with it; they are redrawn sharp once it
+  // has been still for 150 ms.
+  var gdsBase = null, gdsLayers = {}, gdsPre = null, gdsSharpen = null, camMovedAt = 0, lastCam = "";
+  function viewNow() { return { x: cam.x, y: cam.y, s: cam.s, W: W, H: H, DPR: DPR, gen: colourGen, key: [cam.x, cam.y, cam.s, W, H, DPR, colourGen].join(",") }; }
+  function sameView(c) { return !!c && c.at.key === viewNow().key; }
+  function movable(c) { return !!c && c.at.W === W && c.at.H === H && c.at.DPR === DPR && c.at.gen === colourGen; }
+  function renderLayers(cv, from, to) {
+    var keep = ctx;
+    ctx = cv.getContext("2d");
+    worldTransform();
+    for (var i = from; i < to; i++) gdsFill(GDS_ORDER[i]);
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+    ctx = keep;
+  }
+  function layerImage(j, old) {
+    var cv = old ? old.canvas : document.createElement("canvas");
+    cv.width = canvas.width; cv.height = canvas.height;
+    renderLayers(cv, j, j + 1);
+    return { canvas: cv, at: viewNow() };
+  }
+  function blit(img, at, a) {
+    // an image drawn for the view 'at', placed for the current one
+    var k = cam.s / at.s;
+    ctx.setTransform(k, 0, 0, k, DPR * (W / 2 * (1 - k) + (at.x - cam.x) * cam.s), DPR * (H / 2 * (1 - k) - (at.y - cam.y) * cam.s));
+    ctx.globalAlpha = a; ctx.drawImage(img, 0, 0);
+  }
+  function drawGDS() {
+    if (pos <= S.IR) return;
+    gdsBuild();
+    var u = within(pos, S.GDS), moving = performance.now() - camMovedAt < 150;
+    if (moving) { clearTimeout(gdsSharpen); gdsSharpen = setTimeout(requestDraw, 160); }
+    // the die covers the cell boxes as the glide in ends
+    ctx.globalAlpha = pos > S.GDS ? 1 : clamp01((u - GDS_CAM + 0.03) / 0.03); ctx.fillStyle = C.die;
+    ctx.beginPath(); rect(DIE[0], DIE[1], DIE[2], DIE[3]); ctx.fill();
+    var alphas = GDS_ORDER.map(function (g, i) { return pos > S.GDS ? 1 : gdsLayerAt(u, i); });
+    var done = 0;
+    while (done < alphas.length && alphas[done] >= 0.999) done++;
+    if (done > 0) {
+      if (sameView(gdsBase) && gdsBase.done <= done) {
+        for (var i = gdsBase.done; i < done; i++) {
+          var li = gdsLayers[i], g2 = gdsBase.canvas.getContext("2d");
+          if (sameView(li)) { g2.setTransform(1, 0, 0, 1, 0, 0); g2.globalAlpha = 1; g2.drawImage(li.canvas, 0, 0); }
+          else renderLayers(gdsBase.canvas, i, i + 1);
+        }
+        gdsBase.done = done;
+      } else if (!(moving && movable(gdsBase) && gdsBase.done === done)) {
+        var cv = gdsBase ? gdsBase.canvas : document.createElement("canvas");
+        cv.width = canvas.width; cv.height = canvas.height;
+        renderLayers(cv, 0, done);
+        gdsBase = { canvas: cv, done: done, at: viewNow() };
+      }
+      blit(gdsBase.canvas, gdsBase.at, 1);
+    }
+    for (var k in gdsLayers) if (+k < done) delete gdsLayers[k];
+    for (var j = done; j < alphas.length; j++) if (alphas[j] > 0.01) {
+      if (!sameView(gdsLayers[j]) && !(moving && movable(gdsLayers[j]))) gdsLayers[j] = layerImage(j, gdsLayers[j]);
+      blit(gdsLayers[j].canvas, gdsLayers[j].at, alphas[j]);
+      if (j + 1 < alphas.length && !moving && !sameView(gdsLayers[j + 1]) && !gdsPre) {
+        var nx = j + 1;
+        gdsPre = setTimeout(function () { gdsPre = null; if (!sameView(gdsLayers[nx])) gdsLayers[nx] = layerImage(nx, gdsLayers[nx]); }, 0);
+      }
+    }
+    screenTransform();
+    ctx.globalAlpha = 1;
+  }
+  function gdsFill(g) {
+    ctx.fillStyle = C[g.c];
+    if (g.o) {
+      // metals as outlines over a faint fill, so the layers beneath show through
+      ctx.globalAlpha = 0.14; ctx.fill(GPATH[g.l]);
+      ctx.globalAlpha = 0.95; ctx.strokeStyle = C[g.c]; ctx.lineWidth = 1.1 / cam.s; ctx.stroke(GPATH[g.l]);
+    } else {
+      ctx.globalAlpha = g.a; ctx.fill(GPATH[g.l]);
+    }
+    (g.also || []).forEach(function (l2) { ctx.globalAlpha = g.a; ctx.fillStyle = C.gtap; ctx.fill(GPATH[l2]); });
+  }
+  // IR drop: a veil over the die, then each net's drop along its rails
+  function drawIR() {
+    if (pos <= S.STA || pos > S.IR + 0.25) return;
+    var u = within(pos, S.IR), d = DIMC.ir;
+    var av = clamp01((u - IR_V0) / (IR_V1 - IR_V0)) * (1 - clamp01((u - IR_G0) / 0.12));
+    var ag = clamp01((u - IR_G0) / (IR_G1 - IR_G0));
+    if (pos > S.IR) { av = 0; ag = 1; }
+    if (av + ag <= 0.01) return;
+    ctx.globalAlpha = Math.max(av, ag) * d; ctx.fillStyle = C.veil;
+    ctx.beginPath(); rect(CORE[0], CORE[1], CORE[2], CORE[3]); ctx.fill();
+    [["VPWR", av], ["VGND", ag]].forEach(function (q) {
+      if (q[1] <= 0.01) return;
+      // each strip along its rail, on whole pixels so neighbours abut without seams
+      ctx.globalAlpha = q[1] * d;
+      var hs = Math.max(1, 0.3 * RH * cam.s);
+      IRSTRIPS[q[0]].forEach(function (st) {
+        var x0 = Math.round(sx(st.x0)), x1 = Math.round(sx(st.x1)), y0 = Math.round(sy(st.y) - hs), y1 = Math.round(sy(st.y) + hs);
+        if (x1 < 0 || x0 > W || y1 < 0 || y0 > H) return;
+        ctx.fillStyle = irColour(st.d / IRMAX);
+        ctx.fillRect(x0, y0, x1 - x0, Math.max(2, y1 - y0));
+      });
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // The clock nets, from driver to each load: they grow level by level during the clock step
+  // and are gone once routing starts
+  function clockDriver(c) {
+    if (c.drv < 0) return [(CLKPIN.x0 + CLKPIN.x1) / 2, CLKPIN.y0];
+    return SA[c.drv] > 0 ? [SX[c.drv] + SWD[c.drv] / 2, SY[c.drv] + RH / 2] : null;
+  }
+  function drawClockNets() {
+    if (pos <= S.LEGAL || pos >= S.HOLD + 0.15) return;
+    var d = DIMC.clknet * (pos > S.HOLD ? clamp01((S.HOLD + 0.15 - pos) / 0.15) : 1);
+    var t = within(pos, S.CTS) < CTS_SPLIT ? within(pos, S.CTS) / CTS_SPLIT : 2;
+    if (d <= 0.01) return;
+    ctx.strokeStyle = C.clknet; ctx.lineWidth = 1.2;
+    CLOCK.forEach(function (c) {
+      var g = pos >= S.CTS ? 1 : ease(clamp01((t - lvStart(c.lv)) / 0.22));
+      var dp = g > 0 ? clockDriver(c) : null;
+      if (!dp) return;
+      ctx.globalAlpha = d * (c.lv === CLV ? 0.55 : 0.9);
+      ctx.beginPath();
+      c.loads.forEach(function (l) {
+        var lx = SX[l] + SWD[l] / 2, ly = SY[l] + RH / 2;
+        ctx.moveTo(sx(dp[0]), sy(dp[1])); ctx.lineTo(sx(dp[0] + (lx - dp[0]) * g), sy(dp[1] + (ly - dp[1]) * g));
+      });
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // The pins drop onto the top edge from above, left to right; on their step each bus is labelled
+  function pinNames() { return cam.s * PINPITCH > 46; }   // individual names once they have room
+  function drawPins() {
+    if (pos <= S.PDN) return;
+    var minW = 2.5 / cam.s, minH = 7 / cam.s, d = DIMC.pins;
+    for (var i = 0; i < PINS.length; i++) {
+      var q = PINS[i], t = appear(pos, S.PINS, 0.7 * (q.x0 - DIE[0]) / (DIE[2] - DIE[0]));
+      if (t <= 0) continue;
+      var e = ease(t), cx = (q.x0 + q.x1) / 2, w = Math.max(q.x1 - q.x0, minW), h = Math.max(q.y1 - q.y0, minH);
+      var lift = (1 - e) * 12 * U;
+      ctx.globalAlpha = e * d; ctx.fillStyle = C.pin;
+      ctx.beginPath(); rect(cx - w / 2, DIE[3] - h + lift, cx + w / 2, DIE[3] + lift); ctx.fill();
+      if (pinNames() && pos <= S.PINS) {
+        ctx.save(); ctx.translate(sx(cx), sy(DIE[3]) - 6); ctx.rotate(-Math.PI / 2);
+        ctx.font = "500 11px " + C.font; ctx.fillStyle = C.ink; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        ctx.fillText(q.name, 0, 0); ctx.restore();
+      }
+    }
+    var gl = pos > S.PINS || pinNames() ? 0 : ease(appear(pos, S.PINS, 0.85));
+    if (gl > 0.01) {
+      ctx.globalAlpha = gl; ctx.strokeStyle = C.dim; ctx.fillStyle = C.ink; ctx.lineWidth = 1;
+      ctx.font = "500 11px " + C.font; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+      var yb = sy(DIE[3]) - 8;
+      var bracket = function (a, b, texts) {
+        // the label with its width if that fits over the bracket, else without, else none
+        ctx.beginPath(); ctx.moveTo(a, yb + 3); ctx.lineTo(a, yb); ctx.lineTo(b, yb); ctx.lineTo(b, yb + 3); ctx.stroke();
+        for (var j = 0; j < texts.length; j++) if (ctx.measureText(texts[j]).width <= b - a + 6) { ctx.fillText(texts[j], (a + b) / 2, yb - 5); return; }
+      };
+      GROUPS.forEach(function (g) { if (g.n > 1) bracket(sx(g.x0), sx(g.x1), [g.bus + "[" + (g.n - 1) + ":0]", g.bus]); });
+      var singles = GROUPS.filter(function (g) { return g.n === 1; });
+      if (singles.length) bracket(sx(singles[0].x0), sx(singles[singles.length - 1].x1), [singles.map(function (g) { return g.bus; }).join(" ")]);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Callouts, in ink, point at the centre of what they name (along a long thin thing, at a point on it).
+  // Each takes the first of its candidate places (as asked, flipped up or down, mirrored left or
+  // right, further out) that overlaps no callout already drawn this frame and stays between the
+  // legend and the foot band; if none does, it is left out.
+  var placed = [];
+  function label(text, x, y, opts) {
+    opts = opts || {};
+    ctx.font = "500 12px " + C.font;
+    var w = ctx.measureText(text).width + 10, h = 20, dx = opts.dx || 0, dy = opts.dy || 0, al = opts.align || "left";
+    var flip = { left: "right", right: "left", center: "center" };
+    var cands = opts.fixed ? [[dx, dy, al], [-dx, dy, flip[al]]]   // only beside, never flipped
+              : [[dx, dy, al], [dx, -dy - h, al], [-dx, dy, flip[al]], [-dx, -dy - h, flip[al]],
+                 [dx, dy * 2, al], [dx, -dy * 2 - h, al], [-dx, dy * 2, flip[al]], [-dx, -dy * 2 - h, flip[al]]];
+    var best = null;
+    for (var c = 0; c < cands.length && !best; c++) {
+      var px = x + cands[c][0], py = y + cands[c][1];
+      if (cands[c][2] === "right") px -= w; else if (cands[c][2] === "center") px -= w / 2;
+      var box = [px - 3, py - 3, px + w + 3, py + h + 3];
+      var clash = box[0] < 0 || box[2] > W || box[1] < legendH + (opts.fixed ? 4 : 14) || box[3] > H - footH - 12 || placed.some(function (b2) {
+        return box[0] < b2[2] && b2[0] < box[2] && box[1] < b2[3] && b2[1] < box[3];
+      });
+      if (!clash) best = [px, py, cands[c][2]];
+    }
+    if (!best) return;
+    var bx = best[0], by = best[1];
+    placed.push([bx - 3, by - 3, bx + w + 3, by + h + 3]);
+    var ax = best[2] === "right" ? bx + w : best[2] === "center" ? bx + w / 2 : bx;
+    ctx.strokeStyle = C.pick; ctx.lineWidth = 1.2; ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2); ctx.stroke();
+    ctx.fillStyle = C.pick; ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill();
+    ctx.fillStyle = C.bg; ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.rect(bx, by, w, h); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = C.ink; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+    ctx.fillText(text, bx + 5, by + h / 2 + 0.5);
+  }
+  function dimLine(x0, y0, x1, y1, text, side) {
+    ctx.strokeStyle = C.dim; ctx.fillStyle = C.dim; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+    var vx = x1 - x0, vy = y1 - y0, L = Math.hypot(vx, vy) || 1, nx = -vy / L * 5, ny = vx / L * 5;
+    ctx.moveTo(x0 - nx, y0 - ny); ctx.lineTo(x0 + nx, y0 + ny); ctx.moveTo(x1 - nx, y1 - ny); ctx.lineTo(x1 + nx, y1 + ny);
+    ctx.stroke();
+    ctx.font = "500 12px " + C.font; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    var mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    if (side === "above") ctx.fillText(text, mx, my - 12);
+    else { ctx.save(); ctx.translate(mx - 13, my); ctx.rotate(-Math.PI / 2); ctx.fillText(text, 0, 0); ctx.restore(); }
+  }
+  function only(k, s) { return pos > k ? clamp01(1 - (pos - k) / 0.06) : ease(appear(pos, k, s)); }
+  function centre(Sg, i) { return [sx(Sg.xy[2 * i] + WT[Sg.ty[i]] / 2), sy(Sg.xy[2 * i + 1] + RH / 2)]; }
+  function pick(kind, row, frac) {
+    var best = null, want = frac * D.sitesPerRow;
+    byRow[row].forEach(function (c) { if (c.kind === kind && (!best || Math.abs(c.site - want) < Math.abs(best.site - want))) best = c; });
+    return best;
+  }
+  function exLabel(ex, k) {
+    label(ex.name + ": " + ex.npins + " pins", sx(ex.mid[0]), sy(ex.mid[1]), { dx: k % 2 ? -18 : 18, dy: -40, align: k % 2 ? "right" : "left" });
+  }
+  // the example being built in a step that shows them one at a time, from x0 in slots of slot
+  function exBeingBuilt(t, x0, slot, fade) {
+    var k = Math.floor((t - x0) / slot);
+    if (t < x0 || k >= ROUTE_EX.length) return;
+    var f = (t - x0) / slot - k;
+    ctx.globalAlpha = clamp01(f / 0.2) * clamp01((1 + fade - f) / fade);
+    exLabel(ROUTE_EX[k], k);
+  }
+  var rowMid = Math.floor(NROWS / 2), siteMid = Math.floor(D.sitesPerRow * 0.45);
+  function drawNotes() {
+    placed.length = 0;
+    // the die's size, on the first step only
+    var a0 = Math.max(0, 1 - pos * 2) * clamp01(2.5 - cam.s / fitS);
+    if (a0 > 0.01) {
+      ctx.globalAlpha = a0;
+      dimLine(sx(DIE[0]), sy(DIE[3]) - 14, sx(DIE[2]), sy(DIE[3]) - 14, fmt(um(DIE[2] - DIE[0])) + " µm", "above");
+      dimLine(sx(DIE[0]) - 14, sy(DIE[1]), sx(DIE[0]) - 14, sy(DIE[3]), fmt(um(DIE[3] - DIE[1])) + " µm", "left");
+    }
+    var a;
+    if ((a = only(S.FLOOR, 0.85)) > 0.01) {
+      ctx.globalAlpha = a;
+      var y0 = CORE[1] + rowMid * RH, xs = CORE[0] + siteMid * SW;
+      ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5;
+      ctx.beginPath(); rect(CORE[0], y0, CORE[2], y0 + RH); ctx.stroke();
+      ctx.fillStyle = C.pick; ctx.beginPath(); rect(xs, y0, xs + SW, y0 + RH); ctx.fill();
+      label("ROW_" + rowMid + ": " + D.sitesPerRow + " sites", sx(CORE[0] + 0.12 * (CORE[2] - CORE[0])), sy(y0 + RH / 2), { dx: 10, dy: -50 });
+      label("site (unithd): " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm", sx(xs + SW / 2), sy(y0 + RH / 2), { dx: 14, dy: 30 });
+    }
+    if ((a = only(S.TAPS, 0.95)) > 0.01) {
+      ctx.globalAlpha = a;
+      var tap = pick("tap", rowMid + 6, 0.45), end = pick("endcap", rowMid + 10, 1);
+      if (tap) label("well tap", sx(CORE[0] + (tap.site + 0.5) * SW), sy(CORE[1] + (tap.row + 0.5) * RH), { dx: 16, dy: -44 });
+      if (end) label("endcap", sx(CORE[0] + (end.site + end.w / 2) * SW), sy(CORE[1] + (end.row + 0.5) * RH), { dx: -18, dy: -44, align: "right" });
+    }
+    if ((a = only(S.PDN, 0.95)) > 0.01) {
+      ctx.globalAlpha = a;
+      var mid = Math.floor(nStripe / 2), sP = PDN.stripes[mid], sG = PDN.stripes[mid + 1], ry = PDN.rails[Math.floor(PDN.rails.length * 0.75)];
+      if (sP[0] !== "VPWR") { var tmp = sP; sP = sG; sG = tmp; }
+      label("VPWR stripe (met4): power enters from the chip's met5 grid", sx(sP[2]), sy((sP[3] + sP[4]) / 2), { dx: -16, dy: -10, align: "right" });
+      label("VGND stripe (met4)", sx(sG[2]), sy((sG[3] + sG[4]) / 2 - 8 * RH), { dx: 16, dy: -10 });
+      label(ry[0] + " rail (met1)", sx(CORE[0] + 0.15 * (CORE[2] - CORE[0])), sy(ry[1]), { dy: -36 });
+      var vv = PDN.vias.filter(function (v) { return v[1] === sG[2]; });
+      if (vv.length) { var v0 = vv[Math.floor(vv.length / 4)]; label("via stack", sx(v0[1]), sy(v0[2]), { dx: 18, dy: 22 }); }
+    }
+    if ((a = only(S.REPAIR, 0.95)) > 0.01) {
+      ctx.globalAlpha = a;
+      var kin = -1, kbuf = -1, ktie = CLS.indexOf("tie"), krs = -1;
+      for (var i = NC; i < NU; i++) {
+        if (kin < 0 && /^input\d/.test(NAMES[i])) kin = i;
+        if (kbuf < 0 && CLS[i] === "buf" && !/^input\d/.test(NAMES[i]) && has(K.rszB, i) && K.rszB.xy[2 * i + 1] < (CORE[1] + CORE[3]) / 2) kbuf = i;
+      }
+      for (i = 0; i < NC; i++) if (CHANGED[i] && has(K.rszB, i)) { krs = i; break; }
+      if (kin >= 0) { var q1 = centre(K.rszB, kin); label("input buffer", q1[0], q1[1], { dx: 18, dy: 26 }); }
+      if (kbuf >= 0) { var q2 = centre(K.rszB, kbuf); label("buffer", q2[0], q2[1], { dx: 18, dy: -36 }); }
+      if (ktie >= 0) { var q3 = centre(K.rszB, ktie); label("tie cell", q3[0], q3[1], { dx: -18, dy: -36, align: "right" }); }
+      if (krs >= 0) { var q4 = centre(K.rszB, krs); label("resized: " + shortName(D.types[K.rszB.ty[krs]]), q4[0], q4[1], { dx: -18, dy: 30, align: "right" }); }
+    }
+    // the clk pin, from the start of the clock step: where the tree will grow from. Above the
+    // die, in the margin between it and the legend.
+    if (pos > S.LEGAL && pos < S.CTS + 0.06) {
+      ctx.globalAlpha = pos > S.CTS ? only(S.CTS, 0) : clamp01((pos - S.LEGAL) / 0.04);
+      var pinY = sy(CLKPIN.y1), band = pinY - legendH - 8;
+      label("clk pin: the clock enters here", sx((CLKPIN.x0 + CLKPIN.x1) / 2), pinY, { dx: -40, dy: -Math.max(24, Math.min(36, band / 2 + 10)), align: "right", fixed: true });
+    }
+    if ((a = only(S.CTS, 0.95)) > 0.01) {
+      ctx.globalAlpha = a;
+      var leaf = -1, dummy = -1;
+      CLOCK.forEach(function (c) { if (c.lv === CLV - 1 && leaf < 0) leaf = c.loads[0]; });
+      for (var j = NC; j < NU; j++) if (CLS[j] === "clock" && !DRIVES[j]) { dummy = j; break; }
+      if (ROOT && ROOT.loads.length) { var qr = centre(K.cts, ROOT.loads[0]); label("root buffer", qr[0], qr[1], { dx: 18, dy: -34 }); }
+      if (leaf >= 0) { var ql = centre(K.cts, leaf); label("leaf buffer", ql[0], ql[1], { dx: -18, dy: 30, align: "right" }); }
+      if (dummy >= 0) { var qd = centre(K.cts, dummy); label("dummy load", qd[0], qd[1], { dx: 18, dy: 28 }); }
+    }
+    if ((a = only(S.HOLD, 0.95)) > 0.01) {
+      ctx.globalAlpha = a;
+      var kh = CLS.indexOf("hold");
+      if (kh >= 0) { var qh = centre(K.hold, kh); label("delay cell (dlygate4sd3_1)", qh[0], qh[1], { dx: 18, dy: -34 }); }
+    }
+    // global routing: each example while it is built; at the end, the extremes, unless the
+    // tiles already show their counts (then the ringed tiles speak for themselves)
+    // global placement's rewind
+    if (pos > S.PINS && pos < S.PLACE) {
+      var gg = gplAt(within(pos, S.PLACE));
+      if (GF[gg.i + 1] && GF[gg.i + 1].rewind) {
+        ctx.globalAlpha = clamp01(gg.f / 0.08) * clamp01((1 - gg.f) / 0.08);
+        label("Too congested: rewind to iteration " + SNAP.iter + ", inflate crowded cells",
+              sx((CORE[0] + CORE[2]) / 2), sy(CORE[1] + 0.62 * (CORE[3] - CORE[1])), { dx: -120, dy: -60 });
+      }
+    }
+    if (pos > S.HOLD && pos < S.GRT) exBeingBuilt(routeT(), EX0, EXSLOT, 0.18);
+    if ((a = only(S.GRT, 0.97) * clamp01((routeT() - DEM0 - 0.1) / 0.1)) > 0.01 && GG * cam.s <= 30) {
+      ctx.globalAlpha = a;
+      [[BUSY, "busiest g-cell", 18, -40, "left"], [QUIET, "quietest in the core", -18, 34, "right"]].forEach(function (q) {
+        var c = q[0];
+        label(q[1] + ": " + c.nets + " nets", sx((gX(c.gx) + gX(c.gx + 1)) / 2), sy((gY(c.gy) + gY(c.gy + 1)) / 2), { dx: q[2], dy: q[3], align: q[4] });
+      });
+    }
+    // antenna repair
+    if ((a = Math.max(only(S.ANT, 0.95), pos > S.GRT + 0.15 && pos < S.ANT ? clamp01((pos - S.GRT - 0.15) / 0.1) : 0)) > 0.01) {
+      ctx.globalAlpha = a;
+      var qb = centre(K.ant, ROOTBUF);
+      label(ROOTNAME + ": the gate on the long " + AM.net + " wire", qb[0], qb[1], { dx: 18, dy: -44 });
+      if (DIODE >= 0 && pos > S.GRT + 0.4) { var qdi = centre(K.ant, DIODE); label("antenna diode", qdi[0], qdi[1], { dx: -18, dy: 34, align: "right" }); }
+    }
+    if (pos > S.ANT && pos < S.DRT) exBeingBuilt(drtT(), WEX0, WEXSLOT, 0.15);
+    if (pos > S.IR && GFOCUS && GFOCUS.cell !== undefined) {
+      var fc = GFOCUS.cell, fx0 = K.ant.xy[2 * fc], fy0 = K.ant.xy[2 * fc + 1], fw = WT[K.ant.ty[fc]];
+      ctx.globalAlpha = clamp01(within(pos, S.GDS) / 0.04);
+      ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+      ctx.beginPath(); rect(fx0, fy0, fx0 + fw, fy0 + RH); ctx.stroke(); ctx.setLineDash([]);
+      label("flip-flop " + NAMES[fc] + " (" + shortName(D.types[K.ant.ty[fc]]) + ")", sx(fx0 + fw / 2), sy(fy0 + RH / 2), { dx: -24, dy: -60, align: "right" });
+    }
+    if (pos > S.IR && GFOCUS) {
+      var ug = within(pos, S.GDS), ip = 2;   // after poly appears, until the metals cover it
+      ctx.globalAlpha = pos > S.GDS ? only(S.GDS, 0) : clamp01((ug - GDS_CAM - 0.06 * ip - 0.03) / 0.04) * clamp01((GDS_CAM + 0.06 * 7 - ug) / 0.04 + (pos > S.GDS ? 1 : 0));
+      label("a transistor: poly crossing diffusion", sx(GFOCUS.x), sy(GFOCUS.y), { dx: 22, dy: -50 });
+    }
+    if (pos > S.STA && pos <= S.IR + 0.06) {
+      var ui = within(pos, S.IR), net = pos > S.IR ? "VGND" : irNetAt(ui), wv = irWorst(net);
+      if (ui > IR_V0 + 0.05 || pos > S.IR) {
+        ctx.globalAlpha = pos > S.IR ? only(S.IR, 0) : clamp01((ui - IR_V0 - 0.05) / 0.05) * (net === "VPWR" ? clamp01((IR_G0 - ui) / 0.04) : clamp01((ui - IR_G0) / 0.06));
+        label("worst " + net + " drop: " + fmt(IR.worst[net === "VPWR" ? 0 : 1], 1) + " µV", sx(wv.x), sy(wv.y), { dx: -18, dy: -44, align: "right" });
+        var stp = PDN.stripes.filter(function (q) { return q[0] === net; })[1];
+        label(net + " stripe: power enters the rails here", sx(stp[2]), sy((stp[3] + stp[4]) / 2), { dx: 18, dy: -30 });
+      }
+    }
+    if (pos > S.FILL && pos <= S.STA + 0.06) {
+      var us = within(pos, S.STA), ce = function (c) { return [sx(SX[c] + SWD[c] / 2), sy(SY[c] + RH / 2)]; };
+      if (us >= STA_SET0 || pos > S.STA) {
+        ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_SET0) / 0.04);
+        var pl = ce(PSETUP.st[0].ci); label("setup: launches at " + PSETUP.q.start, pl[0], pl[1], { dx: 18, dy: -40 });
+        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("captured at " + PSETUP.q.end + ", slack " + fmt(PSETUP.q.slack) + " ns", pc[0], pc[1], { dx: -18, dy: 34, align: "right" }); }
+      }
+      if (us >= STA_HOLD0 || pos > S.STA) {
+        ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_HOLD0) / 0.04);
+        var ph = ce(PHOLD.st[0].ci); label("hold: " + PHOLD.q.start + " feeds itself, slack " + fmt(PHOLD.q.slack, 3) + " ns", ph[0], ph[1], { dx: 18, dy: 30 });
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawScale() {
+    var umPerPx = 1 / (cam.s * U), want = 120 * umPerPx;
+    var steps = [0.5, 1, 2, 5, 10, 20, 50, 100], v = steps[0];
+    for (var i = 0; i < steps.length; i++) if (steps[i] <= want * 1.4) v = steps[i];
+    document.getElementById("scalebar").style.width = (v / umPerPx) + "px";
+    document.getElementById("scaletext").textContent = v + " µm";
+  }
+
+  // ---- animation -------------------------------------------------------------------------
+  // How long each step's own animation takes (ms), played forwards one step at a time. Jumps
+  // over several steps, and steps backwards, are compressed.
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function stepDur(k) { return (STEPS[k] && STEPS[k].play) || 1500; }
+  function stopAnim() { if (anim) { cancelAnimationFrame(anim); anim = null; } }
+  function goTo(k, opts) {
+    k = Math.max(0, Math.min(STEPS.length - 1, k));
+    stopAnim();
+    var from = pos;
+    if (k === S.GDS && target !== S.GDS) setTimeout(gdsCloseUp, 0);
+    if (target === S.GDS && k !== S.GDS && Math.abs(cam.s - fitS) > 1e-9) fit(600);   // back out of the close-up
+    if (k !== target) hideTip();
+    target = k; updatePanel();
+    if (reduce && !(opts && opts.replay)) {
+      // no motion unasked: a step that plays waits at its start for the play button
+      pos = STEPS[k].play && k > from ? k - 1 + (k === S.PLACE ? FADE : 0.001) : k;
+      draw(); syncReadout(); return;
+    }
+    var to = k;
+    var parts = [], total = 0, lo = Math.min(from, to), hi = Math.max(from, to);
+    for (var s0 = Math.floor(lo); s0 < hi; s0++) {
+      var a = Math.max(lo, s0), b = Math.min(hi, s0 + 1);
+      if (b <= a) continue;
+      var d = (b - a) * stepDur(s0 + 1);
+      parts.push({ a: a, b: b, d: d }); total += d;
+    }
+    var forwardOne = to > from && hi - lo <= 1.0001;
+    var cap = forwardOne ? Infinity : (to < from ? 1600 : 2600);
+    var scale = total > cap ? cap / total : 1;
+    if (to < from) parts.reverse();
+    var t0 = performance.now();
+    function tick(now) {
+      var t = (now - t0) / scale, acc = 0;
+      pos = to;
+      for (var i = 0; i < parts.length; i++) {
+        var q = parts[i];
+        if (t < acc + q.d) { var f = (t - acc) / q.d; pos = to > from ? q.a + (q.b - q.a) * f : q.b - (q.b - q.a) * f; break; }
+        acc += q.d;
+      }
+      anim = pos !== to ? requestAnimationFrame(tick) : null;
+      draw();
+      syncReadout();
+    }
+    anim = requestAnimationFrame(tick);
+  }
+  // One camera tween at a time (fit, the GDS close-up, the way back), cancelled by any zoom or drag
+  var camAnim = null;
+  function camStop() { if (camAnim) { cancelAnimationFrame(camAnim); camAnim = null; } }
+  function camTo(x, y, s, ms) {
+    camStop();
+    if (reduce || !ms) { cam.x = x; cam.y = y; cam.s = s; clampCam(); requestDraw(); return; }
+    var from = { x: cam.x, y: cam.y, s: cam.s }, t0 = performance.now();
+    (function step(now) {
+      var t = ease(Math.min(1, (now - t0) / ms));
+      cam.x = from.x + (x - from.x) * t; cam.y = from.y + (y - from.y) * t;
+      cam.s = Math.exp(Math.log(from.s) + (Math.log(s) - Math.log(from.s)) * t);
+      clampCam(); requestDraw();
+      camAnim = t < 1 ? requestAnimationFrame(step) : null;
+    })(t0);
+  }
+  function fit(ms) { camTo(fitX(), fitY(), fitS, ms === undefined ? 450 : ms); }
+  // the GDS step starts by gliding to a flip-flop close up
+  function gdsCloseUp() {
+    gdsBuild();
+    if (!GFOCUS) return;
+    var wUm = 14 * U;
+    camTo(GFOCUS.ff.x + 3 * U, GFOCUS.y, Math.min(W, H * 1.6) / wUm, GDS_GLIDE);
+  }
+  // → plays the step if it can (or skips to the end of its animation if it is playing);
+  // otherwise it moves on
+  function forward() {
+    var st = STEPS[target];
+    if (st.play && anim && pos < target) { stopAnim(); pos = target; draw(); syncReadout(); return; }
+    if (st.play && pos < target - 1e-6) { togglePlay(); return; }
+    goTo(target + 1);
+  }
+
+  // ---- the play bar of a step that plays ----------------------------------------------------
+  var readout = document.getElementById("readout"), scrub = document.getElementById("scrub");
+  var playBtn = document.getElementById("play"), what = document.getElementById("what");
+  var PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7.5-4.5z" fill="currentColor"/></svg>';
+  var PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3.5h2.4v9H4.5zM9.1 3.5h2.4v9H9.1z" fill="currentColor"/></svg>';
+  var REPLAY = '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 9.2a4.6 4.6 0 1 0 1.2-4.3"/><path d="M4.4 2.4v2.9h2.9"/></svg>';
+  var PLAYICON = { Play: PLAY, Pause: PAUSE, Replay: REPLAY };
+  var navPlay = document.getElementById("navplay");
+  // what the play buttons do now: Play, Pause or Replay
+  function playState() {
+    if (!!anim && pos < target) return "Pause";
+    return pos >= target - 1e-9 ? "Replay" : "Play";
+  }
+  function syncNav() {
+    var st = STEPS[target], state = st.play ? playState() : "Play";
+    navPlay.disabled = !st.play;
+    if (navPlay.getAttribute("data-state") !== state) { navPlay.setAttribute("data-state", state); navPlay.innerHTML = PLAYICON[state] + "<span>" + state + "</span>"; }
+    navPlay.title = st.play ? state + " this step's animation (→ plays too)" : "Nothing to play on this step";
+  }
+  navPlay.addEventListener("click", togglePlay);
+  function readoutText(k, u) {
+    if (k === S.PLACE) {
+      var g = gplAt(u), cur = GF[g.i], nxt = GF[Math.min(g.i + 1, GF.length - 1)], f = g.f > 0.5 ? nxt : cur;
+      if (nxt.rewind && g.f > 0.05) return "<b>Congestion check</b>: back to iteration " + SNAP.iter;
+      if (f.ip !== undefined) return f.ip === 0 ? "<b>Start</b>: all cells at the core centre" : "<b>Initial placement</b>: CG iteration " + f.ip + " of " + nIP;
+      var pass = f.rewind ? "Final pass</b> from it. " : f.rounds ? "Final pass</b> it. " : "Nesterov</b> it. ";
+      return "<b>" + pass + f.iter + " · overflow " + f.overflow.toFixed(2) + " · HPWL " + n(f.hpwl) + " µm";
+    }
+    if (k === S.REPAIR) {
+      if (u >= 0.6) return "<b>Resizing</b> " + M.rsz.resized + " instances";
+      var cntR = 0, totR = 0;
+      for (var r = NC; r < NU; r++) if (has(K.rszB, r)) { totR++; if (u >= popRepair(r)) cntR++; }
+      return "<b>New cells</b>: " + cntR + " of " + totR;
+    }
+    if (k === S.LEGAL) return u < 0.72 ? "<b>Legalising</b>" : "<b>Mirroring</b> " + n(M.dpl.mirrored) + " cells";
+    if (k === S.CTS) {
+      if (u >= CTS_SPLIT) return "<b>Legalising</b> around the clock cells";
+      var t = u / CTS_SPLIT, L = 0;
+      for (var l = 0; l <= CLV; l++) if (t >= lvStart(l)) L = l;
+      return "<b>Tree level " + (L + 1) + " of " + (CLV + 1) + "</b>: " + (L === 0 ? "pin → root" : L === CLV ? "leaves → flip-flops" : L === CLV - 1 ? "branches → leaves" : "root → branches");
+    }
+    if (k === S.HOLD) {
+      if (u >= HOLD_SPLIT) return "<b>Legalising</b>";
+      var t9 = u / HOLD_SPLIT, cnt = 0;
+      for (var i = NC; i < NU; i++) if (CLS[i] === "hold" && t9 >= popHold(i)) cnt++;
+      return "<b>Delay cells</b>: " + cnt + " of " + M.hold.buffers;
+    }
+    if (k === S.GRT) {
+      if (u < EX0) return "<b>G-cell grid</b>: " + GNX + " × " + GNY;
+      if (u < DEM0) { var ex = ROUTE_EX[Math.min(ROUTE_EX.length - 1, Math.floor((u - EX0) / EXSLOT))]; return "<b>Net " + ex.name + "</b>: " + ex.npins + " pins, " + ex.count + " guides"; }
+      return "<b>All " + n(GR.routed) + " nets</b>: nets with guides per g-cell, " + MINALL + "–" + MAXALL;
+    }
+    if (k === S.ANT) {
+      if (u < 0.33) return "<b>Violation</b>: " + AM.net + ", " + AM.layer + ", " + fmt(AM.partial) + " / " + fmt(AM.required, 0);
+      if (u < ANT_SPLIT) return "<b>Diode</b> beside " + ROOTNAME;
+      return "<b>" + n(AM.flipped) + " cells lose their mirroring</b>";
+    }
+    if (k === S.DRT) {
+      if (u < WALL0) { var e = ROUTE_EX[Math.min(ROUTE_EX.length - 1, Math.max(0, Math.floor((u - WEX0) / WEXSLOT)))]; return "<b>Net " + e.name + "</b>: its wires and guides"; }
+      if (u >= WDONE) return "<b>Routed</b>: " + n(DR.wirelength) + " µm, " + n(DR.nvias) + " vias";
+      var cl = 1;
+      for (var ll = 1; ll < DR.layers.length; ll++) if (wireLayerAt(u, ll) > 0) cl = ll;
+      return "<b>" + DR.layers[cl] + "</b>: " + n(DR.length[DR.layers[cl]]) + " µm";
+    }
+    if (k === S.FILL) return u < 1 ? "<b>Filling</b>" : "<b>" + n(FILL.length) + "</b> filler cells";
+    if (k === S.GDS) {
+      if (u < GDS_CAM) return "<b>Stream-out</b>: every shape on every layer";
+      var gi2 = 0;
+      for (var q = 0; q < GDS_ORDER.length; q++) if (gdsLayerAt(u, q) > 0) gi2 = q;
+      return u >= GDS_CAM + 0.06 * GDS_ORDER.length ? "<b>All layers</b>: DRC and LVS clean" : "<b>" + GDS_ORDER[gi2].what.replace(":", "</b>:");
+    }
+    if (k === S.IR) {
+      if (u < IR_V0) return "<b>Supply voltages</b> at each cell (" + IR.corner.split("_")[1] + " corner)";
+      var nt = irNetAt(u), j = nt === "VPWR" ? 0 : 1;
+      return "<b>" + nt + "</b>: worst " + fmt(IR.worst[j], 1) + " µV, average " + fmt(IR.average[j], 1) + " µV";
+    }
+    if (k === S.STA) {
+      var P = u < STA_HOLD0 ? PSETUP : PHOLD, T = staTime(P, u), at = null;
+      if (T < 0) return "<b>Extracted parasitics</b>, " + CORNERS.length + " corners";
+      P.st.forEach(function (x) { if (x.t <= T) at = x; });
+      if (T >= P.t1) return P === PSETUP ? "<b>Setup slack</b> " + fmt(P.q.slack) + " ns (arrives " + fmt(P.t1) + ", required " + fmt(P.q.required) + ")"
+                                         : "<b>Hold slack</b> " + fmt(P.q.slack, 3) + " ns (arrives " + fmt(P.t1, 3) + ", allowed from " + fmt(P.q.required, 3) + ")";
+      return "<b>" + (P === PSETUP ? "Setup path" : "Hold path") + "</b>: " + fmt(T, P === PSETUP ? 2 : 3) + " ns at <code>" + at.pin + "</code>" + (at.cell ? " (" + at.cell + ")" : "");
+    }
+    return "";
+  }
+  function syncReadout() {
+    syncNav();
+    var st = STEPS[target], show = !!st.play && pos > target - 1 - 1e-9 && pos <= target + 1e-9;
+    if (!show && readout.contains(document.activeElement)) view.focus();
+    readout.hidden = !show;
+    if (!show) return;
+    var u = clamp01(pos - (target - 1)), text = readoutText(target, u);
+    scrub.value = Math.round(u * 1000);
+    scrub.setAttribute("aria-valuetext", plain(text));
+    var state = playState();
+    playBtn.innerHTML = PLAYICON[state];
+    playBtn.setAttribute("aria-label", state);
+    what.innerHTML = text;
+  }
+  function togglePlay() {
+    if (anim) { stopAnim(); syncReadout(); draw(); return; }
+    if (pos >= target) pos = target - 1;
+    goTo(target, { replay: true });
+  }
+  playBtn.addEventListener("click", togglePlay);
+  scrub.addEventListener("input", function () { stopAnim(); pos = target - 1 + scrub.value / 1000; draw(); syncReadout(); });
+
+  // ---- panel and legend ----------------------------------------------------------------------
+  var track = document.getElementById("track");
+  STEPS.forEach(function (st, i) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "seg";
+    b.innerHTML = '<span class="long">' + st.short + '</span><span class="num">' + (i + 1) + "</span>";
+    b.title = st.title;
+    b.setAttribute("aria-label", st.short + ": " + st.title.toLowerCase() + ", step " + (i + 1) + " of " + STEPS.length);
+    b.addEventListener("click", function () { goTo(i); });
+    track.appendChild(b);
+  });
+  var LEGEND = [
+    { from: S.DIE, label: "Die area", c: "die", g: "die" },
+    { from: S.FLOOR, label: "Core area", c: "core", g: "rows" },
+    { from: S.FLOOR, label: "Row, N", c: "row", g: "rows" },
+    { from: S.FLOOR, label: "Row, FS", c: "row-flip", g: "rows" },
+    { from: S.TAPS, label: "Endcap", c: "endcap", g: "fixed" },
+    { from: S.TAPS, label: "Well tap", c: "tap", g: "fixed" },
+    { from: S.PDN, label: "VPWR", c: "vpwr", g: "pdn" },
+    { from: S.PDN, label: "VGND", c: "vgnd", g: "pdn" },
+    { from: S.PDN, label: "Via stack", c: "via", g: "pdn" },
+    { from: S.PINS, label: "Pin (met4)", c: "pin", g: "pins" },
+    { from: S.PLACE, label: "Logic cell", c: "logic", g: "logic" },
+    { from: S.PLACE, label: "Flip-flop", c: "ff", g: "ff" },
+    { from: S.PLACE, to: S.PLACE, label: "Overfull bin (> " + fmt(TARGET) + " density)", c: "hot", g: "hot", hatch: true },
+    { from: S.REPAIR, label: "Buffer (repair)", c: "buf", g: "buf" },
+    { from: S.REPAIR, label: "Tie cell", c: "tie", g: "tie" },
+    { from: S.CTS, label: "Clock buffer or dummy", c: "clock", g: "clock" },
+    { from: S.CTS, to: S.HOLD, label: "Clock net", c: "clknet", g: "clknet", line: true },
+    { from: S.HOLD, label: "Delay cell (hold)", c: "hold", g: "hold" }
+  ].concat(GLAY.map(function (l) { return { from: S.GRT, label: l, c: l, g: l === "li1" ? "route" : "wire", layer: true }; }))
+   .concat([{ from: S.GRT, to: S.GRT, label: "Nets with guides per g-cell, " + MINALL + "–" + MAXALL, c: "hot", g: "route", ramp: true },
+            { from: S.ANT, label: "Antenna diode", c: "diode", g: "diode" },
+            { from: S.DRT, label: "Via (zoom in)", c: "wvia", g: "wire" },
+            { from: S.FILL, label: "Decap cell", c: "decap", g: "decap" },
+            { from: S.FILL, label: "Fill cell", c: "fill", g: "fill", hatch: true },
+            { from: S.STA, label: "Worst setup path", c: "setup", g: "path", line: true },
+            { from: S.STA, label: "Worst hold path", c: "holdp", g: "path", line: true },
+            { from: S.IR, label: "IR drop, 0–" + Math.round(IRMAX) + " µV", c: "ir", g: "ir", irramp: true },
+            { from: S.GDS, label: "n-well", c: "nwell", g: "gds" },
+            { from: S.GDS, label: "Diffusion", c: "diff", g: "gds" },
+            { from: S.GDS, label: "Tap diffusion", c: "gtap", g: "gds" },
+            { from: S.GDS, label: "Poly", c: "poly", g: "gds" },
+            { from: S.GDS, label: "Contact or via cut", c: "cut", g: "gds" }]);
+  function legendGroup(l, k) {
+    // the layer colours serve the guides (routing step), the clk route (antenna step), then the wires
+    if (!l.layer) return l.g;
+    return k === S.GRT ? "route" : k === S.ANT ? "antnet" : k === S.GDS ? "gds" : l.g;
+  }
+  function legendItems(k, all) {
+    return LEGEND.filter(function (l) { return l.from <= k && (all || !(l.to < k)); }).map(function (l) {
+      var g = legendGroup(l, k);
+      return { l: l, gone: !all && l.to !== undefined && l.to < k, dimmed: !all && (focusOf(k, g) < 1 || (k === S.GDS && g !== "gds")) };
+    });
+  }
+  // a swatch's background, for the legend and the tips: { c: colour token, hatch, ramp, irramp }
+  function swatchBg(it) {
+    if (it.irramp) return "linear-gradient(90deg, var(--ir0), var(--ir1), var(--ir2), var(--ir3))";
+    if (it.ramp) return "linear-gradient(90deg, " + [0, 0.25, 0.5, 0.75, 1].map(function (u) { return "color-mix(in srgb, var(--" + it.c + ") " + Math.round(100 * crowdAlpha(u)) + "%, transparent)"; }).join(", ") + ")";
+    if (it.hatch) return "repeating-linear-gradient(135deg, var(--" + it.c + ") 0 1.5px, transparent 1.5px 4px)";
+    return "var(--" + it.c + ")";
+  }
+  function legendHTML(items) {
+    return items.map(function (it) {
+      var l = it.l, sw;
+      if (l.line) sw = '<i class="line" style="border-color:var(--' + l.c + ')"></i>';
+      else if (l.layer) sw = '<i class="lay" style="--c:var(--' + l.c + ')"></i>';
+      else sw = '<i style="background:' + swatchBg(l) + '"></i>';
+      return "<li" + (it.gone || it.dimmed ? ' class="' + (it.gone ? "gone" : "dimmed") + '"' : "") + ">" + sw + l.label + "</li>";
+    }).join("");
+  }
+  function updateLegend() {
+    var items = legendItems(target, false), el = document.getElementById("legend");
+    el.classList.toggle("gds", target === S.GDS);   // the metals as outlines, as drawn
+    if (el.children.length === items.length) {
+      items.forEach(function (it, i) { el.children[i].classList.toggle("gone", it.gone); el.children[i].classList.toggle("dimmed", !it.gone && it.dimmed); });
+    } else el.innerHTML = legendHTML(items);
+  }
+  function updatePanel() {
+    var st = STEPS[target];
+    document.getElementById("kicker").textContent = "Step " + (target + 1) + " of " + STEPS.length;
+    document.getElementById("title").textContent = st.title;
+    document.getElementById("tool").innerHTML = st.tool || "";
+    document.getElementById("body").innerHTML = st.body + (st.note ? '<p class="note">' + st.note + "</p>" : "");
+    document.getElementById("prev").disabled = target === 0;
+    document.getElementById("next").disabled = target >= STEPS.length - 1;
+    Array.prototype.forEach.call(track.children, function (b, i) {
+      b.classList.toggle("now", i === target); b.classList.toggle("done", i < target);
+      if (i === target) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current");
+    });
+    updateLegend();
+    canvas.setAttribute("aria-label", "The die at step " + (target + 1) + ", " + st.title.toLowerCase() + ". " + plain(st.note || ""));
+  }
+  document.getElementById("prev").addEventListener("click", function () { goTo(target - 1); });
+  document.getElementById("next").addEventListener("click", function () { goTo(target + 1); });
+  document.addEventListener("keydown", function (e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.target.closest && e.target.closest("textarea, input, select")) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown") { forward(); e.preventDefault(); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp") { goTo(target - 1); e.preventDefault(); }
+    else if (e.key === "+" || e.key === "=") zoomAt(W / 2, H / 2, 1.5);
+    else if (e.key === "-") zoomAt(W / 2, H / 2, 1 / 1.5);
+    else if (e.key === "0") fit();
+  });
+
+  // ---- zoom and pan ----------------------------------------------------------------------
+  function clampCam() {
+    cam.s = Math.max(fitS * 0.6, Math.min(fitS * 60, cam.s));
+    var mx = (DIE[2] - DIE[0]) * 0.6, my = (DIE[3] - DIE[1]) * 0.6, cx = (DIE[0] + DIE[2]) / 2, cy = (DIE[1] + DIE[3]) / 2;
+    cam.x = Math.max(cx - mx, Math.min(cx + mx, cam.x));
+    cam.y = Math.max(cy - my, Math.min(cy + my, cam.y));
+  }
+  function zoomAt(px, py, f) {
+    camStop();
+    var x = wx(px), y = wy(py);
+    cam.s *= f; clampCam();
+    cam.x = x - (px - W / 2) / cam.s; cam.y = y + (py - H / 2) / cam.s; clampCam();
+    hideTip(); requestDraw();
+  }
+  document.getElementById("zin").addEventListener("click", function () { zoomAt(W / 2, H / 2, 1.6); });
+  document.getElementById("zout").addEventListener("click", function () { zoomAt(W / 2, H / 2, 1 / 1.6); });
+  document.getElementById("zfit").addEventListener("click", function () { fit(); });
+  view.addEventListener("wheel", function (e) {
+    if (e.target.closest(".readout")) return;
+    // scrolling zooms, as on a map; stacked on a phone it only zooms with a pinch (ctrlKey), so
+    // the page still scrolls
+    if (narrow.matches && !e.ctrlKey) return;
+    e.preventDefault();
+    var r = view.getBoundingClientRect(), dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0025)));
+  }, { passive: false });
+  var pointers = {};
+  view.addEventListener("pointerdown", function (e) {
+    if (e.target.closest("button, input, .readout")) return;
+    if (e.pointerType === "touch" && narrow.matches) return;   // let the page scroll
+    camStop();
+    view.setPointerCapture(e.pointerId);
+    pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    hideTip();
+  });
+  view.addEventListener("pointermove", function (e) {
+    var r = view.getBoundingClientRect();
+    if (!pointers[e.pointerId]) {
+      if (e.target.closest(".readout, .zoom")) { lastTip = null; hideTip(); }
+      else { lastTip = [e.clientX - r.left, e.clientY - r.top]; showTip(lastTip[0], lastTip[1]); }
+      return;
+    }
+    var ids = Object.keys(pointers), p = pointers[e.pointerId];
+    if (ids.length === 1) {
+      view.classList.add("dragging");
+      cam.x -= (e.clientX - p.x) / cam.s; cam.y += (e.clientY - p.y) / cam.s; clampCam();
+    } else if (ids.length === 2) {
+      var o = pointers[ids[0] === String(e.pointerId) ? ids[1] : ids[0]];
+      var d0 = Math.hypot(p.x - o.x, p.y - o.y), d1 = Math.hypot(e.clientX - o.x, e.clientY - o.y);
+      if (d0 > 0) zoomAt((e.clientX + o.x) / 2 - r.left, (e.clientY + o.y) / 2 - r.top, d1 / d0);
+    }
+    p.x = e.clientX; p.y = e.clientY; requestDraw();
+  });
+  function up(e) { delete pointers[e.pointerId]; if (!Object.keys(pointers).length) view.classList.remove("dragging"); }
+  view.addEventListener("pointerup", up); view.addEventListener("pointercancel", up);
+  view.addEventListener("pointerleave", function () { if (!Object.keys(pointers).length) { lastTip = null; hideTip(); } });
+
+  // ---- naming what is under the pointer --------------------------------------------------
+  // Everything visible under the pointer, topmost first, each with its colour; what the step
+  // dims is listed dimmed. The tip follows the picture while it animates.
+  var tip = document.getElementById("tip"), lastTip = null, lastTipAt = 0;
+  function hideTip() { tip.hidden = true; }
+  function refreshTip() {
+    if (!lastTip || tip.hidden) return;
+    var now = performance.now();
+    if (now - lastTipAt < 120) return;
+    lastTipAt = now;
+    showTip(lastTip[0], lastTip[1]);
+  }
+  var KIND = { logic: "Logic cell", ff: "Flip-flop", buf: "Buffer", tie: "Tie cell", clock: "Clock buffer", hold: "Delay cell", diode: "Antenna diode" };
+  var ADDED = { buf: "the repair step", tie: "the repair step", clock: "clock tree synthesis", hold: "hold repair", diode: "antenna repair" };
+  function cellTip(k) {
+    var nm = NAMES[k], ty = D.types[STY[k]], kind = KIND[CLS[k]];
+    if (/^input\d/.test(nm)) kind = "Input buffer";
+    else if (/conb/.test(ty)) kind = "Tie cell";
+    if (CLS[k] === "clock") kind = !DRIVES[k] ? "Dummy load" : /clkinv/.test(ty) ? "Clock inverter" : "Clock buffer";
+    var h = "<b>" + kind + "</b> <code>" + nm + "</code><br><code>" + ty + "</code>, " + fmt(um(SWD[k])) + " µm wide";
+    if (pos > S.REPAIR) h += ", " + OR_NAMES[(SFX[k] && SFY[k]) ? 1 : SFX[k] ? 2 : SFY[k] ? 3 : 0];
+    if (k >= NC) h += "<br>added by " + ADDED[CLS[k]];
+    else if (CHANGED[k] && has(K.rszB, k) && pos > S.PLACE + 0.75) h += "<br>resized from <code>" + shortName(D.types[K.G.ty[k]]) + "</code>";
+    return h;
+  }
+  function segDist(px, py, ax, ay, bx, by) {
+    var vx = bx - ax, vy = by - ay, L = vx * vx + vy * vy, t = L ? clamp01(((px - ax) * vx + (py - ay) * vy) / L) : 0;
+    return Math.hypot(px - ax - t * vx, py - ay - t * vy);
+  }
+  function showTip(px, py) {
+    var x = wx(px), y = wy(py), step = target, items = [];
+    if (x < DIE[0] || x > DIE[2] || y < DIE[1] || y > DIE[3]) { hideTip(); return; }
+    function add(c, h, g, hatched) { items.push({ c: c, h: h, dimmed: g ? DIMC[g] < 0.99 : false, hatch: hatched }); }
+    var tol = 4 / cam.s, inCore = x >= CORE[0] && x < CORE[2] && y >= CORE[1] && y < CORE[3];
+    var row = Math.floor((y - CORE[1]) / RH), site = Math.floor((x - CORE[0]) / SW);
+    var cellsNow = cellState(pos);
+    // pins
+    if (pos > S.PINS - 0.5) PINS.forEach(function (q) {
+      var cx = (q.x0 + q.x1) / 2, w = Math.max(q.x1 - q.x0, 2.5 / cam.s), h = Math.max(q.y1 - q.y0, 7 / cam.s);
+      if (Math.abs(x - cx) <= w / 2 + tol / 2 && y >= DIE[3] - h - tol / 2)
+        add("pin", "<b>Pin <code>" + q.name + "</code></b>, " + (q.dir === "I" ? "input" : "output") + ", " + q.layer + ", " + fmt(um(q.x1 - q.x0)) + " × " + fmt(um(q.y1 - q.y0)) + " µm" + (UNUSED[q.name] ? "<br>unused: nothing connects to it" : ""), "pins");
+    });
+    // the GDS view lists the layers under the pointer instead
+    if (step === S.GDS) { gdsTip(px, py, x, y, cellsNow); return; }
+    // IR drop here
+    if (step === S.IR && inCore) {
+      var parts2 = [];
+      IRNETS.forEach(function (nt) {
+        var best = null;
+        IRSTRIPS[nt].forEach(function (st) { if (x >= st.x0 && x < st.x1 && Math.abs(y - st.y) <= RH / 2 && (!best || Math.abs(y - st.y) < Math.abs(y - best.y))) best = st; });
+        if (best) parts2.push(nt + " " + fmt(best.d, 0) + " µV");
+      });
+      if (parts2.length) items.push({ c: "ir", h: "<b>IR drop</b> here: " + parts2.join(", "), dimmed: false, irramp: true });
+    }
+    // clock nets
+    if (cellsNow && (step === S.CTS || step === S.HOLD) && pos > S.LEGAL + 0.05) {
+      CLOCK.forEach(function (c) {
+        var dp = clockDriver(c);
+        if (!dp) return;
+        for (var j = 0; j < c.loads.length; j++) {
+          var l = c.loads[j];
+          if (segDist(x, y, dp[0], dp[1], SX[l] + SWD[l] / 2, SY[l] + RH / 2) <= tol) {
+            add("clknet", "<b>Clock net</b> <code>" + c.name + "</code>: " + (c.drv < 0 ? "the pin" : NAMES[c.drv]) + " to " + c.loads.length + (c.loads.length === 1 ? " load" : " loads"), "clknet");
+            return;
+          }
+        }
+      });
+    }
+    // wires and vias
+    // (not on the IR drop step, where only the power grid is the subject)
+    if (step >= S.DRT && step !== S.IR) {
+      var tw = drtT(), seen = {}, hits = [], hitSegs = {};
+      for (var vk = 0; vk < NV && cam.s * U > 12; vk++) {
+        if (wireLayerAt(tw, VIALAYER[VRAW[5 * vk + 4]]) <= 0) continue;
+        var vx = u16(VRAW, 5 * vk) * 5, vy = u16(VRAW, 5 * vk + 2) * 5;
+        if (Math.abs(x - vx) <= Math.max(85, tol) && Math.abs(y - vy) <= Math.max(85, tol))
+          hits.push(["wvia", "<b>Via</b> <code>" + DR.vtypes[VRAW[5 * vk + 4]] + "</code>, net <code>" + GR.nets[netAt(VSTART, vk)] + "</code>"]);
+      }
+      for (var k = 0; k < NW; k++) {
+        var l2 = WRAW[9 * k + 8];
+        if (wireLayerAt(tw, l2) <= 0) continue;
+        var b9 = 9 * k, ax = u16(WRAW, b9) * 5, ay = u16(WRAW, b9 + 2) * 5, bx = u16(WRAW, b9 + 4) * 5, by = u16(WRAW, b9 + 6) * 5;
+        var hw = Math.max(WIDTH[l2] / 2, tol);
+        if (x >= Math.min(ax, bx) - hw && x <= Math.max(ax, bx) + hw && y >= Math.min(ay, by) - hw && y <= Math.max(ay, by) + hw) {
+          hitSegs[k] = 1;
+          var net = netAt(WSTART, k), key = net + ":" + l2;
+          if (seen[key]) continue;
+          seen[key] = 1;
+          hits.push([WL[l2], "<b>" + WL[l2] + " wire</b>, net <code>" + GR.nets[net] + "</code>"]);
+        }
+      }
+      // on the timing step: the path stages these wires carry, as far as the signal has got
+      if (step === S.STA) [PSETUP, PHOLD].forEach(function (P) {
+        var T = pos > S.STA - 1e-9 && !anim ? P.t1 : staTime(P, within(pos, S.STA));
+        P.st.forEach(function (x2, i2) {
+          var r2 = P.wires[i2];
+          if (!r2 || x2.t > T || !Object.keys(hitSegs).some(function (q) { return r2.segs[q]; })) return;
+          add(P.key, "<b>On the worst " + (P === PSETUP ? "setup" : "hold") + " path</b>: net <code>" + GR.nets[x2.ni] + "</code> from <code>" + x2.pin + "</code>, " + fmt(x2.t, 3) + " ns", "path");
+        });
+      });
+      hits.slice(0, 5).forEach(function (hh) { add(hh[0], hh[1], "wire"); });
+      if (hits.length > 5) add("wvia", "and " + (hits.length - 5) + " more wires and vias here", "wire");
+    }
+    // the clk route on the antenna step
+    if (step === S.ANT) {
+      for (var ci2 = GSTART[CLKNET]; ci2 < GSTART[CLKNET] + GR.count[CLKNET]; ci2++) {
+        var gl0 = GRAW[5 * ci2 + 4];
+        if (x >= gX(GRAW[5 * ci2]) && x < gX(GRAW[5 * ci2 + 2]) && y >= gY(GRAW[5 * ci2 + 1]) && y < gY(GRAW[5 * ci2 + 3])) { add(GLAY[gl0], "<b>Route guide of <code>" + AM.net + "</code></b>, " + GLAY[gl0], "antnet"); break; }
+      }
+    }
+    // global routing: the g-cell
+    if (step === S.GRT) {
+      var gx = gCol(x), gy = gRow(y), parts = [];
+      for (var li = 1; li < GLAY.length; li++) { var cv = COV[li][gy * GNX + gx]; if (cv) parts.push(cv + " on " + GLAY[li]); }
+      add("hot", "<b>G-cell (" + gx + ", " + gy + ")</b>: guides of " + COVALL[gy * GNX + gx] + " nets" + (parts.length ? "<br>" + parts.join(", ") : ""), "route");
+    }
+    // the power grid
+    if (pos > S.TAPS + 0.5) {
+      PDN.vias.forEach(function (v) { if (Math.abs(x - v[1]) <= STRW / 2 && Math.abs(y - v[2]) <= Math.max(RAILW / 2, tol)) add("via", "<b>Via stack</b>, <code>" + v[0] + "</code>: met1 rail to met4 stripe", "pdn"); });
+      PDN.stripes.forEach(function (st) { if (Math.abs(x - st[2]) <= st[5] / 2 && y >= st[3] && y <= st[4]) add(st[0] === "VPWR" ? "vpwr" : "vgnd", "<b><code>" + st[0] + "</code> stripe</b>, " + st[1] + ", " + fmt(um(st[5])) + " µm wide; a tile power pin", "pdn"); });
+      PDN.rails.forEach(function (r) { if (Math.abs(y - r[1]) <= Math.max(r[4] / 2, tol / 2) && x >= r[2] && x <= r[3]) add(r[0] === "VPWR" ? "vpwr" : "vgnd", "<b><code>" + r[0] + "</code> follow-pin rail</b>, met1, " + fmt(um(r[4])) + " µm wide", "pdn"); });
+    }
+    // placement bins
+    if (step === S.PLACE && inCore && cellsNow) {
+      binDensity();
+      var bi = Math.floor((x - CORE[0]) / binW), bj = Math.floor((y - CORE[1]) / binH), bd = binArea[bj * BINS + bi];
+      add("hot", "<b>Bin density " + bd.toFixed(2) + "</b>" + (bd > TARGET ? ", over the target (" + fmt(TARGET) + ")" : " (target " + fmt(TARGET) + ")"), "hot", true);
+    }
+    // cells, topmost first; overlapping ones (before legalisation) up to three
+    if (cellsNow && step !== S.IR) {
+      var chits = [];
+      for (var oi = NU - 1; oi >= 0; oi--) {
+        var c2 = ORDER[oi];
+        if (SA[c2] > 0.5 && x >= SX[c2] && x <= SX[c2] + SWD[c2] && y >= SY[c2] && y <= SY[c2] + RH) chits.push(c2);
+      }
+      chits.slice(0, 3).forEach(function (c3) {
+        if (step === S.STA && ONPATH[c3]) ONPATH[c3].forEach(function (P) {
+          var xs = P.st.filter(function (x) { return x.ci === c3; }).map(function (x) { return "<code>" + x.pin.split("/")[1] + "</code> " + fmt(x.t, 3) + " ns"; });
+          add(P.key, "<b>On the worst " + (P === PSETUP ? "setup" : "hold") + " path</b>: " + xs.join(", "), "path");
+        });
+        add(CLS[c3], cellTip(c3), cellGroup(c3));
+      });
+      if (chits.length > 3) add("die", "and " + (chits.length - 3) + " more cells overlapping here", cellGroup(chits[3]));
+    }
+    if (pos > S.DRT && inCore && step !== S.IR) FILL.forEach(function (f) {
+      if (f.row === row && site >= f.site && site < f.site + f.w) add(f.kind, "<b>" + (f.kind === "decap" ? "Decap cell" : "Fill cell") + "</b> <code>" + f.type + "</code>, " + f.w + (f.w === 1 ? " site" : " sites"), f.kind, f.kind === "fill");
+    });
+    if (pos > S.FLOOR + 0.5 && inCore && step !== S.IR) byRow[row].forEach(function (c4) {
+      if (site >= c4.site && site < c4.site + c4.w)
+        add(c4.kind === "tap" ? "tap" : "endcap", "<b>" + (c4.kind === "tap" ? "Well tap" : "Endcap") + "</b> <code>" + c4.name + "</code><br><code>" + c4.type + "</code>, " + c4.w + (c4.w === 1 ? " site" : " sites") + ", " + c4.orient + ", FIXED", "fixed");
+    });
+    // the row, or the margin, or the die
+    if (step >= S.FLOOR && inCore) add(D.rows[row] ? "row-flip" : "row", "<b>ROW_" + row + "</b>, " + (D.rows[row] ? "FS: <code>VPWR</code> along the bottom" : "N: <code>VPWR</code> along the top") + "; site " + site + " of " + D.sitesPerRow + " (<code>unithd</code>)", "rows");
+    else if (step >= S.FLOOR) add("die", "<b>Core margin</b>: die area outside the core; no standard cells");
+    else add("die", "<b>Die area</b>: " + fmt(um(DIE[2] - DIE[0])) + " × " + fmt(um(DIE[3] - DIE[1])) + " µm");
+    placeTip(items, px, py);
+  }
+  // In the GDS view: the layers under the pointer, topmost first, then the cell they belong to
+  // and any pin
+  function gdsTip(px, py, x, y, cellsNow) {
+    gdsBuild();
+    var u = within(pos, S.GDS), items = [];
+    worldTransform();
+    for (var i = GDS_ORDER.length - 1; i >= 0; i--) {
+      var g = GDS_ORDER[i];
+      if (pos <= S.GDS && gdsLayerAt(u, i) <= 0) continue;
+      var hit = ctx.isPointInPath(GPATH[g.l], px * DPR, py * DPR) || (g.also || []).some(function (l2) { return ctx.isPointInPath(GPATH[l2], px * DPR, py * DPR); });
+      if (hit) items.push({ c: g.c, h: "<b>" + g.what.replace(":", "</b>:") });
+    }
+    screenTransform();
+    if (cellsNow) {
+      for (var oi = NU - 1; oi >= 0; oi--) {
+        var c = ORDER[oi];
+        if (SA[c] > 0.5 && x >= SX[c] && x <= SX[c] + SWD[c] && y >= SY[c] && y <= SY[c] + RH) { items.push({ c: CLS[c], h: "In cell <code>" + NAMES[c] + "</code> (<code>" + shortName(D.types[STY[c]]) + "</code>)" }); break; }
+      }
+    }
+    FILL.forEach(function (f) {
+      var row = Math.floor((y - CORE[1]) / RH), site = Math.floor((x - CORE[0]) / SW);
+      if (f.row === row && site >= f.site && site < f.site + f.w) items.push({ c: f.kind, h: "In a " + (f.kind === "decap" ? "decap" : "fill") + " cell (<code>" + shortName(f.type) + "</code>)", hatch: f.kind === "fill" });
+    });
+    PINS.forEach(function (q) { if (x >= q.x0 && x <= q.x1 && y >= q.y0 && y <= q.y1) items.push({ c: "pin", h: "Pin <code>" + q.name + "</code>" + (UNUSED[q.name] ? ", unused: nothing connects to it" : "") }); });
+    if (!items.length) items.push({ c: "die", h: "No shapes here" });
+    placeTip(items, px, py);
+  }
+  function placeTip(items, px, py) {
+    tip.innerHTML = items.map(function (it) {
+      return '<div class="it' + (it.dimmed ? " dimmed" : "") + '"><i class="sw" style="background:' + swatchBg(it) + (it.dimmed ? ";opacity:0.45" : "") + '"></i><div>' + it.h + "</div></div>";
+    }).join("");
+    tip.hidden = false;
+    var tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = Math.max(4, Math.min(px + 14, W - tw - 6)) + "px";
+    tip.style.top = Math.max(4, py + 16 + th > H ? py - th - 10 : py + 16) + "px";
+  }
+
+  document.addEventListener("themechange", function () { readColours(); draw(); });
+  readColours();
+  updatePanel();
+  new ResizeObserver(resize).observe(view);
+  resize();
+  syncReadout();
+}
+</script>
+</body>
+</html>
