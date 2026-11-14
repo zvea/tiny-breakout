@@ -1070,7 +1070,7 @@ function start(D) {
       "<p>This design draws an estimated " + fmt(IR.power * 1000, 2) + " mW (typical corner, default switching activity), so the drop is tiny: at worst " + fmt(IR.worst[0], 1) + " µV on <code>VPWR</code> and " + fmt(IR.worst[1], 1) + " µV on <code>VGND</code>, about " + fmt(IR.worst[0] / 18000, 4) + "% of the supply; " + fmt(IR.average[0], 0) + " µV on average. It is largest at the far ends of the rails, beyond the outermost met4 stripes, and smallest beside the stripes, where power enters the rails.</p>" +
       "<h3>How it works</h3>" +
       "<p>PDNSim models every rail, stripe and via of a power net as a resistor network, places a current source at each cell according to its estimated power and a voltage source at each met4 stripe (the tile's power pins), and solves for the voltage at every node.</p>",
-    note: "Each power pin's drop, drawn along its rail: first VPWR, then VGND." };
+    note: "Each power pin's drop, drawn along its rail: first VPWR, then VGND on the rails between." };
   STEPS[S.GDS] = { short: "GDS", title: "GDS stream-out", tool: "Magic, KLayout", play: GDS_MS,
     body:
       "<p>Finally the layout is <b>streamed out</b> to GDSII, the file the fab makes the masks from: every shape on every layer. Until now each cell was a box; stream-out replaces each with its real layout from the library's GDS and merges in the routing, vias and power grid. Magic writes the GDS that is delivered; KLayout writes a second, and the XOR check that would compare the two is off in this configuration.</p>" +
@@ -1569,9 +1569,9 @@ function start(D) {
   function drawIR() {
     if (pos <= S.STA || pos > S.IR + 0.25) return;
     var u = within(pos, S.IR), d = DIMC.ir;
-    var av = clamp01((u - IR_V0) / (IR_V1 - IR_V0)) * (1 - clamp01((u - IR_G0) / 0.12));
-    var ag = clamp01((u - IR_G0) / (IR_G1 - IR_G0));
-    if (pos > S.IR) { av = 0; ag = 1; }
+    // VPWR's drop first, then VGND's on the rails between, so the end shows both
+    var av = clamp01((u - IR_V0) / (IR_V1 - IR_V0)), ag = clamp01((u - IR_G0) / (IR_G1 - IR_G0));
+    if (pos > S.IR) { av = 1; ag = 1; }
     if (av + ag <= 0.01) return;
     ctx.globalAlpha = Math.max(av, ag) * d; ctx.fillStyle = C.veil;
     ctx.beginPath(); rect(CORE[0], CORE[1], CORE[2], CORE[3]); ctx.fill();
@@ -1901,14 +1901,17 @@ function start(D) {
       ctx.globalAlpha = pos > S.GDS ? only(S.GDS, 0) : clamp01((ug - GDS_CAM - 0.06 * ip - 0.03) / 0.04) * clamp01((GDS_CAM + 0.06 * 7 - ug) / 0.04 + (pos > S.GDS ? 1 : 0));
       label("transistor: poly crossing diffusion", sx(GFOCUS.x), sy(GFOCUS.y), { dx: 22, dy: -50 });
     }
+    // each net's worst drop, from when its drop is drawn. The two points may be a row apart, so
+    // each box sits close by in a different direction: the higher point's above to the left, the
+    // other's level with its point, to the left
     if (pos > S.STA && pos <= S.IR + 0.06) {
-      var ui = within(pos, S.IR), net = pos > S.IR ? "VGND" : irNetAt(ui), wv = irWorst(net);
-      if (ui > IR_V0 + 0.05 || pos > S.IR) {
-        ctx.globalAlpha = pos > S.IR ? only(S.IR, 0) : clamp01((ui - IR_V0 - 0.05) / 0.05) * (net === "VPWR" ? clamp01((IR_G0 - ui) / 0.04) : clamp01((ui - IR_G0) / 0.06));
-        label("worst " + net + " drop: " + fmt(IR.worst[net === "VPWR" ? 0 : 1], 1) + " µV", sx(wv.x), sy(wv.y), { dx: -18, dy: -44, align: "right" });
-        var stp = PDN.stripes.filter(function (q) { return q[0] === net; })[1];
-        label(net + " stripe: power enters the rails here", sx(stp[2]), sy((stp[3] + stp[4]) / 2), { dx: 18, dy: -30 });
-      }
+      var ui = within(pos, S.IR), upper = irWorst("VPWR").y >= irWorst("VGND").y ? "VPWR" : "VGND";
+      [["VPWR", 0, IR_V0], ["VGND", 1, IR_G0]].forEach(function (q) {
+        if (ui <= q[2] + 0.05 && pos <= S.IR) return;
+        var wv = irWorst(q[0]);
+        ctx.globalAlpha = pos > S.IR ? only(S.IR, 0) : clamp01((ui - q[2] - 0.05) / 0.05);
+        label("worst " + q[0] + " drop: " + fmt(IR.worst[q[1]], 1) + " µV", sx(wv.x), sy(wv.y), { dx: -18, dy: q[0] === upper ? -32 : -10, align: "right" });
+      });
     }
     if (pos > S.FILL && pos <= S.STA + 0.06) {
       var us = within(pos, S.STA), ce = function (c) { return [sx(SX[c] + SWD[c] / 2), sy(SY[c] + RH / 2)]; };
@@ -2084,6 +2087,7 @@ function start(D) {
     }
     if (k === S.IR) {
       if (u < IR_V0) return "<b>Supply voltages</b> at each cell (" + IR.corner.split("_")[1] + " corner)";
+      if (u >= IR_G1) return "<b>Both nets</b>: worst " + fmt(IR.worst[0], 1) + " µV on VPWR, " + fmt(IR.worst[1], 1) + " µV on VGND";
       var nt = irNetAt(u), j = nt === "VPWR" ? 0 : 1;
       return "<b>" + nt + "</b>: worst " + fmt(IR.worst[j], 1) + " µV, average " + fmt(IR.average[j], 1) + " µV";
     }
