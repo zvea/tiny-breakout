@@ -808,6 +808,50 @@ function start(D) {
     { l: "via3", c: "cut", a: 0.9, what: "via3: cuts between met3 and met4" },
     { l: "met4", c: "met4", o: 1, what: "met4: power stripes, pins and long wires" }];
   var GPATH = null, GFOCUS = null;
+  // a point on one of a layer's shapes near the close-up's centre, found once (by the layer's
+  // path, outward from the centre on screen) and kept in world units
+  // the close-up's flip-flop cell, in world units: [x0, y0, x1, y1]
+  function gdsCell() {
+    if (!GFOCUS || GFOCUS.cell === undefined) return null;
+    var c = GFOCUS.cell, x0 = K.ant.xy[2 * c], y0 = K.ant.xy[2 * c + 1];
+    return [x0, y0, x0 + WT[K.ant.ty[c]], y0 + RH];
+  }
+  // a point on one of a layer's shapes, outward from the flip-flop's centre: inside the cell if
+  // the layer has a shape there, else the nearest in view
+  function inLayer(g, px, py) { return [g.l].concat(g.also || []).some(function (l) { return ctx.isPointInPath(GPATH[l], px * DPR, py * DPR); }); }
+  function gdsShapeNear(g) {
+    if (g.near !== undefined) return g.near;
+    var fr = gdsCell(), cx = fr ? sx((fr[0] + fr[2]) / 2) : W / 2, cy = fr ? sy((fr[1] + fr[3]) / 2) : H / 2, found = null;
+    worldTransform();
+    if (g.l === "nwell" && fr) {
+      // the well spans the row, so the middle of the part of it inside the cell
+      var n = 0, mx = 0, my = 0;
+      for (var gy = sy(fr[3]); gy <= sy(fr[1]); gy += 3) for (var gx = sx(fr[0]); gx <= sx(fr[2]); gx += 3) if (inLayer(g, gx, gy)) { n++; mx += gx; my += gy; }
+      screenTransform();
+      if (n) g.near = [wx(mx / n), wy(my / n)];
+      return n ? g.near : null;
+    }
+    for (var pass = fr ? 0 : 1; pass < 2 && !found; pass++)
+    for (var r = 0, rmax = Math.hypot(W, H); r <= rmax && !found; r += r < 240 ? 6 : 16) {
+      var n = r ? Math.max(8, Math.round(2 * Math.PI * r / (r < 240 ? 8 : 16))) : 1;
+      for (var j = 0; j < n && !found; j++) {
+        var px = cx + r * Math.cos(2 * Math.PI * j / n), py = cy + r * Math.sin(2 * Math.PI * j / n);
+        if (px < 0 || px > W || py < legendH || py > H - footH) continue;
+        if (pass === 0 && (px < sx(fr[0]) || px > sx(fr[2]) || py < sy(fr[3]) || py > sy(fr[1]))) continue;
+        if (inLayer(g, px, py)) found = [px, py];
+      }
+    }
+    // then to the middle of the shape found: across, then down, twice
+    for (var it = 0; found && it < 2; it++) {
+      var span = function (dx, dy) { var k = 0; while (k < 400 && inLayer(g, found[0] + dx * (k + 1), found[1] + dy * (k + 1))) k++; return k; };
+      var l = span(-1, 0), rr = span(1, 0); found = [found[0] + (rr - l) / 2, found[1]];
+      var up = span(0, -1), dn = span(0, 1); found = [found[0], found[1] + (dn - up) / 2];
+    }
+    if (found) found = [wx(found[0]), wy(found[1])];
+    screenTransform();
+    if (found) g.near = found;   // if none is in view now, try again later
+    return found;
+  }
   function gdsBuild() {
     if (GPATH) return;
     GPATH = {};
@@ -832,9 +876,18 @@ function start(D) {
         var a = tr(r[1], r[2], rot, mir), c = tr(r[3], r[4], rot, mir);
         GPATH[r[0]].rect(dx + Math.min(a[0], c[0]), dy + Math.min(a[1], c[1]), Math.abs(c[0] - a[0]), Math.abs(c[1] - a[1]));
       });
-      // the flip-flop nearest the core centre, for the close-up and the transistor callout
+      // the flip-flop for the close-up and the transistor callout: the one nearest the core
+      // centre whose close-up (gdsCloseUp: 14 µm wide, centred 3 µm right of it) takes in a power
+      // stripe beside the cell, not over it, so that every layer is in view (met4, and via3 in
+      // the stripe's via stacks); failing that, the nearest
       if (/^dfxtp/.test(GD.masters[mi])) {
-        var dd = Math.hypot(dx - fx, dy - fy);
+        var bx0 = Infinity, bx1 = -Infinity;
+        masters[mi].forEach(function (r) { var a = tr(r[1], r[2], rot, mir), c = tr(r[3], r[4], rot, mir); bx0 = Math.min(bx0, a[0], c[0]); bx1 = Math.max(bx1, a[0], c[0]); });
+        bx0 += dx; bx1 += dx;
+        var vc = dx + 3 * U, beside = PDN.stripes.some(function (st) {
+          return Math.abs(st[2] - vc) <= 6 * U && (st[2] + st[5] / 2 < bx0 - 0.3 * U || st[2] - st[5] / 2 > bx1 + 0.3 * U);
+        });
+        var dd = Math.hypot(dx - fx, dy - fy) + (beside ? 0 : 1e9);
         if (!best || dd < best.d) best = { d: dd, mi: mi, x: dx, y: dy, rot: rot, mir: mir };
       }
     }
@@ -869,8 +922,14 @@ function start(D) {
     PINS.forEach(function (q) { GPATH.met4.rect(q.x0, q.y0, q.x1 - q.x0, q.y1 - q.y0); });
   }
   // the step glides in to a flip-flop over the cell boxes, then builds the layers
-  var GDS_MS = 12000, GDS_GLIDE = 1500, GDS_CAM = GDS_GLIDE / GDS_MS;
-  function gdsLayerAt(u, i) { return clamp01((u - GDS_CAM - 0.06 * i) / 0.06); }
+  // The glide to the close-up (GDS_CAM of the step); a pause to name the flip-flop; then each
+  // layer in a slot of GDS_L, long enough to read its callout, fading in over the first part of
+  // it (GDS_IN); then a short hold.
+  var GDS_GLIDE = 1500, GDS_FF_MS = 2000, GDS_LAYER_MS = 3000, GDS_IN_MS = 900, GDS_END_MS = 1500;
+  var GDS_MS = GDS_GLIDE + GDS_FF_MS + GDS_ORDER.length * GDS_LAYER_MS + GDS_END_MS;
+  var GDS_CAM = GDS_GLIDE / GDS_MS, GDS_START = (GDS_GLIDE + GDS_FF_MS) / GDS_MS, GDS_L = GDS_LAYER_MS / GDS_MS, GDS_IN = GDS_IN_MS / GDS_MS;
+  var GDS_Q = 250 / GDS_MS;   // the quick fades: callouts, and the veil under the layer named
+  function gdsLayerAt(u, i) { return clamp01((u - GDS_START - GDS_L * i) / GDS_IN); }
 
   // the pins this design leaves unconnected (from the routed DEF: their nets have no wiring)
   var UNUSED = {};
@@ -903,7 +962,7 @@ function start(D) {
   // how much of step k the change of focus takes: about FOCUS_MS, or a quarter of a short step
   // (GDS sets its own, to match its camera move)
   var FOCUS_MS = 800, DIMIN = {};
-  DIMIN[S.GDS] = 0.08;
+  DIMIN[S.GDS] = 960 / GDS_MS;
   function focusFade(k) { return DIMIN[k] || Math.min(0.25, FOCUS_MS / stepDur(k)); }
   function focusOf(k, g) { return g === "die" || (FOCUS[k] || []).indexOf(g) >= 0 ? 1 : (STEPDIM[k] || DIM); }
   // the step each group first shows on (from the legend): there it starts at that step's focus,
@@ -1077,7 +1136,7 @@ function start(D) {
       "<p>The layers build up here from the substrate up: the n-well, diffusion, poly, contacts and li1 inside the cells, then the metals and the vias between them. Each standard cell's layout is stored once and placed by reference: " + n(GD.masters.length) + " masters, " + n(u16len(GD.insts) / 6) + " instances, with the routing (" + n(GD.topcount.li1) + " li1 pads, " + n(GD.topcount.met1 + GD.topcount.met2 + GD.topcount.met3 + GD.topcount.met4) + " metal shapes and " + n(GD.topcount.mcon + GD.topcount.via + GD.topcount.via2 + GD.topcount.via3) + " via cuts) as shapes of the top cell.</p>" +
       "<h3>How it works</h3>" +
       "<p>Two checks remain. <b>DRC</b>: Magic checks this GDS against every layer's design rules. <b>LVS</b> (layout versus schematic): Magic extracts a netlist from the layout and Netgen compares it with the synthesised one. LibreLane extracts from the DEF, with each standard cell as a black box, so LVS here checks how the cells are connected, not the transistors inside them. Both are clean.</p>",
-    note: "Zoomed in to show transistors; fit (0) shows the whole die. Metals are drawn as outlines, so the layers beneath show through. The cells' shapes are from their GDS; the routing and vias are drawn from the routed DEF and the via definitions, the same geometry stream-out merges." };
+    note: "Zoomed in to show transistors; fit (0) shows the whole die. Metals are drawn translucent, so the layers beneath show through. The cells' shapes are from their GDS; the routing and vias are drawn from the routed DEF and the via definitions, the same geometry stream-out merges." };
   function u16len(b64) { return Math.floor(b64.length * 3 / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0); }
   function runtimeText(t) {
     var p = t.split(":"), h = +p[0], m = +p[1], s = Math.round(parseFloat(p[2]));
@@ -1521,11 +1580,15 @@ function start(D) {
     var u = within(pos, S.GDS), moving = performance.now() - camMovedAt < 150;
     if (moving) { clearTimeout(gdsSharpen); gdsSharpen = setTimeout(requestDraw, 160); }
     // the die covers the cell boxes as the glide in ends
-    ctx.globalAlpha = pos > S.GDS ? 1 : clamp01((u - GDS_CAM + 0.03) / 0.03); ctx.fillStyle = C.die;
+    ctx.globalAlpha = pos > S.GDS ? 1 : clamp01((u - GDS_CAM + 360 / GDS_MS) / (360 / GDS_MS)); ctx.fillStyle = C.die;
     ctx.beginPath(); rect(DIE[0], DIE[1], DIE[2], DIE[3]); ctx.fill();
     var alphas = GDS_ORDER.map(function (g, i) { return pos > S.GDS ? 1 : gdsLayerAt(u, i); });
-    var done = 0;
-    while (done < alphas.length && alphas[done] >= 0.999) done++;
+    // The layer in its slot (cur) is kept out of the finished layers' image, so the layers before
+    // it can be dimmed under a veil while it shows at its own colour; just before the next layer
+    // it dims too (r), and after the last everything undims (v).
+    var cur = pos > S.GDS ? -1 : Math.floor((u - GDS_START) / GDS_L), done = 0;
+    if (cur >= alphas.length) cur = -1;
+    while (done < alphas.length && alphas[done] >= 0.999 && done !== cur) done++;
     if (done > 0) {
       if (sameView(gdsBase) && gdsBase.done <= done) {
         for (var i = gdsBase.done; i < done; i++) {
@@ -1542,10 +1605,20 @@ function start(D) {
       }
       blit(gdsBase.canvas, gdsBase.at, 1);
     }
+    var r = 0, v = 0, last = alphas.length - 1;
+    if (cur >= 0) {
+      var t0 = GDS_START + GDS_L * cur;
+      r = cur < last ? clamp01((u - (t0 + GDS_L - GDS_Q)) / GDS_Q) : 0;
+      v = cur === 0 ? r : cur < last ? 1 : clamp01((t0 + GDS_L - u) / GDS_Q);
+    }
     for (var k in gdsLayers) if (+k < done) delete gdsLayers[k];
+    if (cur >= 0 && (!sameView(gdsLayers[cur]) && !(moving && movable(gdsLayers[cur])))) gdsLayers[cur] = layerImage(cur, gdsLayers[cur]);
+    // dimming the layer in its slot: it goes under the veil as much as it leaves the top
+    if (r > 0.01) blit(gdsLayers[cur].canvas, gdsLayers[cur].at, r);
+    if (v > 0.01) { screenTransform(); ctx.globalAlpha = 0.7 * v; ctx.fillStyle = C.veil; ctx.beginPath(); rect(DIE[0], DIE[1], DIE[2], DIE[3]); ctx.fill(); }
     for (var j = done; j < alphas.length; j++) if (alphas[j] > 0.01) {
       if (!sameView(gdsLayers[j]) && !(moving && movable(gdsLayers[j]))) gdsLayers[j] = layerImage(j, gdsLayers[j]);
-      blit(gdsLayers[j].canvas, gdsLayers[j].at, alphas[j]);
+      blit(gdsLayers[j].canvas, gdsLayers[j].at, j === cur ? alphas[j] * (1 - r) : alphas[j]);
       if (j + 1 < alphas.length && !moving && !sameView(gdsLayers[j + 1]) && !gdsPre) {
         var nx = j + 1;
         gdsPre = setTimeout(function () { gdsPre = null; if (!sameView(gdsLayers[nx])) gdsLayers[nx] = layerImage(nx, gdsLayers[nx]); }, 0);
@@ -1557,8 +1630,8 @@ function start(D) {
   function gdsFill(g) {
     ctx.fillStyle = C[g.c];
     if (g.o) {
-      // metals as outlines over a faint fill, so the layers beneath show through
-      ctx.globalAlpha = 0.14; ctx.fill(GPATH[g.l]);
+      // metals as outlines over a translucent fill, so the layers beneath still show through
+      ctx.globalAlpha = 0.28; ctx.fill(GPATH[g.l]);
       ctx.globalAlpha = 0.95; ctx.strokeStyle = C[g.c]; ctx.lineWidth = 1.1 / cam.s; ctx.stroke(GPATH[g.l]);
     } else {
       ctx.globalAlpha = g.a; ctx.fill(GPATH[g.l]);
@@ -1889,17 +1962,36 @@ function start(D) {
       if (DIODE >= 0 && pos > S.GRT + 0.4) { var qdi = centre(K.ant, DIODE); label("antenna diode", qdi[0], qdi[1], { dx: -18, dy: 34, align: "right" }); }
     }
     if (pos > S.ANT && pos < S.DRT) exBeingBuilt(drtT(), WEX0, WEXSLOT, 0.15, true);
-    if (pos > S.IR && GFOCUS && GFOCUS.cell !== undefined) {
-      var fc = GFOCUS.cell, fx0 = K.ant.xy[2 * fc], fy0 = K.ant.xy[2 * fc + 1], fw = WT[K.ant.ty[fc]];
-      ctx.globalAlpha = clamp01(within(pos, S.GDS) / 0.04);
+    // The close-up's flip-flop: its cell outlined throughout, named from the glide until the
+    // first layer's callout. Then each layer is named in its slot, at the middle of one of its
+    // shapes in (or near) the cell, poly at the transistor, and gone when the next begins; the
+    // points are all near the cell's centre, so the boxes stay near each other. A layer with
+    // nothing in view gets a box alone, just above the cell.
+    var fr = pos > S.IR && pos <= S.GDS ? gdsCell() : null;
+    if (fr) {
+      var uf = within(pos, S.GDS), bxc = sx((fr[0] + fr[2]) / 2), byb = sy(fr[3]) - 8;
+      var above = function (text, at, al) {
+        if (al <= 0.01) return;   // (a hidden box would still take the place)
+        ctx.globalAlpha = al;
+        if (at) label(text, sx(at[0]), sy(at[1]), { dx: 22, dy: -50 });
+        else label(text, bxc, byb - 10, { box: true });
+      };
+      // its own colour over the die while its callout shows, then only its outline
+      var ffa = clamp01(uf / 0.04) * clamp01((GDS_START - uf) / GDS_Q);
+      if (ffa > 0.01) {
+        ctx.globalAlpha = ffa; ctx.fillStyle = C.ff; ctx.strokeStyle = shade(C.ff, 0.7); ctx.lineWidth = 1;
+        ctx.beginPath(); rect(fr[0], fr[1], fr[2], fr[3]); ctx.fill(); ctx.stroke();
+      }
+      ctx.globalAlpha = clamp01(uf / 0.04);
       ctx.strokeStyle = C.pick; ctx.lineWidth = 1; ctx.setLineDash([5, 3]);
-      ctx.beginPath(); rect(fx0, fy0, fx0 + fw, fy0 + RH); ctx.stroke(); ctx.setLineDash([]);
-      label("flip-flop (" + shortName(D.types[K.ant.ty[fc]]) + ")", sx(fx0 + fw / 2), sy(fy0 + RH / 2), { dx: -24, dy: -60, align: "right" });
-    }
-    if (pos > S.IR && GFOCUS) {
-      var ug = within(pos, S.GDS), ip = 2;   // after poly appears, until the metals cover it
-      ctx.globalAlpha = pos > S.GDS ? only(S.GDS, 0) : clamp01((ug - GDS_CAM - 0.06 * ip - 0.03) / 0.04) * clamp01((GDS_CAM + 0.06 * 7 - ug) / 0.04 + (pos > S.GDS ? 1 : 0));
-      label("transistor: poly crossing diffusion", sx(GFOCUS.x), sy(GFOCUS.y), { dx: 22, dy: -50 });
+      ctx.beginPath(); rect(fr[0], fr[1], fr[2], fr[3]); ctx.stroke(); ctx.setLineDash([]);
+      above("flip-flop (" + shortName(D.types[K.ant.ty[GFOCUS.cell]]) + ")", [(fr[0] + fr[2]) / 2, (fr[1] + fr[3]) / 2],
+            ffa);
+      if (GPATH) GDS_ORDER.forEach(function (g, i) {
+        var t0 = GDS_START + GDS_L * i, al = clamp01((uf - t0) / GDS_Q) * clamp01((t0 + GDS_L - uf) / GDS_Q);
+        if (al <= 0.01) return;
+        above(g.what + (g.l !== "poly" && !gdsShapeNear(g) ? " (none in this view)" : ""), g.l === "poly" ? [GFOCUS.x, GFOCUS.y] : gdsShapeNear(g), al);
+      });
     }
     // each net's worst drop, from when its drop is drawn. The two points may be a row apart, so
     // each box sits close by in a different direction: the higher point's above to the left, the
@@ -2080,10 +2172,10 @@ function start(D) {
     }
     if (k === S.FILL) return u < 1 ? "<b>Filling</b>" : "<b>" + n(FILL.length) + "</b> filler cells";
     if (k === S.GDS) {
-      if (u < GDS_CAM) return "<b>Stream-out</b>: every shape on every layer";
+      if (u < GDS_START) return "<b>Stream-out</b>: every shape on every layer";
       var gi2 = 0;
       for (var q = 0; q < GDS_ORDER.length; q++) if (gdsLayerAt(u, q) > 0) gi2 = q;
-      return u >= GDS_CAM + 0.06 * GDS_ORDER.length ? "<b>All layers</b>: DRC and LVS clean" : "<b>" + GDS_ORDER[gi2].what.replace(":", "</b>:");
+      return u >= GDS_START + GDS_L * GDS_ORDER.length ? "<b>All layers</b>: DRC and LVS clean" : "<b>" + GDS_ORDER[gi2].what.replace(":", "</b>:");
     }
     if (k === S.IR) {
       if (u < IR_V0) return "<b>Supply voltages</b> at each cell (" + IR.corner.split("_")[1] + " corner)";
