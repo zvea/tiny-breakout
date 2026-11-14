@@ -1672,8 +1672,9 @@ function start(D) {
     if (cur >= alphas.length) cur = -1;
     while (done < alphas.length && alphas[done] >= 0.999 && done !== cur) done++;
     var all = done === alphas.length, fv = all ? fitView() : null;
-    // with every layer in, playing or gliding, and not yet at the whole die: draw that ahead
-    if (all && target === S.GDS && (anim || camAnim) && !nearView(viewNow(), fv) && !(gdsEnd && gdsEnd.at.key === fv.key) && !gdsEndPre)
+    // with every layer in, playing, gliding or scrubbed into the glide out, and not yet at the
+    // whole die: draw that ahead
+    if (all && target === S.GDS && (anim || camAnim || (u >= GDS_OUTAT && u < 1)) && !nearView(viewNow(), fv) && !(gdsEnd && gdsEnd.at.key === fv.key) && !gdsEndPre)
       gdsEndPre = setTimeout(function () { gdsEndPre = null; renderEnd(); requestDraw(); }, 0);
     if (done > 0) {
       if (sameView(gdsBase) && gdsBase.done <= done) {
@@ -2181,8 +2182,14 @@ function start(D) {
     if (to === start) { pos = to; draw(); syncReadout(); return; }
     if (from > start + 1e-9 && from < to) segs.push({ a: from, b: to, d: (to - from) * stepDur(k) });
     else { pos = start; segs.push({ a: start, b: to, d: stepDur(k) }); }
-    // GDS played from its start (entered, replayed): the glide to the close-up
+    // GDS played from its start (entered, replayed): the glide to the close-up; carried on from
+    // within a glide (after scrubbing), the rest of it
     if (k === S.GDS && pos === start) setTimeout(gdsCloseUp, 0);
+    else if (k === S.GDS) {
+      var ug = within(pos, S.GDS), cv = gdsCloseView();
+      if (ug < GDS_CAM && cv) camTo(cv.x, cv.y, cv.s, (GDS_CAM - ug) * stepDur(S.GDS));
+      else if (ug >= GDS_OUTAT) { gdsOut = true; fit((1 - ug) * stepDur(S.GDS)); }
+    }
     var t0 = performance.now();
     function tick(now) {
       var t = now - t0, acc = 0;
@@ -2216,11 +2223,21 @@ function start(D) {
   }
   function fit(ms) { camTo(fitX(), fitY(), fitS, ms === undefined ? 450 : ms); }
   // the GDS step starts by gliding to a flip-flop close up
-  function gdsCloseUp() {
+  function gdsCloseView() {
     gdsBuild();
-    if (!GFOCUS) return;
-    var wUm = 14 * U;
-    camTo(GFOCUS.ff.x + 3 * U, GFOCUS.y, Math.min(W, H * 1.6) / wUm, GDS_GLIDE);
+    return GFOCUS ? { x: GFOCUS.ff.x + 3 * U, y: GFOCUS.y, s: Math.min(W, H * 1.6) / (14 * U) } : null;
+  }
+  function gdsCloseUp() { var v = gdsCloseView(); if (v) camTo(v.x, v.y, v.s, GDS_GLIDE); }
+  // where playing has the camera at u through the step, as camTo moves it: the whole die, the
+  // glide in, the close up, the glide back out
+  function gdsCamAt(u) {
+    var f = { x: fitX(), y: fitY(), s: fitS }, c = gdsCloseView();
+    function mix(a, b, t) {
+      t = ease(clamp01(t));
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, s: Math.exp(Math.log(a.s) + (Math.log(b.s) - Math.log(a.s)) * t) };
+    }
+    if (!c) return f;
+    return u < GDS_CAM ? mix(f, c, u / GDS_CAM) : u < GDS_OUTAT ? c : mix(c, f, (u - GDS_OUTAT) / (1 - GDS_OUTAT));
   }
   // → plays the step if it can (or skips to the end of its animation if it is playing);
   // otherwise it moves on
@@ -2338,7 +2355,15 @@ function start(D) {
     goTo(target, { replay: true });
   }
   playBtn.addEventListener("click", togglePlay);
-  scrub.addEventListener("input", function () { stopAnim(); pos = target - 1 + scrub.value / 1000; draw(); syncReadout(); });
+  scrub.addEventListener("input", function () {
+    stopAnim(); pos = target - 1 + scrub.value / 1000;
+    if (target === S.GDS) {
+      // the camera goes where playing would have it then
+      var u = within(pos, S.GDS), v = gdsCamAt(u);
+      camStop(); cam.x = v.x; cam.y = v.y; cam.s = v.s; clampCam(); gdsOut = u >= GDS_OUTAT;
+    }
+    draw(); syncReadout();
+  });
 
   // ---- panel and legend ----------------------------------------------------------------------
   var track = document.getElementById("track");
