@@ -641,19 +641,17 @@ function start(D) {
     var inside = bx0 > 1 && bx0 < GNX - 2 && by0 > 0 && by0 < GNY - 2;
     if (inside && bc.nets > 0 && (!QUIET || bc.nets < QUIET.nets)) QUIET = bc;
   }
-  // A net's guides, g-cell by g-cell, as the router has them: { gx, gy, ls: the layers it has
-  // guides on there, bottom up }, from guides k0 to k1 of arr (g-cell indices, then the layer)
+  // The g-cells a net's guides cover, each once: { gx, gy }, from guides k0 to k1 of arr (g-cell
+  // indices, the end one past the last, then the layer)
   function guideCells(arr, k0, k1) {
     var at = {}, out = [];
     for (var k = k0; k < k1; k++) {
-      var b = 5 * k, l = arr[b + 4];
+      var b = 5 * k;
       for (var gx = arr[b]; gx < arr[b + 2]; gx++) for (var gy = arr[b + 1]; gy < arr[b + 3]; gy++) {
         var key = gx + "," + gy;
-        if (!at[key]) out.push(at[key] = { gx: gx, gy: gy, ls: [] });
-        if (at[key].ls.indexOf(l) < 0) at[key].ls.push(l);
+        if (!at[key]) out.push(at[key] = { gx: gx, gy: gy });
       }
     }
-    out.forEach(function (c) { c.ls.sort(); });
     return out;
   }
   // A net's guides as one faint highlight over the g-cells they cover (a: 0 to 1), whatever the
@@ -1150,7 +1148,7 @@ function start(D) {
       "<h3>How it works</h3>" +
       "<p>TritonCTS first <b>clusters</b> the sinks: " + M.cts.sinks + " flip-flops into " + M.cts.clusters + " groups of at most " + M.cts.maxsinks + " close together, each driven by one leaf buffer. It then builds an <b>H-tree</b> over the clusters: a symmetric trunk, halved at each level, that gives the branches matched lengths. " + M.cts.dummies + " <b>dummy loads</b>, clock cells whose outputs drive nothing, even out the load on the branches. The nets at the top of the tree, " + M.cts.ndr.map(function (x) { return "<code>" + x + "</code>"; }).join(" and ") + ", get a non-default rule, double spacing, to cut coupling.</p>" +
       "<p>The buffers go where the tree wants them; then legalisation makes room, moving " + M.cts.disp[2] + " cells " + fmt(M.cts.disp[3], 1) + " µm on average.</p>",
-    note: "Lines join each clock net's driver to its loads, level by level from the pin, thinner at each level down to the flip-flops." };
+    note: "Lines join each clock net's driver to its loads, level by level from the pin, thinner at each level down to the flip-flops; a dot marks each sink: a flip-flop or a dummy load." };
   STEPS[S.HOLD] = { short: "Hold", title: "Hold repair", tool: "OpenROAD <code>rsz</code>: <code>repair_timing -hold</code>", play: 6000,
     body:
       "<p>With the clock tree built, timing analysis uses real clock arrival times, so hold can be checked meaningfully. A <b>hold violation</b> is a path so fast that new data reaches a flip-flop before it has finished capturing the old: the data must stay stable for a short time after the clock edge, and skew can shorten that window further.</p>" +
@@ -1177,11 +1175,11 @@ function start(D) {
     note: "The clk net's guides from the pin to the root buffer, and the wires the check estimates from them; the diode; then the cells that lose their mirroring flip back." };
   STEPS[S.DRT] = { short: "Detail", title: "Detailed routing", tool: "OpenROAD <code>drt</code> (TritonRoute)", play: 14000,
     body:
-      "<p><b>Detailed routing</b> draws the actual wires: for every net, metal shapes on the routing tracks of each layer, joined by vias, following the net's route guides and obeying every width and spacing rule. The guide's layer is a preference: the router may move a stretch to another layer.</p>" +
+      "<p><b>Detailed routing</b> draws the actual wires: for every net, metal shapes on the routing tracks of each layer, joined by vias, following the net's route guides and obeying every width and spacing rule. The guide's layer is a preference: the router may move a stretch to another layer, and net " + ROUTE_EX[0].name + " runs " + fmt(ROUTE_EX[0].offlayer, 1) + " µm on another layer than planned.</p>" +
       "<p>The result: " + n(DR.wirelength) + " µm of wire (" + ["met1", "met2", "met3", "met4"].map(function (l) { return l + " " + n(DR.length[l]); }).join(", ") + ") and " + n(DR.nvias) + " vias. The first pass left " + n(DR.iters[0]) + " design-rule violations; " + (DR.iters.length - 1) + " more passes brought them to " + DR.iters[DR.iters.length - 1] + ". It took " + runtimeText(DR.runtime) + ", the slowest step of the flow.</p>" +
       "<h3>How it works</h3>" +
       "<p>TritonRoute first works out how to reach each pin and assigns wires to tracks, then divides the die into small regions and routes each one's nets with a maze search, many regions in parallel. Each later pass rips up and reroutes only where violations remain, raising the cost of the shapes that cause them.</p>",
-    note: "Three example nets' wires over the guides detailed routing followed, as antenna repair re-made them (the wires stay inside in plan view; net " + ROUTE_EX[0].name + " runs " + fmt(ROUTE_EX[0].offlayer, 1) + " µm on another layer than planned); then all the wiring, shown layer by layer. Vias show when zoomed in." };
+    note: "Three example nets' wires over the guides detailed routing followed, as antenna repair re-made them (the wires stay inside them in plan view); then all the wiring, shown layer by layer. Vias show when zoomed in." };
   STEPS[S.FILL] = { short: "Fill", title: "Fill insertion", tool: "OpenROAD <code>dpl</code>: <code>filler_placement</code>", play: 4000,
     body:
       "<p>Every empty site now gets a cell: " + n(FILL.length) + " of them. <b>Fill cells</b> (" + Object.keys(FILLT).filter(function (t) { return /^fill/.test(t); }).sort().map(function (t) { return "<code>" + t + "</code> × " + FILLT[t]; }).join(", ") + ") hold no transistors: they continue the wells, implants and power rails across the gaps, so every row is unbroken. Where there is room, <b>decap cells</b> (<code>decap_3</code> × " + (FILLT.decap_3 || 0) + ") go in instead: capacitors between <code>VPWR</code> and <code>VGND</code> that steady the supply when nearby cells switch.</p>" +
@@ -1465,7 +1463,7 @@ function start(D) {
         ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
       }
     }
-    // the example nets, one at a time: pins first, then their guides layer by layer
+    // the example nets, one at a time: pins first, then their guides
     ROUTE_EX.forEach(function (ex, k) {
       var t0 = EX0 + EXSLOT * k, f = (t - t0) / EXSLOT;
       if (f <= 0) return;
@@ -1501,10 +1499,11 @@ function start(D) {
   function antCells() { return ANT_GC || (ANT_GC = guideCells(GRAW, GSTART[CLKNET], GSTART[CLKNET] + GR.count[CLKNET])); }
   // The wires the check estimates from the clk net's guides, as OpenROAD builds them when there is
   // no detailed routing yet: each guide a wire on its layer from the centre of its first g-cell to
-  // the centre of its last, at the layer's default width, and a stub to each pin, here to the root
-  // buffer's centre (its input pin's place is not in the data) on li1 and to the clk pin on met4,
-  // drawn as an L, vertical then horizontal, as wires run. [layer, x, y, x, y, ...] in DBU, bottom
-  // layer first.
+  // the centre of its last, at the layer's default width (a guide one g-cell long is only a via),
+  // and a stub to each pin as an L, along x then y: to the clk pin on its layer, met4, and to the
+  // root buffer on met1, the run's lowest routing layer (RT_MIN_LAYER), since its pin is on li1
+  // below it (reached by vias). The stub ends at the buffer's centre: its input pin's place is not
+  // in the data. [layer, x, y, x, y, ...] in DBU, bottom layer first.
   var ANT_W = null;
   function antWires() {
     if (ANT_W) return ANT_W;
@@ -1517,8 +1516,8 @@ function start(D) {
       if (top < 0 || GRAW[b + 4] > ANT_W[top][0]) top = ANT_W.length - 1;
     }
     var rb = [K.ant.xy[2 * ROOTBUF] + WT[K.ant.ty[ROOTBUF]] / 2, K.ant.xy[2 * ROOTBUF + 1] + RH / 2];
-    var stub = function (l, x, y, px, py) { ANT_W.push([l, x, y, x, py, px, py]); };
-    if (li1 >= 0) stub(0, ANT_W[li1][1], ANT_W[li1][2], rb[0], rb[1]);
+    var stub = function (l, x, y, px, py) { ANT_W.push([l, x, y, px, y, px, py]); };
+    if (li1 >= 0) stub(GLAY.indexOf("met1"), ANT_W[li1][1], ANT_W[li1][2], rb[0], rb[1]);
     stub(ANT_W[top][0], ANT_W[top][3], ANT_W[top][4], (CLKPIN.x0 + CLKPIN.x1) / 2, (CLKPIN.y0 + CLKPIN.y1) / 2);
     ANT_W.sort(function (p, q) { return p[0] - q[0]; });
     return ANT_W;
@@ -1544,6 +1543,7 @@ function start(D) {
     if (a <= 0.01) return;
     drawGuideCells(antCells(), a);
     highlightCell(ROOTBUF, C[CLS[ROOTBUF]], a);
+    if (DIODE >= 0 && SA[DIODE] > 0) highlightCell(DIODE, C.diode, a * Math.min(1, SA[DIODE]));   // over the guide, in its own colour
     // the estimated wires over them, as the metal lies over the cells
     worldTransform(); ctx.lineCap = "square"; ctx.globalAlpha = a;
     antWires().forEach(function (w) {
@@ -1873,9 +1873,11 @@ function start(D) {
       });
       ctx.stroke();
     });
-    // a dot where a line ends at a sink, a flip-flop or a dummy load (its clock pin), as the line
-    // arrives, so a line ending there is told from one passing over it
+    // a dot where a line ends at a sink, a flip-flop or a dummy load, as the line arrives, so a
+    // line ending there is told from one passing over it; sized to the rows on screen, so on a
+    // small screen the dots do not bury the flip-flops
     ctx.fillStyle = dimCol(C.clkpin, DIMC.clknet);
+    var dr = Math.max(1, Math.min(2.5, 0.15 * RH * cam.s));
     CLOCK_DRAW.forEach(function (c) {
       var g = pos >= S.CTS ? 1 : ease(clamp01((t - lvStart(c.lv)) / 0.22));
       if (g < 0.95) return;
@@ -1884,7 +1886,7 @@ function start(D) {
       c.loads.forEach(function (l) {
         if (CLS[l] !== "ff" && !(CLS[l] === "clock" && !DRIVES[l])) return;
         var x = sx(SX[l] + SWD[l] / 2), y = sy(SY[l] + RH / 2);
-        ctx.moveTo(x + 2.5, y); ctx.arc(x, y, 2.5, 0, 7);
+        ctx.moveTo(x + dr, y); ctx.arc(x, y, dr, 0, 7);
       });
       ctx.fill();
     });
@@ -2166,7 +2168,11 @@ function start(D) {
       var bx0 = Math.round(sx(gX(GCELL_PICK[0]))) + 0.5, bx1 = Math.round(sx(gX(GCELL_PICK[0] + 1))) + 0.5;
       var by0 = Math.round(sy(gY(GCELL_PICK[1] + 1))) + 0.5, by1 = Math.round(sy(gY(GCELL_PICK[1]))) + 0.5;
       ctx.strokeStyle = C.pick; ctx.lineWidth = 3; ctx.strokeRect(bx0, by0, bx1 - bx0, by1 - by0);
-      label("g-cell: " + fmt(um(GG)) + " × " + fmt(um(GG)) + " µm", (bx0 + bx1) / 2, (by0 + by1) / 2, { dx: 18, dy: 34 });
+      // clear of the cell, zoomed in too: beyond its edges if nothing nearer is
+      var hw = (bx1 - bx0) / 2, hh = (by1 - by0) / 2;
+      label("g-cell: " + fmt(um(GG)) + " × " + fmt(um(GG)) + " µm", (bx0 + bx1) / 2, (by0 + by1) / 2, { dx: 18, dy: 34,
+        avoid: function (b) { return b[0] < bx1 + 2 && bx0 - 2 < b[2] && b[1] < by1 + 2 && by0 - 2 < b[3]; },
+        more: [[18, hh + 10, "left"], [18, -hh - 30, "left"], [hw + 10, -10, "left"], [-hw - 10, -10, "right"]] });
     }
     if (pos > S.HOLD && pos < S.GRT) exBeingBuilt(routeT(), EX0, EXSLOT, 0.18);
     if ((a = only(S.GRT, 0.97) * clamp01((routeT() - DEM0 - 0.1) / 0.1)) > 0.01) {
@@ -2513,13 +2519,13 @@ function start(D) {
     { from: S.REPAIR, label: "Tie cell", c: "tie", g: "tie" },
     { from: S.CTS, label: "Clock buffer or dummy", c: "clock", g: "clock" },
     { from: S.CTS, to: S.CTS, label: "Clock net", c: "clknet", g: "clknet", line: true },
-    { from: S.CTS, to: S.CTS, label: "Clock pin (flip-flop or dummy)", c: "clkpin", g: "clknet", dot: true },
-    { from: S.HOLD, label: "Delay cell (hold)", c: "hold", g: "hold" },
-    { from: S.GRT, to: S.DRT, label: "Route guide", c: "guide", g: "guide" },
-    { from: S.GRT, to: S.GRT, label: "Nets with guides per g-cell, " + MINALL + "–" + MAXALL, c: "hot", g: "route", ramp: true },
-    { from: S.ANT, label: "Antenna diode", c: "diode", g: "diode" }
-  ].concat(GLAY.map(function (l) { return { from: S.ANT, label: l, c: l, g: l === "li1" ? "route" : "wire", layer: true }; }))
-   .concat([{ from: S.DRT, label: "Via (zoom in)", c: "wvia", g: "wire" },
+    { from: S.CTS, to: S.CTS, label: "Clock sink (flip-flop or dummy)", c: "clkpin", g: "clknet", dot: true },
+    { from: S.HOLD, label: "Delay cell (hold)", c: "hold", g: "hold" }
+  ].concat(GLAY.map(function (l) { return { from: l === "li1" ? S.DRT : S.ANT, label: l, c: l, g: l === "li1" ? "route" : "wire", layer: true }; }))
+   .concat([{ from: S.GRT, to: S.DRT, label: "Route guide", c: "guide", g: "guide" },
+            { from: S.GRT, to: S.GRT, label: "Nets with guides per g-cell, " + MINALL + "–" + MAXALL, c: "hot", g: "route", ramp: true },
+            { from: S.ANT, label: "Antenna diode", c: "diode", g: "diode" },
+            { from: S.DRT, label: "Via (zoom in)", c: "wvia", g: "wire" },
             { from: S.FILL, label: "Decap cell", c: "decap", g: "decap" },
             { from: S.FILL, label: "Fill cell", c: "fill", g: "fill", hatch: true },
             { from: S.STA, to: S.STA, label: "Worst flip-flop to flip-flop setup path", c: "setup", g: "path", line: true },
