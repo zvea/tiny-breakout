@@ -1666,8 +1666,15 @@ function start(D) {
         for (var j = 0; j < texts.length; j++) if (ctx.measureText(texts[j]).width <= b - a + 6) { ctx.fillText(texts[j], (a + b) / 2, yb - 5); return; }
       };
       GROUPS.forEach(function (g) { if (g.n > 1) bracket(sx(g.x0), sx(g.x1), [g.bus + "[" + (g.n - 1) + ":0]", g.bus]); });
-      var singles = GROUPS.filter(function (g) { return g.n === 1; });
-      if (singles.length) bracket(sx(singles[0].x0), sx(singles[singles.length - 1].x1), [singles.map(function (g) { return g.bus; }).join(" ")]);
+      // single pins are unrelated signals, not a bus: each gets its name upright over the pin, as
+      // every pin does once zoomed in (a size smaller where the pins are close)
+      ctx.font = "500 " + (cam.s * PINPITCH < 13 ? 10 : 11) + "px " + C.font;
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      GROUPS.forEach(function (g) {
+        if (g.n !== 1) return;
+        ctx.save(); ctx.translate(sx((g.x0 + g.x1) / 2), sy(DIE[3]) - 6); ctx.rotate(-Math.PI / 2);
+        ctx.fillText(g.bus, 0, 0); ctx.restore();
+      });
     }
     ctx.globalAlpha = 1;
   }
