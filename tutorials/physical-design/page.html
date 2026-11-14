@@ -1975,7 +1975,7 @@ function start(D) {
       if (DIODE >= 0 && pos > S.GRT + 0.4) { var qdi = centre(K.ant, DIODE); label("antenna diode", qdi[0], qdi[1], { dx: -18, dy: 34, align: "right" }); }
     }
     if (pos > S.ANT && pos < S.DRT) exBeingBuilt(drtT(), WEX0, WEXSLOT, 0.15, true);
-    // The close-up's flip-flop: its cell outlined throughout, named from the glide until the
+    // The close-up's flip-flop: its cell outlined until the end, named from the glide until the
     // first layer's callout. Then each layer is named in its slot, at the middle of one of its
     // shapes in (or near) the cell, poly at the transistor, and gone when the next begins; the
     // points are all near the cell's centre, so the boxes stay near each other. A layer with
@@ -1995,7 +1995,10 @@ function start(D) {
         ctx.globalAlpha = ffa; ctx.fillStyle = C.ff; ctx.strokeStyle = shade(C.ff, 0.7); ctx.lineWidth = 1;
         ctx.beginPath(); rect(fr[0], fr[1], fr[2], fr[3]); ctx.fill(); ctx.stroke();
       }
-      ctx.globalAlpha = clamp01(uf / 0.04);
+      // the outline stays through the layers and goes with the final undimming, leaving the
+      // finished layout whole
+      var gEnd = GDS_START + GDS_L * GDS_ORDER.length;
+      ctx.globalAlpha = clamp01(uf / 0.04) * clamp01((gEnd - uf) / GDS_Q);
       ctx.strokeStyle = C.pick; ctx.lineWidth = 1; ctx.setLineDash([5, 3]);
       ctx.beginPath(); rect(fr[0], fr[1], fr[2], fr[3]); ctx.stroke(); ctx.setLineDash([]);
       above("flip-flop (" + shortName(D.types[K.ant.ty[GFOCUS.cell]]) + ")", [(fr[0] + fr[2]) / 2, (fr[1] + fr[3]) / 2],
