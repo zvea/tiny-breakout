@@ -139,7 +139,6 @@ button { font: inherit; color: inherit; }
 }
 .legend:empty { display: none; }
 .legend li { display: flex; align-items: center; gap: 7px; }
-.legend li.gone { visibility: hidden; }
 .legend li.dimmed { color: var(--muted); }
 .legend i { flex: none; width: 14px; height: 10px; border: 1px solid var(--swatch-edge); border-radius: 1px; transition: opacity 0.6s; }
 .legend li.dimmed i { filter: grayscale(1); opacity: 0.4; }
@@ -261,7 +260,7 @@ h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text
   .view { touch-action: pan-y; }
   aside { border-left: 0; border-top: 1px solid var(--rule); overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .legend { flex-wrap: nowrap; overflow-x: auto; right: 10px; pointer-events: auto; scrollbar-width: none; }
-  .legend li.dimmed, .legend li.gone { display: none; }
+  .legend li.dimmed { display: none; }
   .hint { display: none; }
   .foot { flex-wrap: wrap; }
   .readout { flex-basis: 100%; max-width: none; margin-left: 0; }
@@ -1558,8 +1557,10 @@ function start(D) {
   // Signoff timing: each path's signal travels at its real arrival times; a net's wires from driver
   // to the next cell light up when the signal reaches the driver, a cell when it reaches its input
   function drawTiming() {
-    if (pos <= S.FILL) return;
-    var u = within(pos, S.STA), d = DIMC.path;
+    // only on their own step: they fade as the next begins, with the change of focus
+    var out = focusFade(S.IR);
+    if (pos <= S.FILL || pos >= S.STA + out) return;
+    var u = within(pos, S.STA), d = DIMC.path * (pos > S.STA ? clamp01((S.STA + out - pos) / out) : 1);
     if (d <= 0.01) return;
     // the paths' cells first, then their wires over them, as the metal lies over the cells
     var lw = Math.max(2.6 / cam.s, 400);
@@ -2319,6 +2320,7 @@ function start(D) {
     b.addEventListener("click", function () { goTo(i); });
     track.appendChild(b);
   });
+  // from: the step an entry first shows on; to: its last, for what is on the die for one step only
   var LEGEND = [
     { from: S.DIE, label: "Die area", c: "die", g: "die" },
     { from: S.FLOOR, label: "Core area", c: "core", g: "rows" },
@@ -2343,9 +2345,9 @@ function start(D) {
             { from: S.DRT, label: "Via (zoom in)", c: "wvia", g: "wire" },
             { from: S.FILL, label: "Decap cell", c: "decap", g: "decap" },
             { from: S.FILL, label: "Fill cell", c: "fill", g: "fill", hatch: true },
-            { from: S.STA, label: "Worst flip-flop to flip-flop setup path", c: "setup", g: "path", line: true },
-            { from: S.STA, label: "Worst hold path", c: "holdp", g: "path", line: true },
-            { from: S.IR, label: "IR drop, 0–" + Math.round(IRMAX) + " µV", c: "ir", g: "ir", irramp: true },
+            { from: S.STA, to: S.STA, label: "Worst flip-flop to flip-flop setup path", c: "setup", g: "path", line: true },
+            { from: S.STA, to: S.STA, label: "Worst hold path", c: "holdp", g: "path", line: true },
+            { from: S.IR, to: S.IR, label: "IR drop, 0–" + Math.round(IRMAX) + " µV", c: "ir", g: "ir", irramp: true },
             { from: S.GDS, label: "n-well", c: "nwell", g: "gds" },
             { from: S.GDS, label: "Diffusion", c: "diff", g: "gds" },
             { from: S.GDS, label: "Tap diffusion", c: "gtap", g: "gds" },
@@ -2360,7 +2362,7 @@ function start(D) {
   function legendItems(k, all) {
     return LEGEND.filter(function (l) { return l.from <= k && (all || !(l.to < k)); }).map(function (l) {
       var g = legendGroup(l, k);
-      return { l: l, gone: !all && l.to !== undefined && l.to < k, dimmed: !all && (focusOf(k, g) < 1 || (k === S.GDS && g !== "gds")) };
+      return { l: l, dimmed: !all && (focusOf(k, g) < 1 || (k === S.GDS && g !== "gds")) };
     });
   }
   // a swatch's background, for the legend and the tips: { c: colour token, hatch, ramp, irramp }
@@ -2376,7 +2378,7 @@ function start(D) {
       if (l.line) sw = '<i class="line" style="border-color:var(--' + l.c + ')"></i>';
       else if (l.layer) sw = '<i class="lay" style="--c:var(--' + l.c + ')"></i>';
       else sw = '<i style="background:' + swatchBg(l) + '"></i>';
-      return "<li" + (it.gone || it.dimmed ? ' class="' + (it.gone ? "gone" : "dimmed") + '"' : "") + ">" + sw + l.label + "</li>";
+      return "<li" + (it.dimmed ? ' class="dimmed"' : "") + ">" + sw + l.label + "</li>";
     }).join("");
   }
   function updateLegend() {
@@ -2385,7 +2387,7 @@ function start(D) {
     // the same entries (by name) just change state, so their swatches can fade; otherwise rebuilt
     var same = el.children.length === items.length && items.every(function (it, i) { return el.children[i].textContent === it.l.label; });
     if (same) {
-      items.forEach(function (it, i) { el.children[i].classList.toggle("gone", it.gone); el.children[i].classList.toggle("dimmed", !it.gone && it.dimmed); });
+      items.forEach(function (it, i) { el.children[i].classList.toggle("dimmed", it.dimmed); });
     } else el.innerHTML = legendHTML(items);
   }
   // ---- glossary -------------------------------------------------------------------------------
