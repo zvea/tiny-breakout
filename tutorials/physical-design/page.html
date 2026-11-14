@@ -1767,19 +1767,27 @@ function start(D) {
     if (!best) return;
     var bx = best[0], by = best[1];
     placed.push([bx - 3, by - 3, bx + w + 3, by + h + 3]);
+    // the box snapped to the pixel grid, so its 1 px border (as thin as a cell's) stays crisp
+    var snap = function (v) { var o = DPR % 2 ? 0.5 / DPR : 0; return Math.round(v * DPR) / DPR + o; };
+    bx = snap(bx); by = snap(by);
     var ax = best[2] === "right" ? bx + w : best[2] === "center" ? bx + w / 2 : bx;
     if (!opts.box) {
       // the leader and dot, first wider in the background colour, then in ink: the halo keeps them
       // visible on a fill as dark (or as light) as the ink, such as a via or a pin
       ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2);
-      ctx.strokeStyle = C.bg; ctx.lineWidth = 3.6; ctx.stroke();
+      ctx.strokeStyle = C.bg; ctx.lineWidth = 3.4; ctx.stroke();
       ctx.fillStyle = C.bg; ctx.beginPath(); ctx.arc(x, y, 2.75, 0, 7); ctx.fill();
       ctx.lineCap = "butt"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2);
-      ctx.strokeStyle = C.pick; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.strokeStyle = C.pick; ctx.lineWidth = 1; ctx.stroke();
       ctx.fillStyle = C.pick; ctx.beginPath(); ctx.arc(x, y, 1.75, 0, 7); ctx.fill();
     }
+    // the box, with rounded corners
+    var rr = 5;
     ctx.fillStyle = C.bg; ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.rect(bx, by, w, h); ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(bx + rr, by); ctx.arcTo(bx + w, by, bx + w, by + h, rr); ctx.arcTo(bx + w, by + h, bx, by + h, rr);
+    ctx.arcTo(bx, by + h, bx, by, rr); ctx.arcTo(bx, by, bx + w, by, rr); ctx.closePath();
+    ctx.fill(); ctx.stroke();
     ctx.fillStyle = C.ink; ctx.textBaseline = "middle"; ctx.textAlign = "center";
     lines.forEach(function (l, i) { ctx.fillText(l, bx + w / 2, by + 10.5 + 15 * i); });
   }
