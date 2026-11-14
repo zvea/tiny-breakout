@@ -2169,7 +2169,7 @@ function start(D) {
       var run = antWires().filter(function (w) { return w[0] === ANT_L; }).sort(function (p, q) { return Math.hypot(q[3] - q[1], q[4] - q[2]) - Math.hypot(p[3] - p[1], p[4] - p[2]); })[0];
       label("estimated " + AM.layer + " wire: " + Math.round(100 * (AM.pr - 1)) + "% over the antenna limit", sx((run[1] + run[3]) / 2), sy((run[2] + run[4]) / 2), { dx: 30, dy: 40 });
       label("root buffer: at risk from the wire's charge", qb[0], qb[1], { dx: 18, dy: -44 });
-      if (DIODE >= 0 && pos > S.GRT + 0.4) { var qdi = clearOfWires(DIODE); label("antenna diode", qdi[0], qdi[1], { dx: -18, dy: 34, align: "right" }); }
+      if (DIODE >= 0 && pos > S.GRT + 0.4) { var qdi = clearOfWires(DIODE); label("inserted antenna diode", qdi[0], qdi[1], { dx: -18, dy: 34, align: "right" }); }
     }
     if (pos > S.ANT && pos < S.DRT) exBeingBuilt(drtT(), WEX0, WEXSLOT, 0.15, true);
     // The close-up's flip-flop: its cell outlined until the end, named from the glide until the
