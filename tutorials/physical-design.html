@@ -49,6 +49,7 @@
   --dim: #3a4250;
   --gcell: #262c36;
   --ghost: 0.92;
+  --guide: rgba(138, 43, 226, 0.18);
   --tap: #4d5b6b;
   --endcap: #9aa6b3;
   --swatch-edge: rgba(20, 26, 33, 0.35);
@@ -94,7 +95,7 @@
 :root[data-theme="dark"] {
   --bg: #121416; --ink: #e4e6e8; --muted: #9aa0a6; --rule: #3d4247; --bar: #1d2125; --focus: #7fb0ff;
   --stage: #0d0f11; --veil: rgba(13, 15, 17, 0.86); --die: #2a2f35; --die-edge: #8a949f; --core: #1b1f23;
-  --row: #22272c; --row-flip: #30373e; --row-edge: #3b434b; --site: rgba(200, 210, 222, 0.18); --dim: #c9d0d8; --gcell: rgba(201, 208, 216, 0.45); --ghost: 0.8;
+  --row: #22272c; --row-flip: #30373e; --row-edge: #3b434b; --site: rgba(200, 210, 222, 0.18); --dim: #c9d0d8; --gcell: rgba(201, 208, 216, 0.45); --ghost: 0.8; --guide: rgba(210, 123, 255, 0.34);
   --tap: #a9b6c4; --endcap: #66717d; --swatch-edge: rgba(255, 255, 255, 0.3);
   --vpwr: #ff6b5e; --vgnd: #5f95ff; --via: #e9edf2; --pin: #f1f3f5;
   --logic: #b48f45; --ff: #4cc0ae; --buf: #ff86c4; --tie: #c9c56a; --clock: #ff9a3d; --clknet: #ffb067;
@@ -638,9 +639,32 @@ function start(D) {
     var inside = bx0 > 1 && bx0 < GNX - 2 && by0 > 0 && by0 < GNY - 2;
     if (inside && bc.nets > 0 && (!QUIET || bc.nets < QUIET.nets)) QUIET = bc;
   }
-  function gRect(arr, k, inset) {
-    var x0 = gX(arr[5 * k]), y0 = gY(arr[5 * k + 1]), x1 = gX(arr[5 * k + 2]), y1 = gY(arr[5 * k + 3]);
-    rect(x0 + inset, y0 + inset, x1 - inset, y1 - inset);
+  // A net's guides, g-cell by g-cell, as the router has them: { gx, gy, ls: the layers it has
+  // guides on there, bottom up }, from guides k0 to k1 of arr (g-cell indices, then the layer)
+  function guideCells(arr, k0, k1) {
+    var at = {}, out = [];
+    for (var k = k0; k < k1; k++) {
+      var b = 5 * k, l = arr[b + 4];
+      for (var gx = arr[b]; gx < arr[b + 2]; gx++) for (var gy = arr[b + 1]; gy < arr[b + 3]; gy++) {
+        var key = gx + "," + gy;
+        if (!at[key]) out.push(at[key] = { gx: gx, gy: gy, ls: [] });
+        if (at[key].ls.indexOf(l) < 0) at[key].ls.push(l);
+      }
+    }
+    out.forEach(function (c) { c.ls.sort(); });
+    return out;
+  }
+  // A net's guides as one faint highlight over the g-cells they cover (a: 0 to 1), whatever the
+  // layers: the layers show as wires, on the detailed routing step. --guide carries its own
+  // opacity, stronger on the dark theme, where the same tint reads fainter.
+  function drawGuideCells(cells, a) {
+    if (a <= 0.01) return;
+    ctx.globalAlpha = a; ctx.fillStyle = C.guide;
+    cells.forEach(function (c) {
+      var x0 = Math.round(sx(gX(c.gx))), x1 = Math.round(sx(gX(c.gx + 1))), y0 = Math.round(sy(gY(c.gy + 1))), y1 = Math.round(sy(gY(c.gy)));
+      if (x1 < 0 || x0 > W || y1 < 0 || y0 > H) return;
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    });
   }
   // the example nets: their guides (the global router's, and those detailed routing followed),
   // layers and pins, and a guide near their middle for the callout
@@ -656,8 +680,10 @@ function start(D) {
       var cx = (GRAW[5 * j] + GRAW[5 * j + 2]) / 2, cy = (GRAW[5 * j + 1] + GRAW[5 * j + 3]) / 2, dd = Math.hypot(cx - mx, cy - my);
       if (dd < bd) { bd = dd; best = j; }
     }
+    var post = bytes(e.guides);
     return { name: GR.nets[e.net], net: e.net, start: s0, count: cnt, cells: e.cells, npins: e.cells.length + e.pins.length,
-             layers: GLAY.filter(function (l) { return lay[l]; }), post: bytes(e.guides), offlayer: e.offlayer,
+             layers: GLAY.filter(function (l) { return lay[l]; }), post: post, offlayer: e.offlayer,
+             gcells: guideCells(GRAW, s0, s0 + cnt), postGcells: guideCells(post, 0, post.length / 5),
              mid: [(gX(GRAW[5 * best]) + gX(GRAW[5 * best + 2])) / 2, (gY(GRAW[5 * best + 1]) + gY(GRAW[5 * best + 3])) / 2] };
   });
 
@@ -1199,7 +1225,7 @@ function start(D) {
 
   function readColours() {
     var cs = getComputedStyle(document.documentElement);
-    ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "gcell", "ghost", "tap", "endcap", "ir0", "ir1", "ir2", "ir3",
+    ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "gcell", "ghost", "guide", "tap", "endcap", "ir0", "ir1", "ir2", "ir3",
      "vpwr", "vgnd", "via", "pin", "logic", "ff", "hot", "buf", "tie", "clock", "clknet", "hold",
      "li1", "met1", "met2", "met3", "met4", "pick", "diode", "decap", "fill", "wvia", "setup", "holdp", "nwell", "diff", "gtap", "poly", "cut", "ink", "muted", "bg", "font"]
       .forEach(function (k) { C[k] = cs.getPropertyValue("--" + k).trim(); });
@@ -1440,13 +1466,7 @@ function start(D) {
       if (f <= 0) return;
       var vis = clamp01((t0 + EXSLOT + 0.03 - t) / 0.03) * d;
       if (vis <= 0.01) return;
-      for (i = ex.start; i < ex.start + ex.count; i++) {
-        var l = GRAW[5 * i + 4], ai = clamp01((f - 0.2 - 0.08 * l) / 0.12) * vis;
-        if (ai <= 0.01) continue;
-        ctx.fillStyle = C[GLAY[l]]; ctx.strokeStyle = C[GLAY[l]];
-        ctx.globalAlpha = ai * 0.3; ctx.beginPath(); gRect(GRAW, i, 0.05 * GG * l); ctx.fill();
-        ctx.globalAlpha = ai; ctx.lineWidth = 1; ctx.stroke();
-      }
+      drawGuideCells(ex.gcells, clamp01((f - 0.2) / 0.12) * vis);
       drawPinsOf(ex, clamp01(f / 0.2) * vis);
     });
     // the grid, on whole pixels so its lines are crisp, over the crowding tiles and
@@ -1472,16 +1492,13 @@ function start(D) {
   }
 
   // Antenna repair: the clk net's route, from the pin down to the root buffer's gate
+  var ANT_GC = null;   // the clk net's guides by g-cell
+  function antCells() { return ANT_GC || (ANT_GC = guideCells(GRAW, GSTART[CLKNET], GSTART[CLKNET] + GR.count[CLKNET])); }
   function drawAntenna() {
     if (pos <= S.GRT || pos > S.ANT + focusFade(S.ANT + 1)) return;
     var a = (pos <= S.ANT ? clamp01(within(pos, S.ANT) / 0.15) : clamp01(1 - (pos - S.ANT) / focusFade(S.ANT + 1))) * DIMC.antnet;
     if (a <= 0.01) return;
-    for (var i = GSTART[CLKNET]; i < GSTART[CLKNET] + GR.count[CLKNET]; i++) {
-      var l = GRAW[5 * i + 4];
-      ctx.fillStyle = C[GLAY[l]]; ctx.strokeStyle = C[GLAY[l]];
-      ctx.globalAlpha = a * 0.3; ctx.beginPath(); gRect(GRAW, i, 0.05 * GG * l); ctx.fill();
-      ctx.globalAlpha = a; ctx.lineWidth = 1; ctx.stroke();
-    }
+    drawGuideCells(antCells(), a);
     highlightCell(ROOTBUF, C[CLS[ROOTBUF]], a);
     ctx.globalAlpha = 1;
   }
@@ -1501,10 +1518,7 @@ function start(D) {
       if (f <= 0) continue;
       var vis = clamp01((t0 + WEXSLOT + 0.02 - t) / 0.02) * d;
       if (vis <= 0.01) continue;
-      for (k = 0; k < e.post.length / 5; k++) {
-        ctx.globalAlpha = vis * 0.18; ctx.fillStyle = C[GLAY[e.post[5 * k + 4]]];
-        ctx.beginPath(); gRect(e.post, k, 0); ctx.fill();
-      }
+      drawGuideCells(e.postGcells, vis);
       // the net's wires fade in whole: the file's order of its pieces is not the order they
       // were made in (the router works region by region, on all nets at once)
       var wf = ease(clamp01((f - 0.2) / 0.4));
@@ -2410,11 +2424,12 @@ function start(D) {
     { from: S.REPAIR, label: "Tie cell", c: "tie", g: "tie" },
     { from: S.CTS, label: "Clock buffer or dummy", c: "clock", g: "clock" },
     { from: S.CTS, to: S.CTS, label: "Clock net", c: "clknet", g: "clknet", line: true },
-    { from: S.HOLD, label: "Delay cell (hold)", c: "hold", g: "hold" }
-  ].concat(GLAY.map(function (l) { return { from: S.GRT, label: l, c: l, g: l === "li1" ? "route" : "wire", layer: true }; }))
-   .concat([{ from: S.GRT, to: S.GRT, label: "Nets with guides per g-cell, " + MINALL + "–" + MAXALL, c: "hot", g: "route", ramp: true },
-            { from: S.ANT, label: "Antenna diode", c: "diode", g: "diode" },
-            { from: S.DRT, label: "Via (zoom in)", c: "wvia", g: "wire" },
+    { from: S.HOLD, label: "Delay cell (hold)", c: "hold", g: "hold" },
+    { from: S.GRT, to: S.DRT, label: "Route guide", c: "guide", g: "guide" },
+    { from: S.GRT, to: S.GRT, label: "Nets with guides per g-cell, " + MINALL + "–" + MAXALL, c: "hot", g: "route", ramp: true },
+    { from: S.ANT, label: "Antenna diode", c: "diode", g: "diode" }
+  ].concat(GLAY.map(function (l) { return { from: S.DRT, label: l, c: l, g: l === "li1" ? "route" : "wire", layer: true }; }))
+   .concat([{ from: S.DRT, label: "Via (zoom in)", c: "wvia", g: "wire" },
             { from: S.FILL, label: "Decap cell", c: "decap", g: "decap" },
             { from: S.FILL, label: "Fill cell", c: "fill", g: "fill", hatch: true },
             { from: S.STA, to: S.STA, label: "Worst flip-flop to flip-flop setup path", c: "setup", g: "path", line: true },
@@ -2426,10 +2441,12 @@ function start(D) {
             { from: S.GDS, label: "Poly", c: "poly", g: "gds" },
             { from: S.GDS, label: "Contact or via cut", c: "cut", g: "gds" }]);
   function legendGroup(l, k) {
-    // the layer colours serve the guides (routing step), the clk route (antenna step), then the wires
     if (l.g === "pdnvia") return k === S.IR ? "ir-hidden" : "pdn";   // under the IR drop veil
+    // the guide highlight serves the routing step, the clk route (antenna step), then the corridors
+    // under the example wires
+    if (l.g === "guide") return k === S.GRT ? "route" : k === S.ANT ? "antnet" : "wire";
     if (!l.layer) return l.g;
-    return k === S.GRT ? "route" : k === S.ANT ? "antnet" : k === S.GDS ? "gds" : l.g;
+    return k === S.GDS ? "gds" : l.g;
   }
   function legendItems(k, all) {
     return LEGEND.filter(function (l) { return l.from <= k && (all || !(l.to < k)); }).map(function (l) {
@@ -2736,7 +2753,7 @@ function start(D) {
     if (step === S.ANT) {
       for (var ci2 = GSTART[CLKNET]; ci2 < GSTART[CLKNET] + GR.count[CLKNET]; ci2++) {
         var gl0 = GRAW[5 * ci2 + 4];
-        if (x >= gX(GRAW[5 * ci2]) && x < gX(GRAW[5 * ci2 + 2]) && y >= gY(GRAW[5 * ci2 + 1]) && y < gY(GRAW[5 * ci2 + 3])) { add(GLAY[gl0], "<b>Route guide of <code>" + AM.net + "</code></b>, " + GLAY[gl0], "antnet"); break; }
+        if (x >= gX(GRAW[5 * ci2]) && x < gX(GRAW[5 * ci2 + 2]) && y >= gY(GRAW[5 * ci2 + 1]) && y < gY(GRAW[5 * ci2 + 3])) { add("guide", "<b>Route guide of <code>" + AM.net + "</code></b>, " + GLAY[gl0], "antnet"); break; }
       }
     }
     // global routing: the g-cell
