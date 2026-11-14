@@ -1743,15 +1743,22 @@ function start(D) {
   }
   // whether a screen box overlaps an example net's guides (those detailed routing followed, with
   // wires) or its wires
+  // whether a screen box overlaps the rectangle or line from (x0, y0) to (x1, y1), with a margin
+  function boxHits(box, x0, y0, x1, y1) { return Math.min(x0, x1) - 2 < box[2] && box[0] < Math.max(x0, x1) + 2 && Math.min(y0, y1) - 2 < box[3] && box[1] < Math.max(y0, y1) + 2; }
+  function segHits(box, k) { var b = 9 * k; return boxHits(box, sx(u16(WRAW, b) * 5), sy(u16(WRAW, b + 2) * 5), sx(u16(WRAW, b + 4) * 5), sy(u16(WRAW, b + 6) * 5)); }
   function exOverlaps(ex, wires, box) {
-    function hit(x0, y0, x1, y1) { return Math.min(x0, x1) - 2 < box[2] && box[0] < Math.max(x0, x1) + 2 && Math.min(y0, y1) - 2 < box[3] && box[1] < Math.max(y0, y1) + 2; }
+    function hit(x0, y0, x1, y1) { return boxHits(box, x0, y0, x1, y1); }
     var G = wires ? ex.post : GRAW, i0 = wires ? 0 : ex.start, n = wires ? ex.post.length / 5 : ex.count;
     for (var i = i0; i < i0 + n; i++) if (hit(sx(gX(G[5 * i])), sy(gY(G[5 * i + 1])), sx(gX(G[5 * i + 2])), sy(gY(G[5 * i + 3])))) return true;
-    if (wires) for (var k = WSTART[ex.net]; k < WSTART[ex.net] + DR.scount[ex.net]; k++) {
-      var b = 9 * k;
-      if (hit(sx(u16(WRAW, b) * 5), sy(u16(WRAW, b + 2) * 5), sx(u16(WRAW, b + 4) * 5), sy(u16(WRAW, b + 6) * 5))) return true;
-    }
+    if (wires) for (var k = WSTART[ex.net]; k < WSTART[ex.net] + DR.scount[ex.net]; k++) if (segHits(box, k)) return true;
     return false;
+  }
+  // whether a screen box overlaps either timing path: its cells or the wires drawn for it
+  function pathsOverlap(box) {
+    return [PSETUP, PHOLD].some(function (P) {
+      return P.cells.some(function (c) { return boxHits(box, sx(SX[c]), sy(SY[c]), sx(SX[c] + SWD[c]), sy(SY[c] + RH)); }) ||
+        P.wires.some(function (r) { return r && Object.keys(r.segs).some(function (k) { return segHits(box, +k); }); });
+    });
   }
   // the callout points at the net (a guide, or with wires a wire), near it but over none of it
   function exLabel(ex, k, wires) {
@@ -1907,12 +1914,12 @@ function start(D) {
       var us = within(pos, S.STA), ce = function (c) { return [sx(SX[c] + SWD[c] / 2), sy(SY[c] + RH / 2)]; };
       if (us >= STA_SET0 || pos > S.STA) {
         ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_SET0) / 0.04);
-        var pl = ce(PSETUP.st[0].ci); label("setup path from flip-flop", pl[0], pl[1], { dx: 18, dy: -40 });
-        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("setup path to flip-flop: slack " + fmt(PSETUP.q.slack) + " ns", pc[0], pc[1], { dx: -18, dy: 34, align: "right" }); }
+        var pl = ce(PSETUP.st[0].ci); label("setup path from flip-flop", pl[0], pl[1], { dx: 18, dy: -40, avoid: pathsOverlap });
+        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("setup path to flip-flop: slack " + fmt(PSETUP.q.slack) + " ns", pc[0], pc[1], { dx: -18, dy: 34, align: "right", avoid: pathsOverlap }); }
       }
       if (us >= STA_HOLD0 || pos > S.STA) {
         ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_HOLD0) / 0.04);
-        var ph = ce(PHOLD.st[0].ci); label("hold path: flip-flop to itself, slack " + fmt(PHOLD.q.slack, 3) + " ns", ph[0], ph[1], { dx: 18, dy: 30 });
+        var ph = ce(PHOLD.st[0].ci); label("hold path: flip-flop to itself, slack " + fmt(PHOLD.q.slack, 3) + " ns", ph[0], ph[1], { dx: 18, dy: 30, avoid: pathsOverlap });
       }
     }
     ctx.globalAlpha = 1;
