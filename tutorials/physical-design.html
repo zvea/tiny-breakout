@@ -484,6 +484,9 @@ function start(D) {
   var CLV = 0;
   CLOCK.forEach(function (c, j) { CLV = Math.max(CLV, level(j)); });
   var ROOT = CLOCK.filter(function (c) { return c.lv === 0; })[0];
+  // drawn leaves first, so the levels nearer the root lie on top
+  var CLOCK_DRAW = CLOCK.slice().sort(function (a, b) { return b.lv - a.lv; });
+  function levelName(L) { return L === 0 ? "pin → root" : L === CLV ? "leaves → flip-flops" : L === CLV - 1 ? "branches → leaves" : "root → branches"; }
   var NBRANCH = CLOCK.filter(function (c) { return c.lv === 1; }).reduce(function (a, c) { return a + c.loads.length; }, 0);
   // in the clock step, net level L grows over [lvStart(L), lvStart(L) + 0.22] of its first part
   function lvStart(L) { return 0.04 + 0.74 * L / (CLV + 1); }
@@ -1621,11 +1624,13 @@ function start(D) {
     var d = DIMC.clknet * (pos > S.HOLD ? clamp01((S.HOLD + 0.15 - pos) / 0.15) : 1);
     var t = within(pos, S.CTS) < CTS_SPLIT ? within(pos, S.CTS) / CTS_SPLIT : 2;
     if (d <= 0.01) return;
-    ctx.strokeStyle = C.clknet; ctx.lineWidth = 1.2;
-    CLOCK.forEach(function (c) {
+    ctx.strokeStyle = C.clknet;
+    CLOCK_DRAW.forEach(function (c) {
       var g = pos >= S.CTS ? 1 : ease(clamp01((t - lvStart(c.lv)) / 0.22));
       var dp = g > 0 ? clockDriver(c) : null;
       if (!dp) return;
+      // thicker the nearer the root, so the trunk stands out from the many short leaf nets
+      ctx.lineWidth = [1.2, 1.6, 2.2, 3][Math.min(3, CLV - c.lv)];
       ctx.globalAlpha = d * (c.lv === CLV ? 0.55 : 0.9);
       ctx.beginPath();
       c.loads.forEach(function (l) {
@@ -2007,7 +2012,7 @@ function start(D) {
       if (u >= CTS_SPLIT) return "<b>Legalising</b> around the clock cells";
       var t = u / CTS_SPLIT, L = 0;
       for (var l = 0; l <= CLV; l++) if (t >= lvStart(l)) L = l;
-      return "<b>Tree level " + (L + 1) + " of " + (CLV + 1) + "</b>: " + (L === 0 ? "pin → root" : L === CLV ? "leaves → flip-flops" : L === CLV - 1 ? "branches → leaves" : "root → branches");
+      return "<b>Tree level " + (L + 1) + " of " + (CLV + 1) + "</b>: " + levelName(L);
     }
     if (k === S.HOLD) {
       if (u >= HOLD_SPLIT) return "<b>Legalising</b>";
@@ -2300,7 +2305,7 @@ function start(D) {
         for (var j = 0; j < c.loads.length; j++) {
           var l = c.loads[j];
           if (segDist(x, y, dp[0], dp[1], SX[l] + SWD[l] / 2, SY[l] + RH / 2) <= tol) {
-            add("clknet", "<b>Clock net</b> <code>" + c.name + "</code>: " + (c.drv < 0 ? "the pin" : NAMES[c.drv]) + " to " + c.loads.length + (c.loads.length === 1 ? " load" : " loads"), "clknet");
+            add("clknet", "<b>Clock net</b> <code>" + c.name + "</code>: " + (c.drv < 0 ? "the pin" : NAMES[c.drv]) + " to " + c.loads.length + (c.loads.length === 1 ? " load" : " loads") + "; tree level " + (c.lv + 1) + " of " + (CLV + 1) + ", " + levelName(c.lv), "clknet");
             return;
           }
         }
