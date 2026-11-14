@@ -1771,7 +1771,7 @@ function start(D) {
       ctx.beginPath(); rect(CORE[0], y0, CORE[2], y0 + RH); ctx.stroke();
       ctx.fillStyle = C.pick; ctx.beginPath(); rect(xs, y0, xs + SW, y0 + RH); ctx.fill();
       label("ROW_" + rowMid + ": " + D.sitesPerRow + " sites", sx(CORE[0] + 0.12 * (CORE[2] - CORE[0])), sy(y0 + RH / 2), { dx: 10, dy: -50 });
-      label("site (unithd): " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm", sx(xs + SW / 2), sy(y0 + RH / 2), { dx: 14, dy: 30 });
+      label("site: " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm", sx(xs + SW / 2), sy(y0 + RH / 2), { dx: 14, dy: 30 });
     }
     if ((a = only(S.TAPS, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
@@ -1803,14 +1803,14 @@ function start(D) {
       if (kin >= 0) { var q1 = centre(K.rszB, kin); label("input buffer", q1[0], q1[1], { dx: 18, dy: 26 }); }
       if (kbuf >= 0) { var q2 = centre(K.rszB, kbuf); label("buffer", q2[0], q2[1], { dx: 18, dy: -36 }); }
       if (ktie >= 0) { var q3 = centre(K.rszB, ktie); label("tie cell", q3[0], q3[1], { dx: -18, dy: -36, align: "right" }); }
-      if (krs >= 0) { var q4 = centre(K.rszB, krs); label("resized: " + shortName(D.types[K.rszB.ty[krs]]), q4[0], q4[1], { dx: -18, dy: 30, align: "right" }); }
+      if (krs >= 0) { var q4 = centre(K.rszB, krs); label("resized: " + shortName(D.types[K.G.ty[krs]]) + " → " + shortName(D.types[K.rszB.ty[krs]]), q4[0], q4[1], { dx: -18, dy: 30, align: "right" }); }
     }
     // the clk pin, from the start of the clock step: where the tree will grow from. Above the
     // die, in the margin between it and the legend.
     if (pos > S.LEGAL && pos < S.CTS + 0.06) {
       ctx.globalAlpha = pos > S.CTS ? only(S.CTS, 0) : clamp01((pos - S.LEGAL) / 0.04);
       var pinY = sy(CLKPIN.y1), band = pinY - legendH - 8;
-      label("clk pin: the clock enters here", sx((CLKPIN.x0 + CLKPIN.x1) / 2), pinY, { dx: -40, dy: -Math.max(24, Math.min(36, band / 2 + 10)), align: "right", fixed: true });
+      label("clk pin", sx((CLKPIN.x0 + CLKPIN.x1) / 2), pinY, { dx: -40, dy: -Math.max(24, Math.min(36, band / 2 + 10)), align: "right", fixed: true });
     }
     if ((a = only(S.CTS, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
@@ -1840,7 +1840,7 @@ function start(D) {
     if (pos > S.HOLD && pos < S.GRT) exBeingBuilt(routeT(), EX0, EXSLOT, 0.18);
     if ((a = only(S.GRT, 0.97) * clamp01((routeT() - DEM0 - 0.1) / 0.1)) > 0.01 && GG * cam.s <= 30) {
       ctx.globalAlpha = a;
-      [[BUSY, "busiest g-cell", 18, -40, "left"], [QUIET, "quietest in the core", -18, 34, "right"]].forEach(function (q) {
+      [[BUSY, "busiest g-cell", 18, -40, "left"], [QUIET, "quietest g-cell in the core", -18, 34, "right"]].forEach(function (q) {
         var c = q[0];
         label(q[1] + ": " + c.nets + " nets", sx((gX(c.gx) + gX(c.gx + 1)) / 2), sy((gY(c.gy) + gY(c.gy + 1)) / 2), { dx: q[2], dy: q[3], align: q[4] });
       });
@@ -1849,7 +1849,7 @@ function start(D) {
     if ((a = Math.max(only(S.ANT, 0.95), pos > S.GRT + 0.15 && pos < S.ANT ? clamp01((pos - S.GRT - 0.15) / 0.1) : 0)) > 0.01) {
       ctx.globalAlpha = a;
       var qb = centre(K.ant, ROOTBUF);
-      label(ROOTNAME + ": the gate on the long " + AM.net + " wire", qb[0], qb[1], { dx: 18, dy: -44 });
+      label("root buffer: gate on the long " + AM.net + " wire", qb[0], qb[1], { dx: 18, dy: -44 });
       if (DIODE >= 0 && pos > S.GRT + 0.4) { var qdi = centre(K.ant, DIODE); label("antenna diode", qdi[0], qdi[1], { dx: -18, dy: 34, align: "right" }); }
     }
     if (pos > S.ANT && pos < S.DRT) exBeingBuilt(drtT(), WEX0, WEXSLOT, 0.15);
@@ -1858,12 +1858,12 @@ function start(D) {
       ctx.globalAlpha = clamp01(within(pos, S.GDS) / 0.04);
       ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
       ctx.beginPath(); rect(fx0, fy0, fx0 + fw, fy0 + RH); ctx.stroke(); ctx.setLineDash([]);
-      label("flip-flop " + NAMES[fc] + " (" + shortName(D.types[K.ant.ty[fc]]) + ")", sx(fx0 + fw / 2), sy(fy0 + RH / 2), { dx: -24, dy: -60, align: "right" });
+      label("flip-flop (" + shortName(D.types[K.ant.ty[fc]]) + ")", sx(fx0 + fw / 2), sy(fy0 + RH / 2), { dx: -24, dy: -60, align: "right" });
     }
     if (pos > S.IR && GFOCUS) {
       var ug = within(pos, S.GDS), ip = 2;   // after poly appears, until the metals cover it
       ctx.globalAlpha = pos > S.GDS ? only(S.GDS, 0) : clamp01((ug - GDS_CAM - 0.06 * ip - 0.03) / 0.04) * clamp01((GDS_CAM + 0.06 * 7 - ug) / 0.04 + (pos > S.GDS ? 1 : 0));
-      label("a transistor: poly crossing diffusion", sx(GFOCUS.x), sy(GFOCUS.y), { dx: 22, dy: -50 });
+      label("transistor: poly crossing diffusion", sx(GFOCUS.x), sy(GFOCUS.y), { dx: 22, dy: -50 });
     }
     if (pos > S.STA && pos <= S.IR + 0.06) {
       var ui = within(pos, S.IR), net = pos > S.IR ? "VGND" : irNetAt(ui), wv = irWorst(net);
@@ -1878,12 +1878,12 @@ function start(D) {
       var us = within(pos, S.STA), ce = function (c) { return [sx(SX[c] + SWD[c] / 2), sy(SY[c] + RH / 2)]; };
       if (us >= STA_SET0 || pos > S.STA) {
         ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_SET0) / 0.04);
-        var pl = ce(PSETUP.st[0].ci); label("setup: launches at " + PSETUP.q.start, pl[0], pl[1], { dx: 18, dy: -40 });
-        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("captured at " + PSETUP.q.end + ", slack " + fmt(PSETUP.q.slack) + " ns", pc[0], pc[1], { dx: -18, dy: 34, align: "right" }); }
+        var pl = ce(PSETUP.st[0].ci); label("setup path from flip-flop", pl[0], pl[1], { dx: 18, dy: -40 });
+        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("setup path to flip-flop: slack " + fmt(PSETUP.q.slack) + " ns", pc[0], pc[1], { dx: -18, dy: 34, align: "right" }); }
       }
       if (us >= STA_HOLD0 || pos > S.STA) {
         ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_HOLD0) / 0.04);
-        var ph = ce(PHOLD.st[0].ci); label("hold: " + PHOLD.q.start + " feeds itself, slack " + fmt(PHOLD.q.slack, 3) + " ns", ph[0], ph[1], { dx: 18, dy: 30 });
+        var ph = ce(PHOLD.st[0].ci); label("hold path: flip-flop to itself, slack " + fmt(PHOLD.q.slack, 3) + " ns", ph[0], ph[1], { dx: 18, dy: 30 });
       }
     }
     ctx.globalAlpha = 1;
@@ -2029,7 +2029,7 @@ function start(D) {
     }
     if (k === S.ANT) {
       if (u < 0.33) return "<b>Violation</b>: " + AM.net + ", " + AM.layer + ", " + fmt(AM.partial) + " / " + fmt(AM.required, 0);
-      if (u < ANT_SPLIT) return "<b>Diode</b> beside " + ROOTNAME;
+      if (u < ANT_SPLIT) return "<b>Diode</b> beside the root buffer";
       return "<b>" + n(AM.flipped) + " cells lose their mirroring</b>";
     }
     if (k === S.DRT) {
