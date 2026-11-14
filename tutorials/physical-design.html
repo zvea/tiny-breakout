@@ -1790,6 +1790,22 @@ function start(D) {
     screenTransform();
     ctx.globalAlpha = 1;
   }
+  // A layer's outline round its merged shape only. Its path is many overlapping rectangles
+  // (wire segments, via pads, cell shapes cut into rectangles), and stroking it outlines each, with
+  // edges inside the metal that no mask has. So the path is stroked at twice the width on a
+  // scratch canvas, its fill erased from there (taking the inner half of every edge, and so every
+  // inner edge), and what is left, the outer half of the outer edge, laid on the layer.
+  var gdsScratch = null;
+  function outlineMerged(path, col, a) {
+    var tgt = ctx, cv = gdsScratch || (gdsScratch = document.createElement("canvas"));
+    if (cv.width !== tgt.canvas.width || cv.height !== tgt.canvas.height) { cv.width = tgt.canvas.width; cv.height = tgt.canvas.height; }
+    var sc = cv.getContext("2d");
+    sc.setTransform(1, 0, 0, 1, 0, 0); sc.clearRect(0, 0, cv.width, cv.height);
+    sc.setTransform(tgt.getTransform());
+    sc.strokeStyle = col; sc.lineWidth = 2.2 / cam.s; sc.stroke(path);
+    sc.globalCompositeOperation = "destination-out"; sc.fill(path); sc.globalCompositeOperation = "source-over";
+    tgt.save(); tgt.setTransform(1, 0, 0, 1, 0, 0); tgt.globalAlpha = a; tgt.drawImage(cv, 0, 0); tgt.restore();
+  }
   function gdsFill(g) {
     ctx.fillStyle = C[g.c];
     if (g.o) {
@@ -1798,7 +1814,7 @@ function start(D) {
       // where the outlines would merge into solid colour)
       ctx.globalAlpha = 0.28; ctx.fill(GPATH[g.l]);
       var ow = clamp01(({ li1: 170, met1: 140, met2: 140, met3: 300, met4: 300 }[g.l] * cam.s - 2) / 3);
-      if (ow > 0.01) { ctx.globalAlpha = 0.95 * ow; ctx.strokeStyle = C[g.c]; ctx.lineWidth = 1.1 / cam.s; ctx.stroke(GPATH[g.l]); }
+      if (ow > 0.01) outlineMerged(GPATH[g.l], C[g.c], 0.95 * ow);
     } else {
       ctx.globalAlpha = g.a; ctx.fill(GPATH[g.l]);
     }
