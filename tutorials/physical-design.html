@@ -900,8 +900,11 @@ function start(D) {
   FOCUS[S.GDS] = ["gds", "logic", "ff", "buf", "tie", "clock", "hold", "diode", "decap", "fill", "fixed"];
   var STEPDIM = {};   // steps whose subject is fine detail fade the rest further
   STEPDIM[S.GRT] = 0.1; STEPDIM[S.DRT] = 0.12; STEPDIM[S.FILL] = 0.18; STEPDIM[S.STA] = 0.12; STEPDIM[S.IR] = 0.12; STEPDIM[S.GDS] = 0.12;
-  var DIMIN = {};   // how much of the step the change of focus takes, where not a quarter
+  // how much of step k the change of focus takes: about FOCUS_MS, or a quarter of a short step
+  // (GDS sets its own, to match its camera move)
+  var FOCUS_MS = 800, DIMIN = {};
   DIMIN[S.GDS] = 0.08;
+  function focusFade(k) { return DIMIN[k] || Math.min(0.25, FOCUS_MS / stepDur(k)); }
   function focusOf(k, g) { return g === "die" || (FOCUS[k] || []).indexOf(g) >= 0 ? 1 : (STEPDIM[k] || DIM); }
   // the step each group first shows on (from the legend): there it starts at that step's focus,
   // since there is nothing yet to change from
@@ -917,7 +920,7 @@ function start(D) {
     var k = Math.ceil(p - 1e-9);
     if (k <= 0 || firstStep(g) === k) return focusOf(Math.max(0, k), g);
     var a = focusOf(k - 1, g), b = focusOf(k, g);
-    return a + (b - a) * ease(clamp01((p - (k - 1)) / (DIMIN[k] || 0.25)));
+    return a + (b - a) * ease(clamp01((p - (k - 1)) / focusFade(k)));
   }
   var DIMC = {};
   ["rows", "fixed", "pdn", "pins", "logic", "ff", "buf", "tie", "clock", "hold", "changed", "clknet", "route", "hot", "diode", "antnet", "wire", "decap", "fill", "path", "ir", "gds"].forEach(function (g) { DIMC[g] = 1; });
@@ -1377,8 +1380,8 @@ function start(D) {
 
   // Antenna repair: the clk net's route, from the pin down to the root buffer's gate
   function drawAntenna() {
-    if (pos <= S.GRT || pos > S.ANT + 0.04) return;
-    var a = (pos <= S.ANT ? clamp01(within(pos, S.ANT) / 0.15) : clamp01(1 - (pos - S.ANT) / 0.04)) * DIMC.antnet;
+    if (pos <= S.GRT || pos > S.ANT + focusFade(S.ANT + 1)) return;
+    var a = (pos <= S.ANT ? clamp01(within(pos, S.ANT) / 0.15) : clamp01(1 - (pos - S.ANT) / focusFade(S.ANT + 1))) * DIMC.antnet;
     if (a <= 0.01) return;
     for (var i = GSTART[CLKNET]; i < GSTART[CLKNET] + GR.count[CLKNET]; i++) {
       var l = GRAW[5 * i + 4];
