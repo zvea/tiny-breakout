@@ -1206,10 +1206,10 @@ function start(D) {
       if (t <= 0) continue;
       var e = ease(t), x0 = CORE[0] + c.site * SW, yb = CORE[1] + c.row * RH;
       var h = RH * (0.35 + 0.65 * e), yc = yb + (RH - h) / 2;
-      var col = dimCol(c.kind === "tap" ? C.tap : C.endcap, DIMC.fixed);
-      ctx.globalAlpha = e; ctx.fillStyle = col;
+      var col = c.kind === "tap" ? C.tap : C.endcap;
+      ctx.globalAlpha = e; ctx.fillStyle = dimCol(col, DIMC.fixed);
       ctx.beginPath(); rect(x0, yc, x0 + c.w * SW, yc + h); ctx.fill();
-      if (c.w * SW * cam.s >= 4) { ctx.strokeStyle = shade(col, 0.7); ctx.lineWidth = 1; ctx.stroke(); }
+      if (c.w * SW * cam.s >= 4) { ctx.strokeStyle = dimCol(shade(col, 0.7), DIMC.fixed); ctx.lineWidth = 1; ctx.stroke(); }
     }
     ctx.globalAlpha = 1;
   }
@@ -1227,11 +1227,11 @@ function start(D) {
       if ((d >= 0.6) !== (pass === 1)) continue;
       var w = SWD[k] * SXX[k], h = RH * SYY[k], x0 = SX[k] + (SWD[k] - w) / 2, y0 = SY[k] + (RH - h) / 2;
       if (!inView(x0, y0, x0 + w, y0 + h)) continue;
-      var col = dimCol(C[CLS[k]], d);
-      ctx.globalAlpha = SA[k]; ctx.fillStyle = col;
+      ctx.globalAlpha = SA[k]; ctx.fillStyle = dimCol(C[CLS[k]], d);
       ctx.beginPath(); rect(x0, y0, x0 + w, y0 + h); ctx.fill();
-      // a border in a darker shade of the cell's own colour, so overlapping cells keep their shapes
-      if (w * cam.s >= 4 && h * cam.s >= 4) { ctx.strokeStyle = shade(col, 0.7); ctx.stroke(); }
+      // a border in a darker shade of the cell's own colour, so overlapping cells keep their
+      // shapes; dimmed with the cell, so context keeps it as faint as its fill
+      if (w * cam.s >= 4 && h * cam.s >= 4) { ctx.strokeStyle = dimCol(shade(C[CLS[k]], 0.7), d); ctx.stroke(); }
     }
     ctx.globalAlpha = 1;
   }
@@ -1335,7 +1335,7 @@ function start(D) {
       }
       // the busiest and quietest tiles ringed
       if (bigT) [BUSY, QUIET].forEach(function (c) {
-        ctx.globalAlpha = ad; ctx.strokeStyle = C.pick; ctx.lineWidth = 2;
+        ctx.globalAlpha = ad; ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
         ctx.beginPath(); rect(gX(c.gx), gY(c.gy), gX(c.gx + 1), gY(c.gy + 1)); ctx.stroke();
       });
     }
@@ -1358,20 +1358,21 @@ function start(D) {
         if (ai <= 0.01) continue;
         ctx.fillStyle = C[GLAY[l]]; ctx.strokeStyle = C[GLAY[l]];
         ctx.globalAlpha = ai * 0.3; ctx.beginPath(); gRect(GRAW, i, 0.05 * GG * l); ctx.fill();
-        ctx.globalAlpha = ai; ctx.lineWidth = 1.6; ctx.stroke();
+        ctx.globalAlpha = ai; ctx.lineWidth = 1; ctx.stroke();
       }
       drawPinsOf(ex, clamp01(f / 0.2) * vis);
     });
     ctx.globalAlpha = 1;
   }
+  // a cell picked out over the greyed context: in full colour, with the usual border
+  function highlightCell(c, col, a) {
+    if (SA[c] <= 0 || a <= 0.01) return;
+    ctx.globalAlpha = a; ctx.fillStyle = col; ctx.strokeStyle = shade(col, 0.7); ctx.lineWidth = 1;
+    ctx.beginPath(); rect(SX[c], SY[c], SX[c] + SWD[c], SY[c] + RH); ctx.fill(); ctx.stroke();
+  }
+  // an example net's pins: the cells it connects, in their own colours
   function drawPinsOf(ex, a) {
-    if (a <= 0.01) return;
-    ctx.globalAlpha = a; ctx.strokeStyle = C.pick; ctx.fillStyle = C.pick; ctx.lineWidth = 1.5;
-    ex.cells.forEach(function (c) {
-      if (SA[c] <= 0) return;
-      ctx.beginPath(); rect(SX[c], SY[c], SX[c] + SWD[c], SY[c] + RH); ctx.stroke();
-      ctx.beginPath(); ctx.arc(sx(SX[c] + SWD[c] / 2), sy(SY[c] + RH / 2), 3, 0, 7); ctx.fill();
-    });
+    ex.cells.forEach(function (c) { highlightCell(c, C[CLS[c]], a); });
   }
 
   // Antenna repair: the clk net's route, from the pin down to the root buffer's gate
@@ -1383,12 +1384,9 @@ function start(D) {
       var l = GRAW[5 * i + 4];
       ctx.fillStyle = C[GLAY[l]]; ctx.strokeStyle = C[GLAY[l]];
       ctx.globalAlpha = a * 0.3; ctx.beginPath(); gRect(GRAW, i, 0.05 * GG * l); ctx.fill();
-      ctx.globalAlpha = a; ctx.lineWidth = 1.8; ctx.stroke();
+      ctx.globalAlpha = a; ctx.lineWidth = 1; ctx.stroke();
     }
-    if (SA[ROOTBUF] > 0) {
-      ctx.globalAlpha = a; ctx.strokeStyle = C.pick; ctx.lineWidth = 2;
-      ctx.beginPath(); rect(SX[ROOTBUF], SY[ROOTBUF], SX[ROOTBUF] + SWD[ROOTBUF], SY[ROOTBUF] + RH); ctx.stroke();
-    }
+    highlightCell(ROOTBUF, C[CLS[ROOTBUF]], a);
     ctx.globalAlpha = 1;
   }
 
@@ -1455,10 +1453,10 @@ function start(D) {
       if (tt <= 0) continue;
       var x0 = CORE[0] + f.site * SW, y0 = CORE[1] + f.row * RH, h = RH * ease(tt);
       if (!inView(x0, y0, x0 + f.w * SW, y0 + RH)) continue;
-      var col = dimCol(f.kind === "fill" ? C.fill : C.decap, DIMC[f.kind]);
-      ctx.globalAlpha = 1; ctx.fillStyle = f.kind === "fill" ? hatch(col) : col;
+      var col = f.kind === "fill" ? C.fill : C.decap, d = DIMC[f.kind];
+      ctx.globalAlpha = 1; ctx.fillStyle = f.kind === "fill" ? hatch(dimCol(col, d)) : dimCol(col, d);
       ctx.beginPath(); rect(x0, y0 + (RH - h) / 2, x0 + f.w * SW, y0 + (RH + h) / 2); ctx.fill();
-      if (f.w * SW * cam.s >= 4) { ctx.strokeStyle = shade(col, 0.7); ctx.lineWidth = 1; ctx.stroke(); }
+      if (f.w * SW * cam.s >= 4) { ctx.strokeStyle = dimCol(shade(col, 0.7), d); ctx.lineWidth = 1; ctx.stroke(); }
     }
     ctx.globalAlpha = 1;
   }
@@ -1482,14 +1480,10 @@ function start(D) {
       screenTransform(); ctx.lineCap = "butt";
       P.st.forEach(function (x) {
         if (x.ci < 0 || x.out || x.t > T) return;
-        var c = x.ci;
-        ctx.globalAlpha = d; ctx.fillStyle = col; ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5;
-        ctx.beginPath(); rect(SX[c], SY[c], SX[c] + SWD[c], SY[c] + RH); ctx.fill(); ctx.stroke();
+        highlightCell(x.ci, col, d);
       });
       // the launch flip-flop as soon as the path starts
-      var l = P.st[0].ci;
-      ctx.globalAlpha = d; ctx.fillStyle = col; ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5;
-      ctx.beginPath(); rect(SX[l], SY[l], SX[l] + SWD[l], SY[l] + RH); ctx.fill(); ctx.stroke();
+      highlightCell(P.st[0].ci, col, d);
     });
     ctx.globalAlpha = 1;
   }
@@ -1760,7 +1754,7 @@ function start(D) {
     if ((a = only(S.FLOOR, 0.85)) > 0.01) {
       ctx.globalAlpha = a;
       var y0 = CORE[1] + rowMid * RH, xs = CORE[0] + siteMid * SW;
-      ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5;
+      ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
       ctx.beginPath(); rect(CORE[0], y0, CORE[2], y0 + RH); ctx.stroke();
       ctx.fillStyle = C.pick; ctx.beginPath(); rect(xs, y0, xs + SW, y0 + RH); ctx.fill();
       // the row named just above its outline, from its left end
@@ -1864,7 +1858,7 @@ function start(D) {
     if (pos > S.IR && GFOCUS && GFOCUS.cell !== undefined) {
       var fc = GFOCUS.cell, fx0 = K.ant.xy[2 * fc], fy0 = K.ant.xy[2 * fc + 1], fw = WT[K.ant.ty[fc]];
       ctx.globalAlpha = clamp01(within(pos, S.GDS) / 0.04);
-      ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+      ctx.strokeStyle = C.pick; ctx.lineWidth = 1; ctx.setLineDash([5, 3]);
       ctx.beginPath(); rect(fx0, fy0, fx0 + fw, fy0 + RH); ctx.stroke(); ctx.setLineDash([]);
       label("flip-flop (" + shortName(D.types[K.ant.ty[fc]]) + ")", sx(fx0 + fw / 2), sy(fy0 + RH / 2), { dx: -24, dy: -60, align: "right" });
     }
