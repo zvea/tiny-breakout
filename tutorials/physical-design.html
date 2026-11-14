@@ -1664,14 +1664,16 @@ function start(D) {
   }
 
   // The clock nets, from driver to each load: they grow level by level during the clock step
-  // and are gone once routing starts
+  // and go as the next step begins
   function clockDriver(c) {
     if (c.drv < 0) return [(CLKPIN.x0 + CLKPIN.x1) / 2, CLKPIN.y0];
     return SA[c.drv] > 0 ? [SX[c.drv] + SWD[c.drv] / 2, SY[c.drv] + RH / 2] : null;
   }
   function drawClockNets() {
-    if (pos <= S.LEGAL || pos >= S.HOLD + 0.15) return;
-    var d = pos > S.HOLD ? clamp01((S.HOLD + 0.15 - pos) / 0.15) : 1;
+    // only on their own step: they fade as the next begins, with the change of focus
+    var out = focusFade(S.HOLD);
+    if (pos <= S.LEGAL || pos >= S.CTS + out) return;
+    var d = pos > S.CTS ? clamp01((S.CTS + out - pos) / out) : 1;
     var t = within(pos, S.CTS) < CTS_SPLIT ? within(pos, S.CTS) / CTS_SPLIT : 2;
     if (d <= 0.01) return;
     ctx.strokeStyle = dimCol(C.clknet, DIMC.clknet);
@@ -2250,7 +2252,7 @@ function start(D) {
     { from: S.REPAIR, label: "Buffer (repair)", c: "buf", g: "buf" },
     { from: S.REPAIR, label: "Tie cell", c: "tie", g: "tie" },
     { from: S.CTS, label: "Clock buffer or dummy", c: "clock", g: "clock" },
-    { from: S.CTS, to: S.HOLD, label: "Clock net", c: "clknet", g: "clknet", line: true },
+    { from: S.CTS, to: S.CTS, label: "Clock net", c: "clknet", g: "clknet", line: true },
     { from: S.HOLD, label: "Delay cell (hold)", c: "hold", g: "hold" }
   ].concat(GLAY.map(function (l) { return { from: S.GRT, label: l, c: l, g: l === "li1" ? "route" : "wire", layer: true }; }))
    .concat([{ from: S.GRT, to: S.GRT, label: "Nets with guides per g-cell, " + MINALL + "–" + MAXALL, c: "hot", g: "route", ramp: true },
@@ -2296,7 +2298,9 @@ function start(D) {
   function updateLegend() {
     var items = legendItems(target, false), el = document.getElementById("legend");
     el.classList.toggle("gds", target === S.GDS);   // the metals as outlines, as drawn
-    if (el.children.length === items.length) {
+    // the same entries (by name) just change state, so their swatches can fade; otherwise rebuilt
+    var same = el.children.length === items.length && items.every(function (it, i) { return el.children[i].textContent === it.l.label; });
+    if (same) {
       items.forEach(function (it, i) { el.children[i].classList.toggle("gone", it.gone); el.children[i].classList.toggle("dimmed", !it.gone && it.dimmed); });
     } else el.innerHTML = legendHTML(items);
   }
@@ -2439,7 +2443,7 @@ function start(D) {
       if (parts2.length) items.push({ c: "ir", h: "<b>IR drop</b> here: " + parts2.join(", "), dimmed: false, irramp: true });
     }
     // clock nets
-    if (cellsNow && (step === S.CTS || step === S.HOLD) && pos > S.LEGAL + 0.05) {
+    if (cellsNow && step === S.CTS && pos > S.LEGAL + 0.05) {
       CLOCK.forEach(function (c) {
         var dp = clockDriver(c);
         if (!dp) return;
