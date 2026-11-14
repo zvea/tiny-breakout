@@ -2070,40 +2070,50 @@ function start(D) {
     k = Math.max(0, Math.min(STEPS.length - 1, k));
     stopAnim();
     var from = pos;
-    if (k === S.GDS && target !== S.GDS) setTimeout(gdsCloseUp, 0);
+    var toGDS = k === S.GDS && target !== S.GDS;
     if (target === S.GDS && k !== S.GDS && Math.abs(cam.s - fitS) > 1e-9) fit(600);   // back out of the close-up
     if (k !== target) hideTip();
     target = k; updatePanel();
+    if (toGDS && reduce) setTimeout(gdsCloseUp, 0);
     if (reduce && !(opts && opts.replay)) {
       // no motion unasked: a step that plays waits at its start for the play button
       pos = STEPS[k].play && k > from ? k - 1 + (k === S.PLACE ? FADE : 0.001) : k;
       draw(); syncReadout(); return;
     }
-    var to = k;
-    var parts = [], total = 0, lo = Math.min(from, to), hi = Math.max(from, to);
-    for (var s0 = Math.floor(lo); s0 < hi; s0++) {
-      var a = Math.max(lo, s0), b = Math.min(hi, s0 + 1);
-      if (b <= a) continue;
-      var d = (b - a) * stepDur(s0 + 1);
-      parts.push({ a: a, b: b, d: d }); total += d;
+    // A step is shown from its start (the end of the one before) playing to its end, however it
+    // is reached: going on from within it, it carries on; a jump forward fast-forwards to its
+    // start first (at most 2.6 s); going back starts it afresh. → or the scrubber skip ahead.
+    var to = k, start = Math.max(0, k - 1), segs = [], ffMs = 0;
+    if (to === start) { pos = to; draw(); syncReadout(); return; }
+    if (from > start + 1e-9 && from < to) segs.push({ a: from, b: to, d: (to - from) * stepDur(k) });
+    else {
+      if (from < start) {
+        var ff = [], total = 0;
+        for (var s0 = Math.floor(from); s0 < start; s0++) {
+          var a = Math.max(from, s0), b = Math.min(start, s0 + 1);
+          if (b > a) { ff.push({ a: a, b: b, d: (b - a) * stepDur(s0 + 1) }); total += (b - a) * stepDur(s0 + 1); }
+        }
+        var sc = total > 2600 ? 2600 / total : 1;
+        ff.forEach(function (q) { q.d *= sc; ffMs += q.d; segs.push(q); });
+      } else pos = start;
+      segs.push({ a: start, b: to, d: stepDur(k) });
     }
-    var forwardOne = to > from && hi - lo <= 1.0001;
-    var cap = forwardOne ? Infinity : (to < from ? 1600 : 2600);
-    var scale = total > cap ? cap / total : 1;
-    if (to < from) parts.reverse();
+    // entering GDS: the glide to the close-up once the step itself begins
+    if (toGDS) setTimeout(function () { if (target === S.GDS) gdsCloseUp(); }, ffMs);
     var t0 = performance.now();
     function tick(now) {
-      var t = (now - t0) / scale, acc = 0;
+      var t = now - t0, acc = 0;
       pos = to;
-      for (var i = 0; i < parts.length; i++) {
-        var q = parts[i];
-        if (t < acc + q.d) { var f = (t - acc) / q.d; pos = to > from ? q.a + (q.b - q.a) * f : q.b - (q.b - q.a) * f; break; }
+      for (var i = 0; i < segs.length; i++) {
+        var q = segs[i];
+        if (t < acc + q.d) { pos = q.a + (q.b - q.a) * (t - acc) / q.d; break; }
         acc += q.d;
       }
       anim = pos !== to ? requestAnimationFrame(tick) : null;
       draw();
       syncReadout();
     }
+    draw(); syncReadout();
     anim = requestAnimationFrame(tick);
   }
   // One camera tween at a time (fit, the GDS close-up, the way back), cancelled by any zoom or drag
