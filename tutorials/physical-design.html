@@ -2081,25 +2081,14 @@ function start(D) {
       draw(); syncReadout(); return;
     }
     // A step is shown from its start (the end of the one before) playing to its end, however it
-    // is reached: going on from within it, it carries on; a jump forward fast-forwards to its
-    // start first (at most 2.6 s); going back starts it afresh. → or the scrubber skip ahead.
-    var to = k, start = Math.max(0, k - 1), segs = [], ffMs = 0;
+    // is reached: going on from within it, it carries on; otherwise, forward or back, it cuts to
+    // the step's start (no fast-forward through the steps between) and plays. → or the scrubber
+    // skip ahead.
+    var to = k, start = Math.max(0, k - 1), segs = [];
     if (to === start) { pos = to; draw(); syncReadout(); return; }
     if (from > start + 1e-9 && from < to) segs.push({ a: from, b: to, d: (to - from) * stepDur(k) });
-    else {
-      if (from < start) {
-        var ff = [], total = 0;
-        for (var s0 = Math.floor(from); s0 < start; s0++) {
-          var a = Math.max(from, s0), b = Math.min(start, s0 + 1);
-          if (b > a) { ff.push({ a: a, b: b, d: (b - a) * stepDur(s0 + 1) }); total += (b - a) * stepDur(s0 + 1); }
-        }
-        var sc = total > 2600 ? 2600 / total : 1;
-        ff.forEach(function (q) { q.d *= sc; ffMs += q.d; segs.push(q); });
-      } else pos = start;
-      segs.push({ a: start, b: to, d: stepDur(k) });
-    }
-    // entering GDS: the glide to the close-up once the step itself begins
-    if (toGDS) setTimeout(function () { if (target === S.GDS) gdsCloseUp(); }, ffMs);
+    else { pos = start; segs.push({ a: start, b: to, d: stepDur(k) }); }
+    if (toGDS) setTimeout(gdsCloseUp, 0);   // entering GDS: the glide to the close-up
     var t0 = performance.now();
     function tick(now) {
       var t = now - t0, acc = 0;
