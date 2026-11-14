@@ -1675,7 +1675,8 @@ function start(D) {
   // Callouts, in ink, point at the centre of what they name (along a long thin thing, at a point on it).
   // Each takes the first of its candidate places (as asked, flipped up or down, mirrored left or
   // right, further out) that overlaps no callout already drawn this frame and stays between the
-  // legend and the foot band; if none does, it is left out.
+  // legend and the foot band; if none does, it is left out. With ring, the point gets a circle
+  // round it instead of a dot, so a small thing named stays visible.
   var placed = [];
   function label(text, x, y, opts) {
     opts = opts || {};
@@ -1700,8 +1701,10 @@ function start(D) {
     placed.push([bx - 3, by - 3, bx + w + 3, by + h + 3]);
     var ax = best[2] === "right" ? bx + w : best[2] === "center" ? bx + w / 2 : bx;
     ctx.strokeStyle = C.pick; ctx.lineWidth = 1.2; ctx.beginPath();
-    ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2); ctx.stroke();
-    ctx.fillStyle = C.pick; ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill();
+    var lx = ax - x, ly = by + h / 2 - y, ll = Math.hypot(lx, ly) || 1, r0 = opts.ring ? 6 : 0;
+    ctx.moveTo(x + lx / ll * r0, y + ly / ll * r0); ctx.lineTo(ax, by + h / 2); ctx.stroke();
+    if (opts.ring) { ctx.beginPath(); ctx.arc(x, y, r0, 0, 7); ctx.stroke(); }
+    else { ctx.fillStyle = C.pick; ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill(); }
     ctx.fillStyle = C.bg; ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.rect(bx, by, w, h); ctx.fill(); ctx.stroke();
     ctx.fillStyle = C.ink; ctx.textBaseline = "middle"; ctx.textAlign = "left";
@@ -1766,11 +1769,14 @@ function start(D) {
       ctx.globalAlpha = a;
       var mid = Math.floor(nStripe / 2), sP = PDN.stripes[mid], sG = PDN.stripes[mid + 1], ry = PDN.rails[Math.floor(PDN.rails.length * 0.75)];
       if (sP[0] !== "VPWR") { var tmp = sP; sP = sG; sG = tmp; }
-      label("VPWR stripe (met4): power enters from the chip's met5 grid", sx(sP[2]), sy((sP[3] + sP[4]) / 2), { dx: -16, dy: -10, align: "right" });
-      label("VGND stripe (met4)", sx(sG[2]), sy((sG[3] + sG[4]) / 2 - 8 * RH), { dx: 16, dy: -10 });
-      label(ry[0] + " rail (met1)", sx(CORE[0] + 0.15 * (CORE[2] - CORE[0])), sy(ry[1]), { dy: -36 });
-      var vv = PDN.vias.filter(function (v) { return v[1] === sG[2]; });
-      if (vv.length) { var v0 = vv[Math.floor(vv.length / 4)]; label("via stack", sx(v0[1]), sy(v0[2]), { dx: 18, dy: 22 }); }
+      // one pair of stripes, each labelled on its outer side at a different height so the boxes
+      // sit in the gaps between pairs; the via stack low on the same VPWR stripe, away from both
+      var yOn = function (st, f) { return sy(st[3] + f * (st[4] - st[3])); };
+      label("VPWR stripe (met4)", sx(sP[2]), yOn(sP, 0.6), { dx: -16, dy: -10, align: "right" });
+      label("VGND stripe (met4)", sx(sG[2]), yOn(sG, 0.4), { dx: 16, dy: -10 });
+      label(ry[0] + " rail (met1)", sx(CORE[0] + 0.15 * (CORE[2] - CORE[0])), sy(ry[1]), { dx: 14, dy: -36 });
+      var vv = PDN.vias.filter(function (v) { return v[1] === sP[2]; });
+      if (vv.length) { var v0 = vv[Math.floor(vv.length / 6)]; label("via stack", sx(v0[1]), sy(v0[2]), { dx: -18, dy: 22, align: "right", ring: true }); }
     }
     if ((a = only(S.REPAIR, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
