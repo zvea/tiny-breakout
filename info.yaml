@@ -15,9 +15,10 @@ project:
 
   # List your project's source files here.
   # Source files must be in ./src and you must list each source file separately, one per line.
-  # test/Makefile, CI's lint step, the system tests, sim/play, tools/ and the Tang Nano 20K build
-  # (fpga/tang_nano_20k) read this list, as do Tiny Tapeout's own flows. Sources must be .sv:
-  # ours, but for the system tests, read only the .sv entries, and would skip a .v one.
+  # test/Makefile, CI's lint step, the system tests, sim/play, tools/ and the Tang Nano 20K and
+  # iCEBreaker builds (fpga/tang_nano_20k, fpga/icebreaker) read this list, as do Tiny Tapeout's
+  # own flows. Sources must be .sv: ours, but for the system tests, read only the .sv entries,
+  # and would skip a .v one.
   source_files:
     - "colour_pkg.sv"       # packages first
     - "gamepad_pkg.sv"

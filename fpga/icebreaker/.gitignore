@@ -1,0 +1,3 @@
+# Build output, and this board's own Python environment (see README.md)
+/build/
+/.venv/

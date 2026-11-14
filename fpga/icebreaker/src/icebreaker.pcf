@@ -1,0 +1,42 @@
+# Pins for the 1BitSquared iCEBreaker (iCE40UP5K-SG48), from the board's own pin file
+# (icebreaker.pcf in YosysHQ/icestorm's examples) and its pinout legend.
+#
+# SPDX-FileCopyrightText: 2026 Alexei Zverovitch
+# SPDX-License-Identifier: Apache-2.0
+
+# 12 MHz oscillator
+set_io clk_12m 35
+
+# User button on the main board (BTN_N): reset. Low while pressed; the board has its own
+# pull-up (10k).
+set_io btn_n 10
+
+# Snap-off board on PMOD2: Button 1 (BTN1), Button 2 (BTN2) and Button 3 (BTN3), a column.
+# Held with the snap-off board nearest the player, Button 3 is on the left and Button 1 on the
+# right. The buttons are high while pressed.
+set_io btn_left  18  # Button 3, P2_10
+set_io btn_fire  19  # Button 2, P2_4
+set_io btn_right 20  # Button 1, P2_9
+
+# MuseLab's PMOD-VGA v1.1 across PMOD1A and PMOD1B, chips up, VGA connector pointing away: on
+# PMOD1A, B0..B3 on pins 1-4 and R0..R3 on pins 7-10; on PMOD1B, HS on pin 1, VS on pin 2 and
+# G0..G3 on pins 7-10. Bit 0 is the least significant. This is how MuseLab's own example drives
+# it (vga_pong, for their iCESugar), and how it works on this board; its schematic has the rows
+# the other way (MuseLab numbers the second row 12 down to 7, so their pin 12 is pin 7 here).
+# Digilent's Pmod VGA, as other designs drive it, has each connector's rows the other way from
+# this one (R0..R3 on PMOD1A 1-4, B on 7-10; G on PMOD1B 1-4, HS and VS on 7 and 8): see
+# README.md.
+set_io vga_b[0]  4   # P1A1
+set_io vga_b[1]  2   # P1A2
+set_io vga_b[2] 47   # P1A3
+set_io vga_b[3] 45   # P1A4
+set_io vga_r[0]  3   # P1A7
+set_io vga_r[1] 48   # P1A8
+set_io vga_r[2] 46   # P1A9
+set_io vga_r[3] 44   # P1A10
+set_io vga_hs_n 43   # P1B1
+set_io vga_vs_n 38   # P1B2
+set_io vga_g[0] 42   # P1B7
+set_io vga_g[1] 36   # P1B8
+set_io vga_g[2] 32   # P1B9
+set_io vga_g[3] 28   # P1B10
