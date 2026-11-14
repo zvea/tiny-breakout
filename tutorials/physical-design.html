@@ -1168,11 +1168,11 @@ function start(D) {
   STEPS[S.ANT] = { short: "Antenna", title: "Antenna repair", tool: "OpenROAD <code>grt</code>: <code>repair_antennas</code>", play: 6500,
     body:
       "<p>During fabrication the chip is built up layer by layer, and plasma etching charges every exposed wire. A wire that connects only to transistor gates has nowhere to discharge, and a long one can collect enough charge to damage the thin gate oxide: the <b>antenna effect</b>. In sky130 the rule limits the area of a wire's sidewalls (perimeter × thickness) on each layer relative to the gate area it connects to.</p>" +
-      "<p>The check after global routing found one violation: net <code>" + AM.net + "</code> at <code>" + AM.pin + "</code> on " + AM.layer + ", ratio " + fmt(AM.partial) + " against a limit of " + fmt(AM.required, 0) + " (" + Math.round(100 * (AM.pr - 1)) + "% over). The clock pin's long route to the root buffer ends at a single gate.</p>" +
-      "<p>The repair inserts one <b>antenna diode</b> (<code>diode_2</code>) beside the gate: a reverse-biased junction that gives the charge a safe path to the substrate and does nothing in normal operation. The check after detailed routing finds no violations.</p>" +
+      "<p>The check after global routing found one violation: net <code>" + AM.net + "</code> at <code>" + AM.pin + "</code> on " + AM.layer + ", ratio " + fmt(AM.partial) + " against a limit of " + fmt(AM.required, 0) + " (" + Math.round(100 * (AM.pr - 1)) + "% over). The clock pin's long route ends at the root buffer's input, on transistor gates alone, with no diffusion to drain the charge.</p>" +
+      "<p>The repair inserts one <b>antenna diode</b> (<code>diode_2</code>) beside the root buffer: a reverse-biased junction that gives the charge a safe path to the substrate and does nothing in normal operation. The check after detailed routing finds no violations.</p>" +
       "<h3>How it works</h3>" +
       "<p><code>repair_antennas</code> estimates each net's metal from its global route and adds diodes, or moves wiring to a higher layer, until every ratio passes. Placing the diode re-legalises the cells, which puts almost every cell back in its row's orientation, and LibreLane 3.0 does not mirror them again afterwards: " + n(AM.flipped) + " cells lose their mirroring here, at some cost in wirelength. The guides of " + n(AM.rerouted) + " nets are re-made, and detailed routing follows those.</p>",
-    note: "The clk net's guides from the pin to the root buffer; the diode; then the cells that lose their mirroring flip back." };
+    note: "The clk net's guides from the pin to the root buffer, and the wires the check estimates from them; the diode; then the cells that lose their mirroring flip back." };
   STEPS[S.DRT] = { short: "Detail", title: "Detailed routing", tool: "OpenROAD <code>drt</code> (TritonRoute)", play: 14000,
     body:
       "<p><b>Detailed routing</b> draws the actual wires: for every net, metal shapes on the routing tracks of each layer, joined by vias, following the net's route guides and obeying every width and spacing rule. The guide's layer is a preference: the router may move a stretch to another layer.</p>" +
@@ -1289,7 +1289,7 @@ function start(D) {
     var cells = cellState(pos);
     var layers = [
       [cellsFocus(), function () { if (cells) drawCells(); }], [Math.max(DIMC.fill, DIMC.decap), function () { if (cells) drawFill(); }],
-      [DIMC.pdn, drawPower], [DIMC.route, drawGuides], [DIMC.antnet, drawAntenna], [DIMC.wire, drawWires],
+      [DIMC.pdn, drawPower], [routeOver(), drawGuides], [DIMC.antnet, drawAntenna], [DIMC.wire, drawWires],
       [DIMC.clknet, function () { if (cells) drawClockNets(); }], [DIMC.path, function () { if (cells) drawTiming(); }],
       [DIMC.ir, drawIR]];
     layers.forEach(function (l) { if (l[0] < 0.6) l[1](); });
@@ -1442,6 +1442,9 @@ function start(D) {
   // for them; then every net at once, as the number of nets with guides in each g-cell.
   var EX0 = 0.06, EXSLOT = 0.21, DEM0 = EX0 + EXSLOT * ROUTE_EX.length + 0.02;
   function routeT() { return within(pos, S.GRT); }
+  // the routing step's layer stays over the cells while it fades out as the next step begins, so
+  // its crowding map goes as a whole rather than lingering in the gaps between them
+  function routeOver() { return pos > S.GRT && pos < S.GRT + 0.3 ? 1 : DIMC.route; }
   function drawGuides() {
     if (pos <= S.HOLD) return;
     var t = routeT(), gone = pos > S.GRT ? clamp01(1 - (pos - S.GRT) / 0.3) : 1, d = DIMC.route * gone, i;
@@ -1492,14 +1495,63 @@ function start(D) {
   }
 
   // Antenna repair: the clk net's route, from the pin down to the root buffer's gate
-  var ANT_GC = null;   // the clk net's guides by g-cell
+  var ANT_GC = null, ANT_L = GLAY.indexOf(AM.layer);   // the clk net's guides by g-cell; the layer over the limit
   function antCells() { return ANT_GC || (ANT_GC = guideCells(GRAW, GSTART[CLKNET], GSTART[CLKNET] + GR.count[CLKNET])); }
+  // The wires the check estimates from the clk net's guides, as OpenROAD builds them when there is
+  // no detailed routing yet: each guide a wire on its layer from the centre of its first g-cell to
+  // the centre of its last, at the layer's default width, and a stub to each pin, here to the root
+  // buffer's centre (its input pin's place is not in the data) on li1 and to the clk pin on met4,
+  // drawn as an L, vertical then horizontal, as wires run. [layer, x, y, x, y, ...] in DBU, bottom
+  // layer first.
+  var ANT_W = null;
+  function antWires() {
+    if (ANT_W) return ANT_W;
+    ANT_W = [];
+    var mid = function (i, n) { return (n === 0 ? gX(i) : gY(i)) + GG / 2; }, b, li1 = -1, top = -1;
+    for (var i = GSTART[CLKNET]; i < GSTART[CLKNET] + GR.count[CLKNET]; i++) {
+      b = 5 * i;
+      ANT_W.push([GRAW[b + 4], mid(GRAW[b], 0), mid(GRAW[b + 1], 1), mid(GRAW[b + 2] - 1, 0), mid(GRAW[b + 3] - 1, 1)]);
+      if (GRAW[b + 4] === 0) li1 = ANT_W.length - 1;
+      if (top < 0 || GRAW[b + 4] > ANT_W[top][0]) top = ANT_W.length - 1;
+    }
+    var rb = [K.ant.xy[2 * ROOTBUF] + WT[K.ant.ty[ROOTBUF]] / 2, K.ant.xy[2 * ROOTBUF + 1] + RH / 2];
+    var stub = function (l, x, y, px, py) { ANT_W.push([l, x, y, x, py, px, py]); };
+    if (li1 >= 0) stub(0, ANT_W[li1][1], ANT_W[li1][2], rb[0], rb[1]);
+    stub(ANT_W[top][0], ANT_W[top][3], ANT_W[top][4], (CLKPIN.x0 + CLKPIN.x1) / 2, (CLKPIN.y0 + CLKPIN.y1) / 2);
+    ANT_W.sort(function (p, q) { return p[0] - q[0]; });
+    return ANT_W;
+  }
+  // the point of a cell (placed as on the antenna step) farthest from the estimated wires, for its
+  // callout, on screen
+  function clearOfWires(ci) {
+    var x0 = K.ant.xy[2 * ci], y0 = K.ant.xy[2 * ci + 1], w = WT[K.ant.ty[ci]], best = null, bd = -1;
+    function dist(px, py, ax, ay, bx, by) {
+      var dx = bx - ax, dy = by - ay, u = dx || dy ? clamp01(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)) : 0;
+      return Math.hypot(px - ax - u * dx, py - ay - u * dy);
+    }
+    for (var i = 0; i < 7; i++) for (var j = 0; j < 5; j++) {
+      var px = x0 + w * (0.15 + 0.7 * i / 6), py = y0 + RH * (0.1 + 0.2 * j), m = 1e18;
+      antWires().forEach(function (wr) { for (var k = 1; k + 3 < wr.length; k += 2) m = Math.min(m, dist(px, py, wr[k], wr[k + 1], wr[k + 2], wr[k + 3])); });
+      if (m > bd) { bd = m; best = [px, py]; }
+    }
+    return [sx(best[0]), sy(best[1])];
+  }
   function drawAntenna() {
     if (pos <= S.GRT || pos > S.ANT + focusFade(S.ANT + 1)) return;
     var a = (pos <= S.ANT ? clamp01(within(pos, S.ANT) / 0.15) : clamp01(1 - (pos - S.ANT) / focusFade(S.ANT + 1))) * DIMC.antnet;
     if (a <= 0.01) return;
     drawGuideCells(antCells(), a);
     highlightCell(ROOTBUF, C[CLS[ROOTBUF]], a);
+    // the estimated wires over them, as the metal lies over the cells
+    worldTransform(); ctx.lineCap = "square"; ctx.globalAlpha = a;
+    antWires().forEach(function (w) {
+      var name = GLAY[w[0]];
+      ctx.strokeStyle = C[name]; ctx.lineWidth = Math.max(2.2 / cam.s, WIDTH[WL.indexOf(name)]);
+      ctx.beginPath(); ctx.moveTo(w[1], w[2]);
+      for (var j = 3; j < w.length; j += 2) ctx.lineTo(w[j], w[j + 1]);
+      ctx.stroke();
+    });
+    screenTransform(); ctx.lineCap = "butt";
     ctx.globalAlpha = 1;
   }
 
@@ -2094,9 +2146,13 @@ function start(D) {
     // antenna repair
     if ((a = Math.max(only(S.ANT, 0.95), pos > S.GRT + 0.15 && pos < S.ANT ? clamp01((pos - S.GRT - 0.15) / 0.1) : 0)) > 0.01) {
       ctx.globalAlpha = a;
-      var qb = centre(K.ant, ROOTBUF);
-      label("root buffer: gate on the long " + AM.net + " wire", qb[0], qb[1], { dx: 18, dy: -44 });
-      if (DIODE >= 0 && pos > S.GRT + 0.4) { var qdi = centre(K.ant, DIODE); label("antenna diode", qdi[0], qdi[1], { dx: -18, dy: 34, align: "right" }); }
+      var qb = clearOfWires(ROOTBUF);
+      // the estimated wire over the limit, at the middle of its longest stretch, then the gates it
+      // threatens, top to bottom
+      var run = antWires().filter(function (w) { return w[0] === ANT_L; }).sort(function (p, q) { return Math.hypot(q[3] - q[1], q[4] - q[2]) - Math.hypot(p[3] - p[1], p[4] - p[2]); })[0];
+      label("estimated " + AM.layer + " wire: " + Math.round(100 * (AM.pr - 1)) + "% over the antenna limit", sx((run[1] + run[3]) / 2), sy((run[2] + run[4]) / 2), { dx: 30, dy: 40 });
+      label("root buffer: at risk from the wire's charge", qb[0], qb[1], { dx: 18, dy: -44 });
+      if (DIODE >= 0 && pos > S.GRT + 0.4) { var qdi = clearOfWires(DIODE); label("antenna diode", qdi[0], qdi[1], { dx: -18, dy: 34, align: "right" }); }
     }
     if (pos > S.ANT && pos < S.DRT) exBeingBuilt(drtT(), WEX0, WEXSLOT, 0.15, true);
     // The close-up's flip-flop: its cell outlined until the end, named from the glide until the
@@ -2428,7 +2484,7 @@ function start(D) {
     { from: S.GRT, to: S.DRT, label: "Route guide", c: "guide", g: "guide" },
     { from: S.GRT, to: S.GRT, label: "Nets with guides per g-cell, " + MINALL + "–" + MAXALL, c: "hot", g: "route", ramp: true },
     { from: S.ANT, label: "Antenna diode", c: "diode", g: "diode" }
-  ].concat(GLAY.map(function (l) { return { from: S.DRT, label: l, c: l, g: l === "li1" ? "route" : "wire", layer: true }; }))
+  ].concat(GLAY.map(function (l) { return { from: S.ANT, label: l, c: l, g: l === "li1" ? "route" : "wire", layer: true }; }))
    .concat([{ from: S.DRT, label: "Via (zoom in)", c: "wvia", g: "wire" },
             { from: S.FILL, label: "Decap cell", c: "decap", g: "decap" },
             { from: S.FILL, label: "Fill cell", c: "fill", g: "fill", hatch: true },
@@ -2446,7 +2502,7 @@ function start(D) {
     // under the example wires
     if (l.g === "guide") return k === S.GRT ? "route" : k === S.ANT ? "antnet" : "wire";
     if (!l.layer) return l.g;
-    return k === S.GDS ? "gds" : l.g;
+    return k === S.ANT ? "antnet" : k === S.GDS ? "gds" : l.g;
   }
   function legendItems(k, all) {
     return LEGEND.filter(function (l) { return l.from <= k && (all || !(l.to < k)); }).map(function (l) {
