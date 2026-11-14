@@ -836,7 +836,7 @@ function start(D) {
       var n = r ? Math.max(8, Math.round(2 * Math.PI * r / (r < 240 ? 8 : 16))) : 1;
       for (var j = 0; j < n && !found; j++) {
         var px = cx + r * Math.cos(2 * Math.PI * j / n), py = cy + r * Math.sin(2 * Math.PI * j / n);
-        if (px < 0 || px > W || py < legendH || py > H - footH) continue;
+        if (px < 20 || px > W - 20 || py < legendH + 20 || py > H - footH - 20) continue;
         if (pass === 0 && (px < sx(fr[0]) || px > sx(fr[2]) || py < sy(fr[3]) || py > sy(fr[1]))) continue;
         if (inLayer(g, px, py)) found = [px, py];
       }
@@ -1727,11 +1727,12 @@ function start(D) {
       };
       GROUPS.forEach(function (g) { if (g.n > 1) bracket(sx(g.x0), sx(g.x1), [g.bus + "[" + (g.n - 1) + ":0]", g.bus]); });
       // single pins are unrelated signals, not a bus: each gets its name upright over the pin, as
-      // every pin does once zoomed in (a size smaller where the pins are close)
+      // every pin does once zoomed in (a size smaller where the pins are close; none where the
+      // names would overlap, as on a phone, until zoomed in)
       ctx.font = "500 " + (cam.s * PINPITCH < 13 ? 10 : 11) + "px " + C.font;
       ctx.textAlign = "left"; ctx.textBaseline = "middle";
       GROUPS.forEach(function (g) {
-        if (g.n !== 1) return;
+        if (g.n !== 1 || cam.s * PINPITCH < 10) return;
         ctx.save(); ctx.translate(sx((g.x0 + g.x1) / 2), sy(DIE[3]) - 6); ctx.rotate(-Math.PI / 2);
         ctx.fillText(g.bus, 0, 0); ctx.restore();
       });
@@ -1742,7 +1743,7 @@ function start(D) {
   // Callouts, in ink, point at the centre of what they name (along a long thin thing, at a point on it).
   // Each takes the first of its candidate places (as asked, flipped up or down, mirrored left or
   // right, further out) that overlaps no callout already drawn this frame and stays between the
-  // legend and the foot band; if none does, it is left out. A box (opts.box) names an event
+  // legend and the foot band (opts.more adds places to try last); if none does, it is left out. A box (opts.box) names an event
   // rather than a thing: it sits centred on the point, with no leader.
   var placed = [];
   function label(text, x, y, opts) {
@@ -1754,7 +1755,7 @@ function start(D) {
     var cands = opts.box ? [[0, -h / 2, "center"]]                  // centred on the point, no leader
               : opts.fixed ? [[dx, dy, al], [-dx, dy, flip[al]]]   // only beside, never flipped
               : [[dx, dy, al], [dx, -dy - h, al], [-dx, dy, flip[al]], [-dx, -dy - h, flip[al]],
-                 [dx, dy * 2, al], [dx, -dy * 2 - h, al], [-dx, dy * 2, flip[al]], [-dx, -dy * 2 - h, flip[al]]];
+                 [dx, dy * 2, al], [dx, -dy * 2 - h, al], [-dx, dy * 2, flip[al]], [-dx, -dy * 2 - h, flip[al]]].concat(opts.more || []);
     var best = null;
     // a caller's avoid(box) rules out more places (what the callout must not cover); if it rules
     // out all of them, they are tried again without it
@@ -1986,7 +1987,12 @@ function start(D) {
       var above = function (text, at, al) {
         if (al <= 0.01) return;   // (a hidden box would still take the place)
         ctx.globalAlpha = al;
-        if (at) label(text, sx(at[0]), sy(at[1]), { dx: 22, dy: -50 });
+        // near the point but not over the cell, whose insides are what is being shown
+        var cellBox = [sx(fr[0]) - 2, sy(fr[3]) - 2, sx(fr[2]) + 2, sy(fr[1]) + 2];
+        var offCell = function (b) { return b[0] < cellBox[2] && cellBox[0] < b[2] && b[1] < cellBox[3] && cellBox[1] < b[3]; };
+        // failing the usual places, just above the cell, else just below it
+        var ux = sx(at[0]), uy = sy(at[1]), up = cellBox[1] - 26 - uy, dn = cellBox[3] + 6 - uy;
+        if (at) label(text, ux, uy, { dx: 22, dy: -50, avoid: offCell, more: [[22, up, "left"], [-22, up, "right"], [22, dn, "left"], [-22, dn, "right"]] });
         else label(text, bxc, byb - 10, { box: true });
       };
       // its own colour over the die while its callout shows, then only its outline
@@ -2014,11 +2020,21 @@ function start(D) {
     // other's level with its point, to the left
     if (pos > S.STA && pos <= S.IR + 0.06) {
       var ui = within(pos, S.IR), upper = irWorst("VPWR").y >= irWorst("VGND").y ? "VPWR" : "VGND";
+      // a box must not cover the strips with the worst drop (the darkest fifth of either net)
+      var overWorst = function (b) {
+        return IRNETS.some(function (n) {
+          return IRSTRIPS[n].some(function (st) {
+            if (st.d < 0.8 * IRMAX) return false;
+            var hs = Math.max(1, 0.3 * RH * cam.s), y0 = sy(st.y) - hs, y1 = sy(st.y) + hs;
+            return b[0] < sx(st.x1) && sx(st.x0) < b[2] && b[1] < y1 && y0 < b[3];
+          });
+        });
+      };
       [["VPWR", 0, IR_V0], ["VGND", 1, IR_G0]].forEach(function (q) {
         if (ui <= q[2] + 0.05 && pos <= S.IR) return;
         var wv = irWorst(q[0]);
         ctx.globalAlpha = pos > S.IR ? only(S.IR, 0) : clamp01((ui - q[2] - 0.05) / 0.05);
-        label("worst " + q[0] + " drop: " + fmt(IR.worst[q[1]], 1) + " µV", sx(wv.x), sy(wv.y), { dx: -18, dy: q[0] === upper ? -32 : -10, align: "right" });
+        label("worst " + q[0] + " drop: " + fmt(IR.worst[q[1]], 1) + " µV", sx(wv.x), sy(wv.y), { dx: -18, dy: q[0] === upper ? -32 : -10, align: "right", avoid: overWorst });
       });
     }
     if (pos > S.FILL && pos <= S.STA + 0.06) {
@@ -2251,7 +2267,7 @@ function start(D) {
     { from: S.TAPS, label: "Well tap", c: "tap", g: "fixed" },
     { from: S.PDN, label: "VPWR", c: "vpwr", g: "pdn" },
     { from: S.PDN, label: "VGND", c: "vgnd", g: "pdn" },
-    { from: S.PDN, label: "Via stack", c: "via", g: "pdn" },
+    { from: S.PDN, label: "Via stack", c: "via", g: "pdnvia" },
     { from: S.PINS, label: "Pin (met4)", c: "pin", g: "pins" },
     { from: S.PLACE, label: "Logic cell", c: "logic", g: "logic" },
     { from: S.PLACE, label: "Flip-flop", c: "ff", g: "ff" },
@@ -2276,6 +2292,7 @@ function start(D) {
             { from: S.GDS, label: "Contact or via cut", c: "cut", g: "gds" }]);
   function legendGroup(l, k) {
     // the layer colours serve the guides (routing step), the clk route (antenna step), then the wires
+    if (l.g === "pdnvia") return k === S.IR ? "ir-hidden" : "pdn";   // under the IR drop veil
     if (!l.layer) return l.g;
     return k === S.GRT ? "route" : k === S.ANT ? "antnet" : k === S.GDS ? "gds" : l.g;
   }
