@@ -1029,10 +1029,11 @@ function start(D) {
     body:
       "<p><b>Global routing</b> plans every net's route before any wire is drawn. It lays a grid of <b>g-cells</b> over the die (" + fmt(um(GG)) + " µm, " + GNX + " × " + GNY + ", the last column and row a little wider) and, for each of the " + n(GR.routed) + " nets, picks the g-cells its wires will pass through and a layer in each: the net's <b>route guides</b>, a corridor for detailed routing.</p>" +
       "<p>Its job is to keep every g-cell edge within capacity. Only so many wires fit across an edge, one per track (" + Math.floor(TRACKS[GLAY.indexOf("met1")]) + " on met1, " + Math.floor(TRACKS[GLAY.indexOf("met4")]) + " on met4), less a " + GR.adjust + "% margin and what the power grid blocks; where too many nets would cross, the router detours some through quieter g-cells. The first pass did overflow; " + GR.extra + " more rounds of rip-up and reroute cleared it.</p>" +
+      "<p>The last picture counts, for every g-cell, the nets with a guide in it: the stronger the colour, the busier. It shows where routing is dense, not the router's own measure, which counts the wires across each edge against its tracks.</p>" +
       "<p>Routing uses met1 to met4, alternating: met1 and met3 horizontal, met2 and met4 vertical; li1, the cells' pin layer, appears only where a pin is reached. Overall " + ["met1", "met2", "met3", "met4"].map(function (l) { return l + " uses " + fmt(GR.usage[l], 0) + "%"; }).join(", ") + " of its capacity.</p>" +
       "<h3>How it works</h3>" +
       "<p>FastRoute routes each net in two dimensions as a tree through g-cells, rips up and reroutes the nets through over-full edges until none remain, and then assigns each stretch a layer.</p>",
-    note: "The guides of " + ROUTE_EX.length + " example nets, one at a time; then, for every g-cell, how many nets have guides in it: a picture of crowding, not the router's own capacity count." };
+    note: "The guides of " + ROUTE_EX.length + " example nets, one at a time; then every net, as a count per g-cell." };
   STEPS[S.ANT] = { short: "Antenna", title: "Antenna repair", tool: "OpenROAD <code>grt</code>: <code>repair_antennas</code>", play: 6500,
     body:
       "<p>During fabrication the chip is built up layer by layer, and plasma etching charges every exposed wire. A wire that connects only to transistor gates has nowhere to discharge, and a long one can collect enough charge to damage the thin gate oxide: the <b>antenna effect</b>. In sky130 the rule limits the area of a wire's sidewalls (perimeter × thickness) on each layer relative to the gate area it connects to.</p>" +
@@ -1309,38 +1310,22 @@ function start(D) {
   // for them; then every net at once, as the number of nets with guides in each g-cell.
   var EX0 = 0.06, EXSLOT = 0.21, DEM0 = EX0 + EXSLOT * ROUTE_EX.length + 0.02;
   function routeT() { return within(pos, S.GRT); }
-  function lum(css) {
-    var m = css.match(/[\d.]+/g);
-    if (css[0] === "#") { var h = css.slice(1); m = [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
-    return (0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]) / 255;
-  }
   function drawGuides() {
     if (pos <= S.HOLD) return;
     var t = routeT(), gone = pos > S.GRT ? clamp01(1 - (pos - S.GRT) / 0.3) : 1, d = DIMC.route * gone, i;
     if (gone <= 0) return;
     // crowding: a veil over the die, then each g-cell as a tile, pale to deep with the number
-    // of nets that have guides in it; the count itself where the tile is big enough
+    // of nets that have guides in it (the count is in the tooltip)
     var ad = ease(clamp01((t - DEM0) / 0.22)) * gone;
     if (ad > 0.01) {
       ctx.globalAlpha = ad; ctx.fillStyle = C.veil;
       ctx.beginPath(); rect(DIE[0], DIE[1], DIE[2], DIE[3]); ctx.fill();
-      var gap = 0.6 / cam.s, bigT = GG * cam.s > 30, lh = lum(C.hot), ls = lum(C.stage);
-      ctx.font = "500 11px " + C.font; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      var gap = 0.6 / cam.s;
       for (var gy = 0; gy < GNY; gy++) for (var gx = 0; gx < GNX; gx++) {
         var u = crowding(gx, gy), al = crowdAlpha(u), x0 = gX(gx), y0 = gY(gy), x1 = gX(gx + 1), y1 = gY(gy + 1);
         ctx.globalAlpha = ad * al; ctx.fillStyle = C.hot;
         ctx.beginPath(); rect(x0 + gap, y0 + gap, x1 - gap, y1 - gap); ctx.fill();
-        if (bigT) {
-          // the text colour that reads on the tile as composited
-          ctx.globalAlpha = ad; ctx.fillStyle = ls + (lh - ls) * al > 0.5 ? "#16181a" : "#f4f5f6";
-          ctx.fillText(String(COVALL[gy * GNX + gx]), sx((x0 + x1) / 2), sy((y0 + y1) / 2));
-        }
       }
-      // the busiest and quietest tiles ringed
-      if (bigT) [BUSY, QUIET].forEach(function (c) {
-        ctx.globalAlpha = ad; ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
-        ctx.beginPath(); rect(gX(c.gx), gY(c.gy), gX(c.gx + 1), gY(c.gy + 1)); ctx.stroke();
-      });
     }
     // the grid
     var ag = clamp01(t / EX0) * d * (1 - 0.5 * ad);
@@ -1836,8 +1821,6 @@ function start(D) {
       var kh = CLS.indexOf("hold");
       if (kh >= 0) { var qh = centre(K.hold, kh); label("delay cell (dlygate4sd3_1)", qh[0], qh[1], { dx: 18, dy: -34 }); }
     }
-    // global routing: each example while it is built; at the end, the extremes, unless the
-    // tiles already show their counts (then the ringed tiles speak for themselves)
     // global placement's rewind
     if (pos > S.PINS && pos < S.PLACE) {
       var gg = gplAt(within(pos, S.PLACE));
@@ -1848,10 +1831,11 @@ function start(D) {
               sx((CORE[0] + CORE[2]) / 2), sy((CORE[1] + CORE[3]) / 2), { box: true });
       }
     }
+    // global routing: each example while it is built; at the end, the busiest and quietest g-cells
     if (pos > S.HOLD && pos < S.GRT) exBeingBuilt(routeT(), EX0, EXSLOT, 0.18);
-    if ((a = only(S.GRT, 0.97) * clamp01((routeT() - DEM0 - 0.1) / 0.1)) > 0.01 && GG * cam.s <= 30) {
+    if ((a = only(S.GRT, 0.97) * clamp01((routeT() - DEM0 - 0.1) / 0.1)) > 0.01) {
       ctx.globalAlpha = a;
-      [[BUSY, "busiest g-cell", 18, -40, "left"], [QUIET, "quietest g-cell in the core", -18, 34, "right"]].forEach(function (q) {
+      [[BUSY, "busiest g-cell", 18, -40, "left"], [QUIET, "quietest g-cell in the core", -18, -40, "right"]].forEach(function (q) {
         var c = q[0];
         label(q[1] + ": " + c.nets + " nets", sx((gX(c.gx) + gX(c.gx + 1)) / 2), sy((gY(c.gy) + gY(c.gy + 1)) / 2), { dx: q[2], dy: q[3], align: q[4] });
       });
