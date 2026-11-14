@@ -47,6 +47,7 @@
   --row-edge: #c4ccd5;
   --site: rgba(60, 72, 86, 0.22);
   --dim: #3a4250;
+  --ghost: 0.92;
   --tap: #4d5b6b;
   --endcap: #9aa6b3;
   --swatch-edge: rgba(20, 26, 33, 0.35);
@@ -92,7 +93,7 @@
 :root[data-theme="dark"] {
   --bg: #121416; --ink: #e4e6e8; --muted: #9aa0a6; --rule: #3d4247; --bar: #1d2125; --focus: #7fb0ff;
   --stage: #0d0f11; --veil: rgba(13, 15, 17, 0.86); --die: #2a2f35; --die-edge: #8a949f; --core: #1b1f23;
-  --row: #22272c; --row-flip: #30373e; --row-edge: #3b434b; --site: rgba(200, 210, 222, 0.18); --dim: #c9d0d8;
+  --row: #22272c; --row-flip: #30373e; --row-edge: #3b434b; --site: rgba(200, 210, 222, 0.18); --dim: #c9d0d8; --ghost: 0.8;
   --tap: #a9b6c4; --endcap: #66717d; --swatch-edge: rgba(255, 255, 255, 0.3);
   --vpwr: #ff6b5e; --vgnd: #5f95ff; --via: #e9edf2; --pin: #f1f3f5;
   --logic: #b48f45; --ff: #4cc0ae; --buf: #ff86c4; --tie: #c9c56a; --clock: #ff9a3d; --clknet: #ffb067;
@@ -1036,7 +1037,7 @@ function start(D) {
   // colour turned grey and taken most of the way to the core's, so colour is left to the subject
   // and overlapping context does not mix into texture. d is the group's DIMC: 1 in focus, grey
   // at DIM, fainter below it.
-  var GHOST = 0.8, rgbCache = {};
+  var GHOST = 0.8, rgbCache = {};   // how far greyed context goes toward the core colour (per theme, --ghost)
   function rgbOf(css) {
     if (!rgbCache[css]) {
       var h = css.slice(1);
@@ -1197,11 +1198,11 @@ function start(D) {
 
   function readColours() {
     var cs = getComputedStyle(document.documentElement);
-    ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "tap", "endcap", "ir0", "ir1", "ir2", "ir3",
+    ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "ghost", "tap", "endcap", "ir0", "ir1", "ir2", "ir3",
      "vpwr", "vgnd", "via", "pin", "logic", "ff", "hot", "buf", "tie", "clock", "clknet", "hold",
      "li1", "met1", "met2", "met3", "met4", "pick", "diode", "decap", "fill", "wvia", "setup", "holdp", "nwell", "diff", "gtap", "poly", "cut", "ink", "muted", "bg", "font"]
       .forEach(function (k) { C[k] = cs.getPropertyValue("--" + k).trim(); });
-    hatches = {}; rgbCache = {};
+    hatches = {}; rgbCache = {}; GHOST = parseFloat(C.ghost);
     IRSTOPS = [0, 1, 2, 3].map(function (i) { var h = C["ir" + i].slice(1); return [0, 2, 4].map(function (j) { return parseInt(h.slice(j, j + 2), 16); }); });
     colourGen++;
   }
