@@ -1397,12 +1397,14 @@ function start(D) {
         ctx.globalAlpha = vis * 0.18; ctx.fillStyle = C[GLAY[e.post[5 * k + 4]]];
         ctx.beginPath(); gRect(e.post, k, 0); ctx.fill();
       }
-      var wf = clamp01((f - 0.2) / 0.4);
+      // the net's wires fade in whole: the file's order of its pieces is not the order they
+      // were made in (the router works region by region, on all nets at once)
+      var wf = ease(clamp01((f - 0.2) / 0.4));
       worldTransform(); ctx.lineCap = "square";
-      for (k = WSTART[e.net]; k < WSTART[e.net] + DR.scount[e.net] * wf; k++) {
+      for (k = WSTART[e.net]; wf > 0.01 && k < WSTART[e.net] + DR.scount[e.net]; k++) {
         l = WRAW[9 * k + 8];
         var b = 9 * k;
-        ctx.globalAlpha = vis; ctx.strokeStyle = C[WL[l]]; ctx.lineWidth = Math.max(2.2 / cam.s, WIDTH[l]);
+        ctx.globalAlpha = vis * wf; ctx.strokeStyle = C[WL[l]]; ctx.lineWidth = Math.max(2.2 / cam.s, WIDTH[l]);
         ctx.beginPath(); ctx.moveTo(u16(WRAW, b) * 5, u16(WRAW, b + 2) * 5); ctx.lineTo(u16(WRAW, b + 4) * 5, u16(WRAW, b + 6) * 5); ctx.stroke();
       }
       screenTransform(); ctx.lineCap = "butt";
@@ -1676,14 +1678,18 @@ function start(D) {
               : [[dx, dy, al], [dx, -dy - h, al], [-dx, dy, flip[al]], [-dx, -dy - h, flip[al]],
                  [dx, dy * 2, al], [dx, -dy * 2 - h, al], [-dx, dy * 2, flip[al]], [-dx, -dy * 2 - h, flip[al]]];
     var best = null;
-    for (var c = 0; c < cands.length && !best; c++) {
-      var px = x + cands[c][0], py = y + cands[c][1];
-      if (cands[c][2] === "right") px -= w; else if (cands[c][2] === "center") px -= w / 2;
+    // a caller's avoid(box) rules out more places (what the callout must not cover); if it rules
+    // out all of them, they are tried again without it
+    for (var c = 0; c < 2 * cands.length && !best; c++) {
+      var strict = c < cands.length;
+      if (!strict && !opts.avoid) break;
+      var cd = cands[c % cands.length], px = x + cd[0], py = y + cd[1];
+      if (cd[2] === "right") px -= w; else if (cd[2] === "center") px -= w / 2;
       var box = [px - 3, py - 3, px + w + 3, py + h + 3];
       var clash = box[0] < 0 || box[2] > W || box[1] < legendH + (opts.fixed ? 4 : 14) || box[3] > H - footH - 12 || placed.some(function (b2) {
         return box[0] < b2[2] && b2[0] < box[2] && box[1] < b2[3] && b2[1] < box[3];
-      });
-      if (!clash) best = [px, py, cands[c][2]];
+      }) || (strict && opts.avoid && opts.avoid(box));
+      if (!clash) best = [px, py, cd[2]];
     }
     if (!best) return;
     var bx = best[0], by = best[1];
@@ -1722,16 +1728,44 @@ function start(D) {
     byRow[row].forEach(function (c) { if (c.kind === kind && (!best || Math.abs(c.site - want) < Math.abs(best.site - want))) best = c; });
     return best;
   }
-  function exLabel(ex, k) {
-    label(ex.name + ": " + ex.npins + " pins", sx(ex.mid[0]), sy(ex.mid[1]), { dx: k % 2 ? -18 : 18, dy: -40, align: k % 2 ? "right" : "left" });
+  // the point on an example net's wires nearest the guides' middle, for the callout on the
+  // detailed routing step
+  function exWireAt(ex) {
+    if (ex.wireAt) return ex.wireAt;
+    var best = ex.mid, bd = Infinity;
+    for (var k = WSTART[ex.net]; k < WSTART[ex.net] + DR.scount[ex.net]; k++) {
+      var b = 9 * k, ax = u16(WRAW, b) * 5, ay = u16(WRAW, b + 2) * 5, vx = u16(WRAW, b + 4) * 5 - ax, vy = u16(WRAW, b + 6) * 5 - ay;
+      var L2 = vx * vx + vy * vy, u = L2 ? clamp01(((ex.mid[0] - ax) * vx + (ex.mid[1] - ay) * vy) / L2) : 0;
+      var px = ax + u * vx, py = ay + u * vy, dd = (px - ex.mid[0]) * (px - ex.mid[0]) + (py - ex.mid[1]) * (py - ex.mid[1]);
+      if (dd < bd) { bd = dd; best = [px, py]; }
+    }
+    return (ex.wireAt = best);
+  }
+  // whether a screen box overlaps an example net's guides (those detailed routing followed, with
+  // wires) or its wires
+  function exOverlaps(ex, wires, box) {
+    function hit(x0, y0, x1, y1) { return Math.min(x0, x1) - 2 < box[2] && box[0] < Math.max(x0, x1) + 2 && Math.min(y0, y1) - 2 < box[3] && box[1] < Math.max(y0, y1) + 2; }
+    var G = wires ? ex.post : GRAW, i0 = wires ? 0 : ex.start, n = wires ? ex.post.length / 5 : ex.count;
+    for (var i = i0; i < i0 + n; i++) if (hit(sx(gX(G[5 * i])), sy(gY(G[5 * i + 1])), sx(gX(G[5 * i + 2])), sy(gY(G[5 * i + 3])))) return true;
+    if (wires) for (var k = WSTART[ex.net]; k < WSTART[ex.net] + DR.scount[ex.net]; k++) {
+      var b = 9 * k;
+      if (hit(sx(u16(WRAW, b) * 5), sy(u16(WRAW, b + 2) * 5), sx(u16(WRAW, b + 4) * 5), sy(u16(WRAW, b + 6) * 5))) return true;
+    }
+    return false;
+  }
+  // the callout points at the net (a guide, or with wires a wire), near it but over none of it
+  function exLabel(ex, k, wires) {
+    var at = wires ? exWireAt(ex) : ex.mid;
+    label(ex.name + ": " + ex.npins + " pins", sx(at[0]), sy(at[1]), { dx: k % 2 ? -18 : 18, dy: -40, align: k % 2 ? "right" : "left",
+      avoid: function (box) { return exOverlaps(ex, wires, box); } });
   }
   // the example being built in a step that shows them one at a time, from x0 in slots of slot
-  function exBeingBuilt(t, x0, slot, fade) {
+  function exBeingBuilt(t, x0, slot, fade, wires) {
     var k = Math.floor((t - x0) / slot);
     if (t < x0 || k >= ROUTE_EX.length) return;
     var f = (t - x0) / slot - k;
     ctx.globalAlpha = clamp01(f / 0.2) * clamp01((1 + fade - f) / fade);
-    exLabel(ROUTE_EX[k], k);
+    exLabel(ROUTE_EX[k], k, wires);
   }
   var rowMid = Math.floor(NROWS / 2), siteMid = Math.floor(D.sitesPerRow * 0.45);
   function drawNotes() {
@@ -1847,7 +1881,7 @@ function start(D) {
       label("root buffer: gate on the long " + AM.net + " wire", qb[0], qb[1], { dx: 18, dy: -44 });
       if (DIODE >= 0 && pos > S.GRT + 0.4) { var qdi = centre(K.ant, DIODE); label("antenna diode", qdi[0], qdi[1], { dx: -18, dy: 34, align: "right" }); }
     }
-    if (pos > S.ANT && pos < S.DRT) exBeingBuilt(drtT(), WEX0, WEXSLOT, 0.15);
+    if (pos > S.ANT && pos < S.DRT) exBeingBuilt(drtT(), WEX0, WEXSLOT, 0.15, true);
     if (pos > S.IR && GFOCUS && GFOCUS.cell !== undefined) {
       var fc = GFOCUS.cell, fx0 = K.ant.xy[2 * fc], fy0 = K.ant.xy[2 * fc + 1], fw = WT[K.ant.ty[fc]];
       ctx.globalAlpha = clamp01(within(pos, S.GDS) / 0.04);
