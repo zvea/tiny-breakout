@@ -960,7 +960,7 @@ function start(D) {
       "<p>Every instance starts at the core centre. <b>Initial placement</b> minimises a quadratic wirelength model by conjugate gradient (" + nIP + " iterations). With the pins, all on the top edge, as its only anchors, it pulls the netlist into a heap under them.</p>" +
       "<p><b>Nesterov placement</b> then treats cells as charges in an electrostatic field that pushes them out of dense regions, against a smooth wirelength model pulling connected cells together; the density penalty rises as it goes. Density is measured on a " + BINS + " × " + BINS + " grid of <b>bins</b> against a <b>target density</b> of " + fmt(TARGET) + " (" + fmt(M.gpl.asked) + " was asked for; the tool raised it to fit its " + fmt(M.gpl.util, 0) + "% utilisation, which pads cells where pins are dense; unpadded, the cells fill " + fmt(100 * M.gpl.area / um(CORE[2] - CORE[0]) / um(CORE[3] - CORE[1]), 0) + "% of the core). <b>Overflow</b>, the movable cell area above the target as a share of all movable cell area, measures progress; the placer stops below 0.1.</p>" +
       "<p>The run is <b>routability-driven</b>: near 0.3 overflow it estimates congestion, inflates cells where it is high and rewinds to a snapshot taken at about 0.6. It did so " + LASTF.rounds + " times without reaching its congestion target, then kept the least congested round's inflation for the final pass.</p>",
-    note: "Hatched: bins over the target (recomputed here, approximate). Shown: the first descent, one rewind, the final pass." };
+    note: "Shown: the first descent, one rewind, the final pass." };
   STEPS[S.REPAIR] = { short: "Repair", title: "Repair design", tool: "OpenROAD <code>rsz</code>: <code>buffer_ports</code>, <code>repair_design</code>, <code>repair_tie_fanout</code>", play: 5000,
     body:
       "<p>With every cell placed, each net's wire length can be estimated, and with it the net's capacitance and the slew (transition time) at its pins. The resizer checks these against the design's limits (from the SDC: " + fmt(M.sdc.slew) + " ns slew, " + fmt(M.sdc.cap) + " pF, fanout " + M.sdc.fanout + ") and the library's pin limits, and repairs the violations, before any timing optimisation.</p>" +
@@ -1119,7 +1119,7 @@ function start(D) {
     drawRows();
     drawFixed();
     var cells = cellState(pos);
-    if (cells) { drawCells(); drawFill(); drawBins(); }
+    if (cells) { drawCells(); drawFill(); }
     drawPower();
     drawGuides();
     drawAntenna();
@@ -1210,8 +1210,8 @@ function start(D) {
     ctx.globalAlpha = 1;
   }
 
-  // Overfull placement bins, hatched over the cells, while global placement is current. This is
-  // the page's own recomputation (fixed cells at full area, no fillers), so approximate.
+  // Placement bin density, for the tooltips on the placement step. This is the page's own
+  // recomputation (fixed cells at full area, no fillers), so approximate.
   var binW = (CORE[2] - CORE[0]) / BINS, binH = (CORE[3] - CORE[1]) / BINS;
   var binFixed = new Float32Array(BINS * BINS), binArea = new Float32Array(BINS * BINS);
   function addArea(arr, x0, y0, x1, y1) {
@@ -1245,21 +1245,6 @@ function start(D) {
     hatches[id] = pat;
     return pat;
   }
-  function drawBins() {
-    if (pos <= S.PINS || pos > S.PLACE + 0.34) return;
-    var aHot = (pos <= S.PLACE ? 1 : 1 - (pos - S.PLACE) * 3) * Math.min(1, within(pos, S.PLACE) / FADE) * DIMC.hot;
-    if (aHot <= 0.01) return;
-    binDensity();
-    ctx.fillStyle = hatch("hot");
-    for (var j = 0; j < BINS; j++) for (var i = 0; i < BINS; i++) {
-      var d = binArea[j * BINS + i];
-      if (d <= TARGET) continue;
-      ctx.globalAlpha = aHot * Math.min(1, 0.45 + (d - TARGET));
-      ctx.beginPath(); rect(CORE[0] + i * binW, CORE[1] + j * binH, CORE[0] + (i + 1) * binW, CORE[1] + (j + 1) * binH); ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-  }
-
   // The power grid: rails sweep in row by row, then the stripes drop from the top, then the via
   // stacks appear where each stripe crosses a rail of its own net.
   function drawPower() {
@@ -2101,7 +2086,6 @@ function start(D) {
     { from: S.PINS, label: "Pin (met4)", c: "pin", g: "pins" },
     { from: S.PLACE, label: "Logic cell", c: "logic", g: "logic" },
     { from: S.PLACE, label: "Flip-flop", c: "ff", g: "ff" },
-    { from: S.PLACE, to: S.PLACE, label: "Overfull bin (> " + fmt(TARGET) + " density)", c: "hot", g: "hot", hatch: true },
     { from: S.REPAIR, label: "Buffer (repair)", c: "buf", g: "buf" },
     { from: S.REPAIR, label: "Tie cell", c: "tie", g: "tie" },
     { from: S.CTS, label: "Clock buffer or dummy", c: "clock", g: "clock" },
@@ -2365,7 +2349,7 @@ function start(D) {
     if (step === S.PLACE && inCore && cellsNow) {
       binDensity();
       var bi = Math.floor((x - CORE[0]) / binW), bj = Math.floor((y - CORE[1]) / binH), bd = binArea[bj * BINS + bi];
-      add("hot", "<b>Bin density " + bd.toFixed(2) + "</b>" + (bd > TARGET ? ", over the target (" + fmt(TARGET) + ")" : " (target " + fmt(TARGET) + ")"), "hot", true);
+      add("hot", "<b>Bin density " + bd.toFixed(2) + "</b>" + (bd > TARGET ? ", over the target (" + fmt(TARGET) + ")" : " (target " + fmt(TARGET) + ")"), "hot");
     }
     // cells, topmost first; overlapping ones (before legalisation) up to three
     if (cellsNow && step !== S.IR) {
