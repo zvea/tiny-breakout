@@ -1687,8 +1687,7 @@ function start(D) {
   // Callouts, in ink, point at the centre of what they name (along a long thin thing, at a point on it).
   // Each takes the first of its candidate places (as asked, flipped up or down, mirrored left or
   // right, further out) that overlaps no callout already drawn this frame and stays between the
-  // legend and the foot band; if none does, it is left out. With ring, the point gets a circle
-  // round it instead of a dot, so a small thing named stays visible.
+  // legend and the foot band; if none does, it is left out.
   var placed = [];
   function label(text, x, y, opts) {
     opts = opts || {};
@@ -1712,11 +1711,14 @@ function start(D) {
     var bx = best[0], by = best[1];
     placed.push([bx - 3, by - 3, bx + w + 3, by + h + 3]);
     var ax = best[2] === "right" ? bx + w : best[2] === "center" ? bx + w / 2 : bx;
-    ctx.strokeStyle = C.pick; ctx.lineWidth = 1.2; ctx.beginPath();
-    var lx = ax - x, ly = by + h / 2 - y, ll = Math.hypot(lx, ly) || 1, r0 = opts.ring ? 6 : 0;
-    ctx.moveTo(x + lx / ll * r0, y + ly / ll * r0); ctx.lineTo(ax, by + h / 2); ctx.stroke();
-    if (opts.ring) { ctx.beginPath(); ctx.arc(x, y, r0, 0, 7); ctx.stroke(); }
-    else { ctx.fillStyle = C.pick; ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill(); }
+    // the leader and dot, first wider in the background colour, then in ink: the halo keeps them
+    // visible on a fill as dark (or as light) as the ink, such as a via or a pin
+    ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2);
+    ctx.strokeStyle = C.bg; ctx.lineWidth = 3.6; ctx.stroke();
+    ctx.fillStyle = C.bg; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill();
+    ctx.lineCap = "butt"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2);
+    ctx.strokeStyle = C.pick; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.fillStyle = C.pick; ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill();
     ctx.fillStyle = C.bg; ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.rect(bx, by, w, h); ctx.fill(); ctx.stroke();
     ctx.fillStyle = C.ink; ctx.textBaseline = "middle"; ctx.textAlign = "left";
@@ -1788,7 +1790,7 @@ function start(D) {
       label("VGND stripe (met4)", sx(sG[2]), yOn(sG, 0.4), { dx: 16, dy: -10 });
       label(ry[0] + " rail (met1)", sx(CORE[0] + 0.15 * (CORE[2] - CORE[0])), sy(ry[1]), { dx: 14, dy: -36 });
       var vv = PDN.vias.filter(function (v) { return v[1] === sP[2]; });
-      if (vv.length) { var v0 = vv[Math.floor(vv.length / 6)]; label("via stack", sx(v0[1]), sy(v0[2]), { dx: -18, dy: 22, align: "right", ring: true }); }
+      if (vv.length) { var v0 = vv[Math.floor(vv.length / 6)]; label("via stack", sx(v0[1]), sy(v0[2]), { dx: -18, dy: 22, align: "right" }); }
     }
     if ((a = only(S.REPAIR, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
