@@ -1215,10 +1215,11 @@ function start(D) {
   function fitX() { var m = margins(); return (DIE[0] + DIE[2]) / 2 + (m.r - m.l) / 2 / fitS; }
   function fitY() { var m = margins(); return (DIE[1] + DIE[3]) / 2 - (m.b - m.t) / 2 / fitS; }
   function measure() {
-    // the legend at its fullest: everything that is ever shown at once, at the last step
+    // the legend at its fullest: the tallest any step shows
     var el = document.getElementById("legend"), keep = el.innerHTML;
-    el.innerHTML = legendHTML(legendItems(STEPS.length - 1, true));
-    legendH = el.offsetHeight; el.innerHTML = keep;
+    legendH = 0;
+    for (var k = 0; k < STEPS.length; k++) { el.innerHTML = legendHTML(legendItems(k, false)); legendH = Math.max(legendH, el.offsetHeight); }
+    el.innerHTML = keep;
     footH = Math.max(44, document.getElementById("foot").offsetHeight);
   }
   function resize() {
