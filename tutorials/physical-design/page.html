@@ -523,7 +523,7 @@ function start(D) {
       }
     }
   }
-  // A to B by legalisation: each cell slides to its new site (bottom rows first, for display),
+  // A to B by legalisation: every cell slides to its new site at once,
   // taking its new row's orientation on the way (a flip top to bottom);
   // then the cells mirrored left to right flip.
   function legalise(A, B, t) {
@@ -532,8 +532,7 @@ function start(D) {
       put(B, i);
       if (!has(A, i)) continue;
       var ax = A.xy[2 * i], ay = A.xy[2 * i + 1], bx = B.xy[2 * i], by = B.xy[2 * i + 1];
-      var s0 = 0.3 * clamp01((by - CORE[1]) / (CORE[3] - CORE[1])) + 0.04 * hash01(i);
-      var m = ease(clamp01((t - s0) / 0.4));
+      var m = ease(clamp01((t - 0.05) / 0.4));
       SX[i] = ax + (bx - ax) * m; SY[i] = ay + (by - ay) * m;
       var ya = flipY(A.or[i]), yb = flipY(B.or[i]), xa = flipX(A.or[i]), xb = flipX(B.or[i]);
       if (ya !== yb) { SYY[i] = Math.abs(Math.cos(Math.PI * m)); SFY[i] = m > 0.5 ? yb : ya; }
@@ -1007,7 +1006,7 @@ function start(D) {
       "<p>Then <code>optimize_mirroring</code> flips instances left to right (FN or S) where that shortens their nets: " + n(M.dpl.mirrored) + " of them, winning back " + fmt(100 * (1 - M.dpl.hpwl[2] / M.dpl.hpwl[1]), 1) + "% (to " + n(Math.round(M.dpl.hpwl[2])) + " µm).</p>" +
       "<h3>How it works</h3>" +
       "<p><code>dpl</code> searches outward from each cell's global position for the nearest free run of sites. Global placement has already spread the cells to the target density, so a free spot is never far. In LibreLane the repair step ends by legalising; the Detailed placement step after it finds nothing left to move.</p>",
-    note: "Each cell slides from its global position to its legal one (bottom rows go first only for display); then the mirrored cells flip." };
+    note: "All cells slide at once from their global positions to their legal ones; then the mirrored cells flip." };
   STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", tool: "OpenROAD <code>cts</code> (TritonCTS): <code>clock_tree_synthesis</code>", play: 8000,
     body:
       "<p>Until now <code>clk</code> was an ideal net, reaching all " + M.cts.sinks + " flip-flops at the same instant. As a real wire it would be far too heavily loaded, and the clock edge would reach near and far flip-flops at different times. That difference, <b>skew</b>, comes straight out of every timing path's budget.</p>" +
