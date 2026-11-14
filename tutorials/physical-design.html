@@ -691,6 +691,13 @@ function start(D) {
       var o = 9 * k, sg = [u16(WRAW, o) * 5, u16(WRAW, o + 2) * 5, u16(WRAW, o + 4) * 5, u16(WRAW, o + 6) * 5, k];
       segs.push(sg); pts[sg[0] + "," + sg[1]] = [sg[0], sg[1]]; pts[sg[2] + "," + sg[3]] = [sg[2], sg[3]];
     }
+    // the vias are points too, so a route can run to one; the li1 ones are the pins
+    var viaKeys = [], pins = [];
+    for (var v = VSTART[ni]; v < VSTART[ni] + DR.vcount[ni]; v++) {
+      var vq = [u16(VRAW, 5 * v) * 5, u16(VRAW, 5 * v + 2) * 5], vk = vq[0] + "," + vq[1];
+      pts[vk] = vq; viaKeys.push(vk);
+      if (/^L1M1/.test(DR.vtypes[VRAW[5 * v + 4]])) pins.push(vk);
+    }
     var all = Object.keys(pts).map(function (q) { return pts[q]; });
     segs.forEach(function (sg) {
       var on = all.filter(function (q) { return q[0] >= Math.min(sg[0], sg[2]) && q[0] <= Math.max(sg[0], sg[2]) && q[1] >= Math.min(sg[1], sg[3]) && q[1] <= Math.max(sg[1], sg[3]); });
@@ -700,6 +707,13 @@ function start(D) {
         (adj[p0] = adj[p0] || []).push([p1, d, sg[4]]); (adj[p1] = adj[p1] || []).push([p0, d, sg[4]]);
       }
     });
+    // a via on no wire (a pin reached by a short patch) joins the nearest point within 0.5 µm
+    viaKeys.forEach(function (vk) {
+      if (adj[vk]) return;
+      var q = pts[vk], best = null, bd = 500;
+      all.forEach(function (r) { var dd = Math.abs(r[0] - q[0]) + Math.abs(r[1] - q[1]); if (dd > 0 && dd <= bd && adj[r[0] + "," + r[1]]) { bd = dd; best = r[0] + "," + r[1]; } });
+      if (best) { (adj[vk] = adj[vk] || []).push([best, bd, -1]); adj[best].push([vk, bd, -1]); }
+    });
     function inCell(c, q) {
       var x0 = K.ant.xy[2 * c], y0 = K.ant.xy[2 * c + 1], m = 100;
       return q[0] >= x0 - m && q[0] <= x0 + WT[K.ant.ty[c]] + m && q[1] >= y0 - m && q[1] <= y0 + RH + m;
@@ -707,24 +721,28 @@ function start(D) {
     var whole = { path: null, segs: {} };
     segs.forEach(function (sg) { whole.segs[sg[4]] = 1; });
     if (a < 0 || b < 0 || a === b) return whole;
-    // Dijkstra from every point in a to the first point reached in b (the nets are small)
+    // Dijkstra from a's pin to b's pin (failing a pin, any point in the cell; the nets are small)
+    var pinIn = function (c) { return pins.filter(function (k) { return adj[k] && inCell(c, pts[k]); }); };
+    var srcs = pinIn(a), dsts = pinIn(b);
+    var isEnd = function (key) { return dsts.length ? dsts.indexOf(key) >= 0 : inCell(b, pts[key]); };
     var dist = {}, prev = {}, open = {}, end = null;
-    all.forEach(function (q) { var key = q[0] + "," + q[1]; if (inCell(a, q)) { dist[key] = 0; open[key] = 1; } });
+    all.forEach(function (q) { var key = q[0] + "," + q[1]; if (srcs.length ? srcs.indexOf(key) >= 0 : inCell(a, q)) { dist[key] = 0; open[key] = 1; } });
     while (Object.keys(open).length) {
       var cur = null;
       for (var key in open) if (cur === null || dist[key] < dist[cur]) cur = key;
       delete open[cur];
-      if (inCell(b, pts[cur])) { end = cur; break; }
+      if (isEnd(cur)) { end = cur; break; }
       (adj[cur] || []).forEach(function (e) {
         var nd = dist[cur] + e[1];
         if (dist[e[0]] === undefined || nd < dist[e[0]]) { dist[e[0]] = nd; prev[e[0]] = [cur, e[2]]; open[e[0]] = 1; }
       });
     }
     if (end === null) return whole;
-    var out = { path: new Path2D(), segs: {} };
+    var out = { path: new Path2D(), segs: {}, pts: {}, lines: [] };
     for (var at = end; prev[at]; at = prev[at][0]) {
       var p = pts[at], q = pts[prev[at][0]];
-      out.path.moveTo(p[0], p[1]); out.path.lineTo(q[0], q[1]); out.segs[prev[at][1]] = 1;
+      out.path.moveTo(p[0], p[1]); out.path.lineTo(q[0], q[1]); if (prev[at][1] >= 0) out.segs[prev[at][1]] = 1;
+      out.pts[at] = out.pts[prev[at][0]] = 1; out.lines.push([p[0], p[1], q[0], q[1]]);
     }
     return out;
   }
@@ -736,6 +754,15 @@ function start(D) {
       if (!r.path) {   // the whole net
         r.path = new Path2D();
         for (var k = WSTART[x.ni]; k < WSTART[x.ni] + DR.scount[x.ni]; k++) { var b = 9 * k; r.path.moveTo(u16(WRAW, b) * 5, u16(WRAW, b + 2) * 5); r.path.lineTo(u16(WRAW, b + 4) * 5, u16(WRAW, b + 6) * 5); }
+      }
+      // where the stretch drawn meets the path's cells: their pin vias (met1 to the cells' li1),
+      // not those of other cells on the net that the route passes
+      r.vias = [];
+      var ends = [x.ci, P.st[i + 1] ? P.st[i + 1].ci : -1].filter(function (c) { return c >= 0 && has(K.ant, c); });
+      var inEnd = function (q) { return ends.some(function (c) { var x0 = K.ant.xy[2 * c], y0 = K.ant.xy[2 * c + 1]; return q[0] >= x0 && q[0] <= x0 + WT[K.ant.ty[c]] && q[1] >= y0 && q[1] <= y0 + RH; }); };
+      for (var v = VSTART[x.ni]; v < VSTART[x.ni] + DR.vcount[x.ni]; v++) {
+        var vq = [u16(VRAW, 5 * v) * 5, u16(VRAW, 5 * v + 2) * 5];
+        if (/^L1M1/.test(DR.vtypes[VRAW[5 * v + 4]]) && (!r.pts || r.pts[vq[0] + "," + vq[1]]) && inEnd(vq)) r.vias.push(vq);
       }
       return r;
     });
@@ -1516,24 +1543,31 @@ function start(D) {
     if (pos <= S.FILL) return;
     var u = within(pos, S.STA), d = DIMC.path;
     if (d <= 0.01) return;
+    // the paths' cells first, then their wires over them, as the metal lies over the cells
+    var lw = Math.max(2.6 / cam.s, 400);
     [PSETUP, PHOLD].forEach(function (P) {
       var T = pos > S.STA ? P.t1 : staTime(P, u);
       if (T < 0) return;
-      var col = C[P.key];
-      worldTransform(); ctx.lineCap = "square"; ctx.strokeStyle = col; ctx.globalAlpha = d;
+      P.st.forEach(function (x) { if (x.ci >= 0 && !x.out && x.t <= T) highlightCell(x.ci, C[P.key], d); });
+      highlightCell(P.st[0].ci, C[P.key], d);   // the launch flip-flop as soon as the path starts
+    });
+    // each net over a 1 px outline in the background colour, in path order, so a later net
+    // crossing an earlier one (on another layer) cuts a gap in it: over and under, not a join
+    worldTransform(); ctx.lineCap = "square"; ctx.globalAlpha = d;
+    [PSETUP, PHOLD].forEach(function (P) {
+      var T = pos > S.STA ? P.t1 : staTime(P, u);
+      if (T < 0) return;
       P.st.forEach(function (x, i) {
         if (!P.wires[i] || x.t > T) return;
-        ctx.lineWidth = Math.max(2.6 / cam.s, 400);
-        ctx.stroke(P.wires[i].path);
+        ctx.strokeStyle = C.bg; ctx.lineWidth = lw + 2 / cam.s; ctx.stroke(P.wires[i].path);   // 1 px each side, as a cell border
+        ctx.strokeStyle = C[P.key]; ctx.lineWidth = lw; ctx.stroke(P.wires[i].path);
+        // its pin vias, as vias are drawn on the detailed routing step, with the same 1 px outline
+        var vs = lw * 1.5;
+        ctx.fillStyle = C.wvia; ctx.strokeStyle = C.bg; ctx.lineWidth = 1 / cam.s;
+        P.wires[i].vias.forEach(function (v) { ctx.beginPath(); ctx.rect(v[0] - vs / 2, v[1] - vs / 2, vs, vs); ctx.fill(); ctx.stroke(); });
       });
-      screenTransform(); ctx.lineCap = "butt";
-      P.st.forEach(function (x) {
-        if (x.ci < 0 || x.out || x.t > T) return;
-        highlightCell(x.ci, col, d);
-      });
-      // the launch flip-flop as soon as the path starts
-      highlightCell(P.st[0].ci, col, d);
     });
+    screenTransform(); ctx.lineCap = "butt";
     ctx.globalAlpha = 1;
   }
 
@@ -1844,7 +1878,11 @@ function start(D) {
   function pathsOverlap(box) {
     return [PSETUP, PHOLD].some(function (P) {
       return P.cells.some(function (c) { return boxHits(box, sx(SX[c]), sy(SY[c]), sx(SX[c] + SWD[c]), sy(SY[c] + RH)); }) ||
-        P.wires.some(function (r) { return r && Object.keys(r.segs).some(function (k) { return segHits(box, +k); }); });
+        P.wires.some(function (r) {   // the stretch drawn (or the whole net, where it is drawn whole)
+          if (!r) return false;
+          if (r.lines) return r.lines.some(function (l) { return boxHits(box, sx(l[0]), sy(l[1]), sx(l[2]), sy(l[3])); });
+          return Object.keys(r.segs).some(function (k) { return segHits(box, +k); });
+        });
     });
   }
   // the callout points at the net (a guide, or with wires a wire), near it but over none of it
@@ -2042,7 +2080,7 @@ function start(D) {
       if (us >= STA_SET0 || pos > S.STA) {
         ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_SET0) / 0.04);
         var pl = ce(PSETUP.st[0].ci); label("setup path from flip-flop", pl[0], pl[1], { dx: 18, dy: -40, avoid: pathsOverlap });
-        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("setup path to flip-flop: slack " + fmt(PSETUP.q.slack) + " ns", pc[0], pc[1], { dx: -18, dy: 34, align: "right", avoid: pathsOverlap }); }
+        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("setup path to flip-flop: slack " + fmt(PSETUP.q.slack) + " ns", pc[0], pc[1], { dx: -40, dy: -44, align: "right", avoid: pathsOverlap }); }   // above to the left: the path arrives from the left, below
       }
       if (us >= STA_HOLD0 || pos > S.STA) {
         ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_HOLD0) / 0.04);
