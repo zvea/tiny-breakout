@@ -119,7 +119,7 @@ async def test_vga_timing(dut):
 
 
 # Pixels of the demo's second frame in scan order: what, x, y, colour. The wall is in by then
-# but hidden, as the build shows its first row only from the 9th frame (the system tests follow
+# but hidden, as the build shows its first row only from the 17th frame (the system tests follow
 # it). Each is in the middle of its object, at least 2 px from any other colour on its line, so a
 # clock's offset couldn't change it.
 PICTURE = [

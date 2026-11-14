@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Self-checking testbench for breakout_hdmi (run by run.sh, with Verilator). It runs the demo
- * for +frames=N frames (default 400: the first sound is in frame 350, as the reset in frame 5
+ * for +frames=N frames (default 470: the first sound is in frame 414, as the reset in frame 5
  * restarts the demo) and checks what breakout_hdmi's design rests on:
  *
  *   1. Lockstep: hdl-util's frame counter (cx, cy) equals the game's beam (h_pos, v_pos) on
@@ -49,7 +49,7 @@ module tb_breakout_hdmi;
   wire [9:0] v_pos = dut.u_game.u_vga_timing.v_pos;
 
   logic button = 0;  // the board's reset button (S1), pressed once below
-  int frames = 400;
+  int frames = 470;
   int frame = 0;  // frames since the first reset, counted at the end of each
   int errors = 0;
 

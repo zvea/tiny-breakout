@@ -104,10 +104,10 @@ module tb_breakout_vga;
     wait (frame == n);
   endtask
 
-  // A design that never gets there fails, rather than hangs: 200 frames, at 2 time units a clock
+  // A design that never gets there fails, rather than hangs: 300 frames, at 2 time units a clock
   initial begin
-    #(longint'(2) * 800 * 525 * 200);
-    fail("timed out after 200 frames' time");
+    #(longint'(2) * 800 * 525 * 300);
+    fail("timed out after 300 frames' time");
     $display("FAIL");
     $finish;
   end
@@ -163,12 +163,12 @@ module tb_breakout_vga;
     $display("Paddle %0d at the new game, %0d after right, %0d after left", paddle_start,
              paddle_right, dut.u_game.paddle_c4);
 
-    // 3. Fire: the ball launches. (A new wall is built row by row first, with the ball on the
-    // paddle, so allow for that.)
+    // 3. Fire: the ball launches. (The new game's wall is built row by row first, about 130
+    // frames from frame 10, with the ball on the paddle, so allow for that.)
     @(negedge clk) btn_fire = 1;
-    while (!dut.u_game.fly && frame < 150) @(negedge clk);
+    while (!dut.u_game.fly && frame < 250) @(negedge clk);
     @(negedge clk) btn_fire = 0;
-    if (!dut.u_game.fly) fail("fire held for 100 frames, and the ball never launched");
+    if (!dut.u_game.fly) fail("fire held to frame 250, and the ball never launched");
     else $display("Ball launched in frame %0d", frame);
 
     wait_frame(frame + 2);

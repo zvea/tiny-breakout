@@ -1,13 +1,13 @@
 #!/bin/bash
 # Runs the simulation test (tb_breakout_hdmi.sv) with Verilator: the one on PATH, else the
 # project's .tools/env one (see test/README.md at the top of the repo), as the unit tests do.
-# Usage: test/run.sh [FRAMES]  (the demo's length, default 400: about 7 s of play)
+# Usage: test/run.sh [FRAMES]  (the demo's length, default 470: about 8 s of play)
 #
 # SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../tools/common.sh"
-frames=${1:-400}
+frames=${1:-470}
 
 if ! command -v verilator > /dev/null && [ -x "$ROOT/.tools/env/bin/verilator" ]; then
   PATH="$ROOT/.tools/env/bin:$PATH"

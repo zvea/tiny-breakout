@@ -145,7 +145,8 @@ module tt_um_tiny_breakout (
   //
   // In the pause after a cleared wall, speed_level is the timer: 16..31, one step every 4
   // frames (about a second), and the paddle moves at 1x (see moves). In a new wall's build
-  // it is the build's timer: 0..15, also a step every 4 frames, the paddle again at 1x.
+  // it is the build's timer: 0..31, also a step every 4 frames (about 2 s), the paddle again
+  // at 1x.
   // After game over it is the curtain's line: 0..31, one per frame.
   logic [4:0] speed_level;
   logic [1:0] frame_phase;  // counts frames: the pattern of moves over 4 frames
@@ -471,8 +472,8 @@ module tt_um_tiny_breakout (
 
   // What the frame update does. restart needs game over; otherwise exactly one of on_paddle,
   // lose_ball and fly holds. new_game (end_demo) can coincide with any of them and wins.
-  // speed_level reaching 31 ends both the pause after a cleared wall and the game-over
-  // curtain's descent. A restart waits for the curtain, so FIRE held as the last ball falls
+  // speed_level reaching 31 ends the pause after a cleared wall, a wall's build (see Wall
+  // build) and the game-over curtain's descent. A restart waits for the curtain, so FIRE held as the last ball falls
   // (or autoplay, which always holds it) doesn't skip the curtain and cut the trombone at once.
   wire timer_done = (speed_level == 31);
   wire restart    = game_over && btn_fire && timer_done;      // new game once the curtain is down
@@ -594,9 +595,9 @@ module tt_um_tiny_breakout (
   assign refill_bricks = frame_tick && (new_game || level_done);
 
   // Wall build: after each refill (and from reset) the new wall is shown a row at a time from
-  // the bottom while the ball waits on the paddle. speed_level is its timer, 0..15, a step
-  // every 4th frame: a row lands every 2 steps from step 2, shown white for its first step.
-  wire build_done = (speed_level == 15) && (frame_phase == 3);
+  // the bottom while the ball waits on the paddle. speed_level is its timer, 0..31, a step
+  // every 4th frame: a row lands every 4 steps from step 4, shown white for its first 2.
+  wire build_done = timer_done && (frame_phase == 3);
   always_ff @(posedge clk) begin
     if (!rst_n || refill_bricks) building <= 1;
     else if (frame_tick && build_done) building <= 0;
@@ -604,7 +605,7 @@ module tt_um_tiny_breakout (
 
   // speed_level: 0 while the ball is on the paddle and from a lost ball, +1 per brick while
   // it flies (up to 16); in the pause, 16..31, a step every 4th frame; in a wall's build,
-  // 0..15, a step every 4th frame, back to 0 as it ends; after game over, +1 per frame up to
+  // 0..31, a step every 4th frame, back to 0 as it ends; after game over, +1 per frame up to
   // 31. A brick's step comes a clock after it is cleared (see Collisions): the speed is read
   // at the moves, from line 480, and by the sound's brick note only at a line start; nothing
   // else reads speed_level while the ball flies (the curtain, the twinkle, the build and
@@ -658,11 +659,11 @@ module tt_um_tiny_breakout (
   // Celebration, in the pause after a cleared wall: the field twinkles behind the ball and
   // paddle while speed_level counts 17..31 (the pause starts at 16, where play stops, so 16
   // alone can't tell the two apart; 31 lasts a single frame, as the pause ends at the next
-  // frame update). In 16x16-px cells, crosses light up for 4 frames, coloured by height in
+  // frame update). A wall's build counts 17..31 too, so it is ruled out. In 16x16-px cells, crosses light up for 4 frames, coloured by height in
   // 64-px bands like the brick rows. A hash of the cell's position (bit permutations, XOR and
   // a 5-bit add) picks half the cells and gives each one of the timer's 16 steps, 28 cells to
   // a step: those on step 0 never light, and those on step 15 only for that single frame.
-  wire       celebrate = !game_over && speed_level[4] && (speed_level[3:0] != 0);
+  wire       celebrate = !game_over && !building && speed_level[4] && (speed_level[3:0] != 0);
   wire [4:0] tw_hash = ({h_pos[4], h_pos[9], h_pos[6], h_pos[7], h_pos[8]} ^
                         {v_pos[4], v_pos[8], v_pos[6], v_pos[7], v_pos[5]}) +
                        ({v_pos[7], v_pos[4], v_pos[5], v_pos[6], v_pos[8]} ^
@@ -675,10 +676,10 @@ module tt_um_tiny_breakout (
   wire       twinkle_px = celebrate && field_px && tw_on && (tw_arm_v || tw_arm_h);
 
   // Wall build: rows from the bottom up, brick_row + rows shown >= 6; the newest row is white
-  // for its first step
-  wire [3:0] build_row  = {1'b0, brick_row} + {1'b0, speed_level[3:1]};
+  // for its first 2 steps
+  wire [3:0] build_row  = {1'b0, brick_row} + {1'b0, speed_level[4:2]};
   wire       brick_shown = !building || (build_row >= 6);
-  wire       brick_white = building && (build_row == 6) && !speed_level[0];
+  wire       brick_white = building && (build_row == 6) && !speed_level[1];
 
   // Brick colour by row, top to bottom; in the celebration, the twinkle's colour by height in
   // 64-px bands, which goes on past violet through magenta and rose
