@@ -2344,9 +2344,10 @@ function start(D) {
     var u = clamp01(pos - (target - 1)), text = readoutText(target, u);
     scrub.value = Math.round(u * 1000);
     scrub.setAttribute("aria-valuetext", plain(text));
+    // the icon only when it changes: replaced every frame while playing, the one a click
+    // pressed on would be gone by its release, and the browser drops the click
     var state = playState();
-    playBtn.innerHTML = PLAYICON[state];
-    playBtn.setAttribute("aria-label", state);
+    if (playBtn.getAttribute("data-state") !== state) { playBtn.setAttribute("data-state", state); playBtn.innerHTML = PLAYICON[state]; playBtn.setAttribute("aria-label", state); }
     what.innerHTML = text;
   }
   function togglePlay() {
