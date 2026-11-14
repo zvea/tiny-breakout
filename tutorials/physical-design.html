@@ -1715,10 +1715,10 @@ function start(D) {
     // visible on a fill as dark (or as light) as the ink, such as a via or a pin
     ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2);
     ctx.strokeStyle = C.bg; ctx.lineWidth = 3.6; ctx.stroke();
-    ctx.fillStyle = C.bg; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill();
+    ctx.fillStyle = C.bg; ctx.beginPath(); ctx.arc(x, y, 2.75, 0, 7); ctx.fill();
     ctx.lineCap = "butt"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2);
     ctx.strokeStyle = C.pick; ctx.lineWidth = 1.2; ctx.stroke();
-    ctx.fillStyle = C.pick; ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill();
+    ctx.fillStyle = C.pick; ctx.beginPath(); ctx.arc(x, y, 1.75, 0, 7); ctx.fill();
     ctx.fillStyle = C.bg; ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.rect(bx, by, w, h); ctx.fill(); ctx.stroke();
     ctx.fillStyle = C.ink; ctx.textBaseline = "middle"; ctx.textAlign = "left";
