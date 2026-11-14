@@ -1633,9 +1633,9 @@ function start(D) {
     gdsBuild();
     var u = within(pos, S.GDS), moving = performance.now() - camMovedAt < 150;
     // at the end the camera goes back out to the whole die, once per play, as it went in (with
-    // reduced motion, a jump rather than a glide)
+    // reduced motion, a jump rather than a glide); skipped to the end, it ends there too
     if (target === S.GDS && pos <= S.GDS && u < GDS_OUTAT) gdsOut = false;
-    else if (target === S.GDS && !gdsOut && u >= GDS_OUTAT && anim) { gdsOut = true; fit(GDS_OUT_MS); }
+    else if (target === S.GDS && !gdsOut && u >= GDS_OUTAT && (anim || u >= 1)) { gdsOut = true; fit(anim ? GDS_OUT_MS : undefined); }
     if (moving) { clearTimeout(gdsSharpen); gdsSharpen = setTimeout(requestDraw, 160); }
     // the die covers the cell boxes as the glide in ends
     ctx.globalAlpha = pos > S.GDS ? 1 : clamp01((u - GDS_CAM + 360 / GDS_MS) / (360 / GDS_MS)); ctx.fillStyle = C.die;
