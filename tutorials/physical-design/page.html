@@ -25,7 +25,7 @@
 /* One screen: the die on the left (canvas, zoom and pan, the legend above it, the play bar and
    scale below it, the steps along its foot), the current step's explanation on the right.
    Each colour keeps its meaning from step to step; whatever is not the current step's subject
-   is dimmed. Laptop and tablet first; on a phone the panels stack. */
+   is greyed out. Laptop and tablet first; on a phone the panels stack. */
 :root {
   --bg: #ffffff;
   --ink: #1b1d1f;
@@ -49,7 +49,6 @@
   --dim: #3a4250;
   --tap: #4d5b6b;
   --endcap: #9aa6b3;
-  --cell-edge: rgba(20, 26, 33, 0.55);
   --swatch-edge: rgba(20, 26, 33, 0.35);
   --vpwr: #d0453a;
   --vgnd: #2f63c4;
@@ -94,7 +93,7 @@
   --bg: #121416; --ink: #e4e6e8; --muted: #9aa0a6; --rule: #3d4247; --bar: #1d2125; --focus: #7fb0ff;
   --stage: #0d0f11; --veil: rgba(13, 15, 17, 0.86); --die: #2a2f35; --die-edge: #8a949f; --core: #1b1f23;
   --row: #22272c; --row-flip: #30373e; --row-edge: #3b434b; --site: rgba(200, 210, 222, 0.18); --dim: #c9d0d8;
-  --tap: #a9b6c4; --endcap: #66717d; --cell-edge: rgba(0, 0, 0, 0.6); --swatch-edge: rgba(255, 255, 255, 0.3);
+  --tap: #a9b6c4; --endcap: #66717d; --swatch-edge: rgba(255, 255, 255, 0.3);
   --vpwr: #ff6b5e; --vgnd: #5f95ff; --via: #e9edf2; --pin: #f1f3f5;
   --logic: #b48f45; --ff: #4cc0ae; --buf: #ff86c4; --tie: #c9c56a; --clock: #ff9a3d; --clknet: #ffb067;
   --hold: #c08a5c; --diode: #e8b23a; --decap: #7fa3c9; --fill: #a7b3bf;
@@ -143,7 +142,7 @@ button { font: inherit; color: inherit; }
 .legend li.gone { visibility: hidden; }
 .legend li.dimmed { color: var(--muted); }
 .legend i { flex: none; width: 14px; height: 10px; border: 1px solid var(--swatch-edge); border-radius: 1px; transition: opacity 0.6s; }
-.legend li.dimmed i { opacity: 0.3; }
+.legend li.dimmed i { filter: grayscale(1); opacity: 0.4; }
 .legend i.line { height: 0; border: 0; border-top: 2px solid; border-radius: 0; }
 .legend i.lay { background: var(--c); }
 .legend.gds i.lay { background: color-mix(in srgb, var(--c) 18%, transparent); border: 1.5px solid var(--c); }
@@ -891,11 +890,11 @@ function start(D) {
   }
 
   // ---- what each step focuses on -----------------------------------------------------------------
-  // Everything else is dimmed, on the die and in the legend.
+  // Everything else is greyed out (dimCol), on the die and in the legend.
   var DIM = 0.25;
   var FOCUS = {};
   FOCUS[S.DIE] = ["die"]; FOCUS[S.FLOOR] = ["rows"]; FOCUS[S.TAPS] = ["fixed"]; FOCUS[S.PDN] = ["pdn"]; FOCUS[S.PINS] = ["pins"];
-  FOCUS[S.PLACE] = ["logic", "ff", "hot"]; FOCUS[S.REPAIR] = ["buf", "tie", "changed"];
+  FOCUS[S.PLACE] = ["logic", "ff", "changed", "hot"]; FOCUS[S.REPAIR] = ["buf", "tie", "changed"];
   FOCUS[S.LEGAL] = ["rows", "logic", "ff", "buf", "tie", "changed"]; FOCUS[S.CTS] = ["clock", "clknet", "ff"]; FOCUS[S.HOLD] = ["hold"];
   FOCUS[S.GRT] = ["route"]; FOCUS[S.ANT] = ["diode", "antnet"]; FOCUS[S.DRT] = ["wire"]; FOCUS[S.FILL] = ["decap", "fill"];
   FOCUS[S.STA] = ["path"]; FOCUS[S.IR] = ["ir", "pdn"];
@@ -905,9 +904,19 @@ function start(D) {
   var DIMIN = {};   // how much of the step the change of focus takes, where not a quarter
   DIMIN[S.GDS] = 0.08;
   function focusOf(k, g) { return g === "die" || (FOCUS[k] || []).indexOf(g) >= 0 ? 1 : (STEPDIM[k] || DIM); }
+  // the step each group first shows on (from the legend): there it starts at that step's focus,
+  // since there is nothing yet to change from
+  var FIRST = null;
+  function firstStep(g) {
+    if (!FIRST) {
+      FIRST = { antnet: S.ANT };
+      LEGEND.forEach(function (l) { if (l.g && !(FIRST[l.g] <= l.from)) FIRST[l.g] = l.from; });
+    }
+    return FIRST[g];
+  }
   function dimAt(p, g) {
     var k = Math.ceil(p - 1e-9);
-    if (k <= 0) return focusOf(0, g);
+    if (k <= 0 || firstStep(g) === k) return focusOf(Math.max(0, k), g);
     var a = focusOf(k - 1, g), b = focusOf(k, g);
     return a + (b - a) * ease(clamp01((p - (k - 1)) / (DIMIN[k] || 0.25)));
   }
@@ -918,6 +927,28 @@ function start(D) {
     var settled = !anim && pos > target - 1;
     for (var g in DIMC) DIMC[g] = settled ? focusOf(target, g) : dimAt(pos, g);
   }
+  // What is not the step's subject is dimmed by colour, not by transparency: drawn opaque, its
+  // colour turned grey and taken most of the way to the core's, so colour is left to the subject
+  // and overlapping context does not mix into texture. d is the group's DIMC: 1 in focus, grey
+  // at DIM, fainter below it.
+  var GHOST = 0.8, rgbCache = {};
+  function rgbOf(css) {
+    if (!rgbCache[css]) {
+      var h = css.slice(1);
+      rgbCache[css] = css[0] === "#" ? [0, 2, 4].map(function (i) { return parseInt(h.slice(i, i + 2), 16); }) : css.match(/[\d.]+/g).slice(0, 3).map(Number);
+    }
+    return rgbCache[css];
+  }
+  function dimCol(css, d) {
+    if (d >= 0.999) return css;
+    var c = rgbOf(css), g = rgbOf(C.core), y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    var grey = clamp01((1 - d) / (1 - DIM)), toCore = (1 - d) * GHOST;
+    var o = [0, 1, 2].map(function (i) { var v = c[i] + (y - c[i]) * grey; return Math.round(v + (g[i] - v) * toCore); });
+    return "rgb(" + o[0] + "," + o[1] + "," + o[2] + ")";
+  }
+  function shade(css, f) { var c = rgbOf(css); return "rgb(" + Math.round(c[0] * f) + "," + Math.round(c[1] * f) + "," + Math.round(c[2] * f) + ")"; }
+  var CELLGROUPS = ["logic", "ff", "buf", "tie", "clock", "hold", "changed", "diode"];
+  function cellsFocus() { return Math.max.apply(null, CELLGROUPS.map(function (g) { return DIMC[g]; })); }
 
   // ---- the steps, in the order the flow runs them ---------------------------------------------
   var STEPS = [];
@@ -1060,11 +1091,11 @@ function start(D) {
 
   function readColours() {
     var cs = getComputedStyle(document.documentElement);
-    ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "tap", "endcap", "cell-edge", "ir0", "ir1", "ir2", "ir3",
+    ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "tap", "endcap", "ir0", "ir1", "ir2", "ir3",
      "vpwr", "vgnd", "via", "pin", "logic", "ff", "hot", "buf", "tie", "clock", "clknet", "hold",
      "li1", "met1", "met2", "met3", "met4", "pick", "diode", "decap", "fill", "wvia", "setup", "holdp", "nwell", "diff", "gtap", "poly", "cut", "ink", "muted", "bg", "font"]
       .forEach(function (k) { C[k] = cs.getPropertyValue("--" + k).trim(); });
-    hatches = {};
+    hatches = {}; rgbCache = {};
     IRSTOPS = [0, 1, 2, 3].map(function (i) { var h = C["ir" + i].slice(1); return [0, 2, 4].map(function (j) { return parseInt(h.slice(j, j + 2), 16); }); });
     colourGen++;
   }
@@ -1118,14 +1149,16 @@ function start(D) {
     ctx.fillStyle = C.die; ctx.beginPath(); rect(DIE[0], DIE[1], DIE[2], DIE[3]); ctx.fill();
     drawRows();
     drawFixed();
+    // the other layers in their physical order, but those that are context first, so that the
+    // step's subject is never under them
     var cells = cellState(pos);
-    if (cells) { drawCells(); drawFill(); }
-    drawPower();
-    drawGuides();
-    drawAntenna();
-    drawWires();
-    if (cells) { drawClockNets(); drawTiming(); }
-    drawIR();
+    var layers = [
+      [cellsFocus(), function () { if (cells) drawCells(); }], [Math.max(DIMC.fill, DIMC.decap), function () { if (cells) drawFill(); }],
+      [DIMC.pdn, drawPower], [DIMC.route, drawGuides], [DIMC.antnet, drawAntenna], [DIMC.wire, drawWires],
+      [DIMC.clknet, function () { if (cells) drawClockNets(); }], [DIMC.path, function () { if (cells) drawTiming(); }],
+      [DIMC.ir, drawIR]];
+    layers.forEach(function (l) { if (l[0] < 0.6) l[1](); });
+    layers.forEach(function (l) { if (l[0] >= 0.6) l[1](); });
     if (pos > S.STA && pos <= S.IR + 0.25) drawStripesOnTop();
     drawGDS();
     drawPins();
@@ -1141,13 +1174,13 @@ function start(D) {
     var aCore = ease(appear(pos, S.FLOOR, 0));
     if (aCore <= 0) return;
     var d = DIMC.rows;
-    ctx.globalAlpha = aCore * d; ctx.fillStyle = C.core;
+    ctx.globalAlpha = aCore; ctx.fillStyle = C.core;
     ctx.beginPath(); rect(CORE[0], CORE[1], CORE[2], CORE[3]); ctx.fill();
     for (var r = 0; r < NROWS; r++) {
       var a = ease(appear(pos, S.FLOOR, 0.15 + 0.85 * r / NROWS));
       if (a <= 0) continue;
       var y0 = CORE[1] + r * RH, x1 = CORE[0] + (CORE[2] - CORE[0]) * a;
-      ctx.globalAlpha = d; ctx.fillStyle = D.rows[r] ? C["row-flip"] : C.row;
+      ctx.globalAlpha = 1; ctx.fillStyle = dimCol(D.rows[r] ? C["row-flip"] : C.row, d);
       ctx.beginPath(); rect(CORE[0], y0, x1, y0 + RH); ctx.fill();
     }
     ctx.globalAlpha = aCore * d; ctx.strokeStyle = C["row-edge"]; ctx.lineWidth = 1;
@@ -1174,28 +1207,32 @@ function start(D) {
       if (t <= 0) continue;
       var e = ease(t), x0 = CORE[0] + c.site * SW, yb = CORE[1] + c.row * RH;
       var h = RH * (0.35 + 0.65 * e), yc = yb + (RH - h) / 2;
-      ctx.globalAlpha = e * DIMC.fixed;
-      ctx.fillStyle = c.kind === "tap" ? C.tap : C.endcap;
+      var col = dimCol(c.kind === "tap" ? C.tap : C.endcap, DIMC.fixed);
+      ctx.globalAlpha = e; ctx.fillStyle = col;
       ctx.beginPath(); rect(x0, yc, x0 + c.w * SW, yc + h); ctx.fill();
-      if (c.w * SW * cam.s > 4) { ctx.strokeStyle = C["cell-edge"]; ctx.lineWidth = 1; ctx.stroke(); }
+      if (c.w * SW * cam.s >= 4) { ctx.strokeStyle = shade(col, 0.7); ctx.lineWidth = 1; ctx.stroke(); }
     }
     ctx.globalAlpha = 1;
   }
 
   function cellGroup(k) { return CHANGED[k] && pos > S.PLACE && pos <= S.REPAIR + 0.5 ? "changed" : CLS[k]; }
   function inView(x0, y0, x1, y1) { return sx(x1) >= -4 && sx(x0) <= W + 4 && sy(y0) >= -4 && sy(y1) <= H + 4; }
+  // in two passes, the context cells first, so the step's subject (new, resized or moved cells,
+  // which may overlap others until legalisation) is never under them; ORDER within each
   function drawCells() {
-    var edge = SW * cam.s > 2.5;
-    ctx.lineWidth = 0.75;
-    for (var oi = 0; oi < NU; oi++) {
+    ctx.lineWidth = 1;
+    for (var pass = 0; pass < 2; pass++) for (var oi = 0; oi < NU; oi++) {
       var k = ORDER[oi];
       if (SA[k] <= 0.01) continue;
+      var d = DIMC[cellGroup(k)];
+      if ((d >= 0.6) !== (pass === 1)) continue;
       var w = SWD[k] * SXX[k], h = RH * SYY[k], x0 = SX[k] + (SWD[k] - w) / 2, y0 = SY[k] + (RH - h) / 2;
       if (!inView(x0, y0, x0 + w, y0 + h)) continue;
-      var a = SA[k] * DIMC[cellGroup(k)];
-      ctx.globalAlpha = a * 0.9; ctx.fillStyle = C[CLS[k]];
+      var col = dimCol(C[CLS[k]], d);
+      ctx.globalAlpha = SA[k]; ctx.fillStyle = col;
       ctx.beginPath(); rect(x0, y0, x0 + w, y0 + h); ctx.fill();
-      if (edge) { ctx.globalAlpha = a * 0.6; ctx.strokeStyle = C["cell-edge"]; ctx.stroke(); }
+      // a border in a darker shade of the cell's own colour, so overlapping cells keep their shapes
+      if (w * cam.s >= 4 && h * cam.s >= 4) { ctx.strokeStyle = shade(col, 0.7); ctx.stroke(); }
     }
     ctx.globalAlpha = 1;
   }
@@ -1221,14 +1258,14 @@ function start(D) {
     for (var b = 0; b < binArea.length; b++) binArea[b] /= cap;
   }
   var hatches = {};
-  function hatch(key) {
+  function hatch(col) {
     // diagonal lines in a colour, redrawn when the theme or the pixel ratio changes
-    var id = key + DPR;
+    var id = col + "@" + DPR;
     if (hatches[id]) return hatches[id];
     var c = document.createElement("canvas"), m = Math.round(7 * DPR);
     c.width = c.height = m;
     var g = c.getContext("2d");
-    g.strokeStyle = C[key]; g.lineWidth = 1.6 * DPR;
+    g.strokeStyle = col; g.lineWidth = 1.6 * DPR;
     g.beginPath(); g.moveTo(-1, m + 1); g.lineTo(m + 1, -1); g.moveTo(-1, 1); g.lineTo(1, -1); g.moveTo(m - 1, m + 1); g.lineTo(m + 1, m - 1); g.stroke();
     var pat = ctx.createPattern(c, "repeat");
     if (pat.setTransform) pat.setTransform(new DOMMatrix().scale(1 / DPR));
@@ -1244,7 +1281,7 @@ function start(D) {
       var r = PDN.rails[i]; t = appear(pos, S.PDN, 0.35 * i / PDN.rails.length);
       if (t <= 0) continue;
       e = ease(t);
-      ctx.globalAlpha = d; ctx.fillStyle = C[r[0] === "VPWR" ? "vpwr" : "vgnd"];
+      ctx.globalAlpha = 1; ctx.fillStyle = dimCol(C[r[0] === "VPWR" ? "vpwr" : "vgnd"], d);
       var hw = Math.max(r[4] / 2, 0.6 / cam.s);
       ctx.beginPath(); rect(r[2], r[1] - hw, r[2] + (r[3] - r[2]) * e, r[1] + hw); ctx.fill();
     }
@@ -1253,13 +1290,13 @@ function start(D) {
       if (t <= 0) continue;
       e = ease(t);
       var hs = st[5] / 2, ytop = st[4], ybot = ytop - (st[4] - st[3]) * e;
-      ctx.globalAlpha = 0.82 * d; ctx.fillStyle = C[st[0] === "VPWR" ? "vpwr" : "vgnd"];
+      ctx.globalAlpha = 0.82; ctx.fillStyle = dimCol(C[st[0] === "VPWR" ? "vpwr" : "vgnd"], d);
       ctx.beginPath(); rect(st[2] - hs, ybot, st[2] + hs, ytop); ctx.fill();
     }
     for (i = 0; i < PDN.vias.length; i++) {
       var v = PDN.vias[i]; t = appear(pos, S.PDN, 0.78 + 0.22 * (v[2] - CORE[1]) / (CORE[3] - CORE[1]));
       if (t <= 0) continue;
-      ctx.globalAlpha = ease(t) * d; ctx.fillStyle = C.via;
+      ctx.globalAlpha = ease(t); ctx.fillStyle = dimCol(C.via, d);
       var vw = Math.max(STRW / 2, 1.5 / cam.s), vh = Math.max(RAILW / 2, 1 / cam.s);
       ctx.beginPath(); rect(v[1] - vw, v[2] - vh, v[1] + vw, v[2] + vh); ctx.fill();
     }
@@ -1389,18 +1426,18 @@ function start(D) {
     // every wire, each layer one cached path
     worldTransform(); ctx.lineCap = "square";
     for (l = 1; l < DR.layers.length; l++) {
-      var a = wireLayerAt(t, l) * d;
+      var a = wireLayerAt(t, l);
       if (a <= 0.01) continue;
-      ctx.globalAlpha = a * 0.9; ctx.strokeStyle = C[WL[l]]; ctx.lineWidth = Math.max(1 / cam.s, WIDTH[l]);
+      ctx.globalAlpha = a * 0.9; ctx.strokeStyle = dimCol(C[WL[l]], d); ctx.lineWidth = Math.max(1 / cam.s, WIDTH[l]);
       ctx.stroke(WPATH[l]);
     }
     screenTransform(); ctx.lineCap = "butt";
     // vias, once there is room to see them, with the upper of their two layers
     if (cam.s * U > 12) {
-      ctx.fillStyle = C.wvia;
+      ctx.fillStyle = dimCol(C.wvia, d);
       var vs = Math.max(170, 2 / cam.s);
       for (k = 0; k < NV; k++) {
-        var av = wireLayerAt(t, VIALAYER[VRAW[5 * k + 4]]) * d;
+        var av = wireLayerAt(t, VIALAYER[VRAW[5 * k + 4]]);
         if (av <= 0.01) continue;
         var vx = u16(VRAW, 5 * k) * 5, vy = u16(VRAW, 5 * k + 2) * 5;
         if (!inView(vx - vs, vy - vs, vx + vs, vy + vs)) continue;
@@ -1419,9 +1456,10 @@ function start(D) {
       if (tt <= 0) continue;
       var x0 = CORE[0] + f.site * SW, y0 = CORE[1] + f.row * RH, h = RH * ease(tt);
       if (!inView(x0, y0, x0 + f.w * SW, y0 + RH)) continue;
-      ctx.globalAlpha = DIMC[f.kind]; ctx.fillStyle = f.kind === "fill" ? hatch("fill") : C.decap;
+      var col = dimCol(f.kind === "fill" ? C.fill : C.decap, DIMC[f.kind]);
+      ctx.globalAlpha = 1; ctx.fillStyle = f.kind === "fill" ? hatch(col) : col;
       ctx.beginPath(); rect(x0, y0 + (RH - h) / 2, x0 + f.w * SW, y0 + (RH + h) / 2); ctx.fill();
-      if (SW * cam.s > 2.5) { ctx.strokeStyle = C["cell-edge"]; ctx.lineWidth = 0.75; ctx.globalAlpha = DIMC[f.kind] * 0.6; ctx.stroke(); }
+      if (f.w * SW * cam.s >= 4) { ctx.strokeStyle = shade(col, 0.7); ctx.lineWidth = 1; ctx.stroke(); }
     }
     ctx.globalAlpha = 1;
   }
@@ -1577,10 +1615,10 @@ function start(D) {
   }
   function drawClockNets() {
     if (pos <= S.LEGAL || pos >= S.HOLD + 0.15) return;
-    var d = DIMC.clknet * (pos > S.HOLD ? clamp01((S.HOLD + 0.15 - pos) / 0.15) : 1);
+    var d = pos > S.HOLD ? clamp01((S.HOLD + 0.15 - pos) / 0.15) : 1;
     var t = within(pos, S.CTS) < CTS_SPLIT ? within(pos, S.CTS) / CTS_SPLIT : 2;
     if (d <= 0.01) return;
-    ctx.strokeStyle = C.clknet;
+    ctx.strokeStyle = dimCol(C.clknet, DIMC.clknet);
     CLOCK_DRAW.forEach(function (c) {
       var g = pos >= S.CTS ? 1 : ease(clamp01((t - lvStart(c.lv)) / 0.22));
       var dp = g > 0 ? clockDriver(c) : null;
@@ -1608,7 +1646,7 @@ function start(D) {
       if (t <= 0) continue;
       var e = ease(t), cx = (q.x0 + q.x1) / 2, w = Math.max(q.x1 - q.x0, minW), h = Math.max(q.y1 - q.y0, minH);
       var lift = (1 - e) * 12 * U;
-      ctx.globalAlpha = e * d; ctx.fillStyle = C.pin;
+      ctx.globalAlpha = e; ctx.fillStyle = dimCol(C.pin, d);
       ctx.beginPath(); rect(cx - w / 2, DIE[3] - h + lift, cx + w / 2, DIE[3] + lift); ctx.fill();
       if (pinNames() && pos <= S.PINS) {
         ctx.save(); ctx.translate(sx(cx), sy(DIE[3]) - 6); ctx.rotate(-Math.PI / 2);
@@ -2401,7 +2439,7 @@ function start(D) {
   }
   function placeTip(items, px, py) {
     tip.innerHTML = items.map(function (it) {
-      return '<div class="it' + (it.dimmed ? " dimmed" : "") + '"><i class="sw" style="background:' + swatchBg(it) + (it.dimmed ? ";opacity:0.45" : "") + '"></i><div>' + it.h + "</div></div>";
+      return '<div class="it' + (it.dimmed ? " dimmed" : "") + '"><i class="sw" style="background:' + swatchBg(it) + (it.dimmed ? ";filter:grayscale(1);opacity:0.45" : "") + '"></i><div>' + it.h + "</div></div>";
     }).join("");
     tip.hidden = false;
     var tw = tip.offsetWidth, th = tip.offsetHeight;
