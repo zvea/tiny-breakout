@@ -1762,16 +1762,29 @@ function start(D) {
     }
     if ((a = only(S.PDN, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
-      var mid = Math.floor(nStripe / 2), sP = PDN.stripes[mid], sG = PDN.stripes[mid + 1], ry = PDN.rails[Math.floor(PDN.rails.length * 0.75)];
+      var mid = Math.floor(nStripe / 2), sP = PDN.stripes[mid], sG = PDN.stripes[mid + 1];
       if (sP[0] !== "VPWR") { var tmp = sP; sP = sG; sG = tmp; }
-      // one pair of stripes, each labelled on its outer side at a different height so the boxes
-      // sit in the gaps between pairs; the via stack low on the same VPWR stripe, away from both
-      var yOn = function (st, f) { return sy(st[3] + f * (st[4] - st[3])); };
-      label("VPWR stripe (met4)", sx(sP[2]), yOn(sP, 0.6), { dx: -16, dy: -10, align: "right" });
-      label("VGND stripe (met4)", sx(sG[2]), yOn(sG, 0.4), { dx: 16, dy: -10 });
-      label(ry[0] + " rail (met1)", sx(CORE[0] + 0.15 * (CORE[2] - CORE[0])), sy(ry[1]), { dx: 14, dy: -36 });
-      var vv = PDN.vias.filter(function (v) { return v[1] === sP[2]; });
-      if (vv.length) { var v0 = vv[Math.floor(vv.length / 6)]; label("via stack", sx(v0[1]), sy(v0[2]), { dx: -18, dy: 22, align: "right" }); }
+      // read top to bottom, from the top of the grid down: the stripes (one pair, each labelled
+      // on its outer side), the rails (one row's), then a via stack low on the same VPWR stripe; VPWR before
+      // VGND each time. t is the height as a share of the core, from its top.
+      var yAt = function (t) { return CORE[3] - t * (CORE[3] - CORE[1]); };
+      var nearest = function (list, y, ok) {
+        var best = null;
+        list.forEach(function (q) { if (ok(q) && (!best || Math.abs(q.y - y) < Math.abs(best.y - y))) best = q; });
+        return best;
+      };
+      label("VPWR stripe (met4)", sx(sP[2]), sy(yAt(0.12)), { dx: -16, dy: -10, align: "right" });
+      label("VGND stripe (met4)", sx(sG[2]), sy(yAt(0.27)), { dx: 16, dy: -10 });
+      // the two rails of one row, VPWR along its top and VGND along its bottom, as in a cell
+      var rails = PDN.rails.map(function (r) { return { net: r[0], y: r[1] }; }), xr = sx(CORE[0] + 0.15 * (CORE[2] - CORE[0]));
+      var rP = nearest(rails, yAt(0.5), function (q) { return q.net === "VPWR" && rails.some(function (g) { return g.net === "VGND" && Math.abs(g.y - (q.y - RH)) < 1; }); });
+      if (rP) {
+        label("VPWR rail (met1)", xr, sy(rP.y), { dx: 14, dy: -36 });
+        label("VGND rail (met1)", xr, sy(rP.y - RH), { dx: 14, dy: 16 });
+      }
+      var vias = PDN.vias.map(function (v) { return { x: v[1], y: v[2] }; });
+      var v0 = nearest(vias, yAt(0.78), function (q) { return q.x === sP[2]; });
+      if (v0) label("via stack", sx(v0.x), sy(v0.y), { dx: -18, dy: 22, align: "right" });
     }
     if ((a = only(S.REPAIR, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
