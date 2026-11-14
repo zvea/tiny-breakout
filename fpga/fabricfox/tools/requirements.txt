@@ -1,0 +1,5 @@
+# The FabricFox build's tools (see README.md), in this board's own .venv: the project's
+# .venv keeps the yosys that its area tools were measured with. The same yosys as the
+# Tang Nano 20K build, with its SystemVerilog front end (yosys-slang).
+yowasp-yosys==0.70.0.0.post1259
+yowasp-nextpnr-ice40==0.11.1.0.post826

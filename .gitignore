@@ -27,4 +27,5 @@ gds_render.png
 gds_render_preview.svg
 test/system/build/
 /build/
+/dist/
 .exp_src_*/

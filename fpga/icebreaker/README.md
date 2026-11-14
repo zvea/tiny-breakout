@@ -62,9 +62,10 @@ On Linux, the programmers need access to the board's USB interface (an FTDI FT22
 0403:6010), for example with a udev rule. On macOS, if the board isn't found, Apple's own FTDI
 serial driver may have claimed it: close anything that has its serial port open.
 
-CI ([.github/workflows/icebreaker.yaml](../../.github/workflows/icebreaker.yaml)) does both on
-every push: it builds the bitstream, uploaded as the artifact `fpga_icebreaker_bitstream`, and
-runs the test with Ubuntu's Verilator.
+CI ([.github/workflows/fpga.yaml](../../.github/workflows/fpga.yaml)) does both on every push:
+it builds the bitstream, with the other boards', into the one download
+`tiny-breakout-fpga-<short commit>` (see [../README.md](../README.md)), and runs the test with
+Ubuntu's Verilator.
 
 ## Playing
 

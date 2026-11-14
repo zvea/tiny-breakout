@@ -46,9 +46,10 @@ fpga/tang_nano_20k/test/run.sh       # simulation test, about 3 minutes
 open source and all from PyPI: yosys (with its yosys-slang front end for the SystemVerilog) and
 nextpnr as WebAssembly builds (YoWASP), and apicula's `gowin_pack`, in Python.
 
-CI ([.github/workflows/gowin.yaml](../../.github/workflows/gowin.yaml))
-does both on every push: it builds the bitstream, uploaded as the artifact
-`fpga_tang_nano_20k_bitstream`, and runs the test with Ubuntu's Verilator.
+CI ([.github/workflows/fpga.yaml](../../.github/workflows/fpga.yaml)) does both on every push:
+it builds the bitstream, with the other boards', into the one download
+`tiny-breakout-fpga-<short commit>` (see [../README.md](../README.md)), and runs the test with
+Ubuntu's Verilator.
 
 ## How it works
 

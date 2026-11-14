@@ -1,4 +1,4 @@
-![test](../../actions/workflows/test.yaml/badge.svg) ![ice40](../../actions/workflows/ice40.yaml/badge.svg) ![gowin](../../actions/workflows/gowin.yaml/badge.svg) ![icebreaker](../../actions/workflows/icebreaker.yaml/badge.svg) ![gds](../../actions/workflows/gds.yaml/badge.svg) ![docs](../../actions/workflows/docs.yaml/badge.svg)
+![test](../../actions/workflows/test.yaml/badge.svg) ![fpga](../../actions/workflows/fpga.yaml/badge.svg) ![gds](../../actions/workflows/gds.yaml/badge.svg) ![docs](../../actions/workflows/docs.yaml/badge.svg)
 
 # Tiny Breakout
 
@@ -87,10 +87,11 @@ by bit, is in [info.yaml](info.yaml).
 
 ## On an FPGA
 
-The same design also runs on three FPGA boards:
+The same design also runs on [three FPGA boards](fpga/README.md):
 
-- [Tiny Tapeout's iCE40UP5K board](fpga/ice40up5k/README.md): the full game, with VGA, an SNES
-  controller and sound.
+- [FabricFox](fpga/fabricfox/README.md), the board of Tiny Tapeout's FPGA Development Kit, on
+  the Tiny Tapeout demo board: the full game, with VGA, an SNES controller and sound (not yet
+  tried on a board).
 - [1BitSquared iCEBreaker](fpga/icebreaker/README.md): the game, with VGA through a 12-bit
   VGA Pmod and the snap-off board's buttons; no sound.
 - [Sipeed Tang Nano 20K](fpga/tang_nano_20k/README.md): the demo, with HDMI picture and sound.

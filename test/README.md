@@ -24,15 +24,13 @@ CI ([.github/workflows/test.yaml](../.github/workflows/test.yaml)) lints the des
 Ubuntu 24.04's Verilator 5 and runs `test.py` and the unit tests on Icarus 13.0, Tiny Tapeout's
 own build, which its GDS workflow also uses to run `test.py` on the gate-level netlist, and
 runs the formal proofs. The system scenarios run only locally, because they need
-Verilator 4.x. Three workflows build FPGA bitstreams, each uploaded as an artifact:
-[ice40](../.github/workflows/ice40.yaml), for Tiny Tapeout's iCE40UP5K FPGA board, placed
-and routed against the board's 25.175 MHz clock, so a change that makes the design slower
-than that fails it ([fpga/ice40up5k](../fpga/ice40up5k));
-[gowin](../.github/workflows/gowin.yaml), for the Sipeed Tang Nano 20K, which also runs that
-board's simulation test ([fpga/tang_nano_20k](../fpga/tang_nano_20k)); and
-[icebreaker](../.github/workflows/icebreaker.yaml), for the 1BitSquared iCEBreaker, which
-also places and routes against its 25.125 MHz clock and runs its simulation test
-([fpga/icebreaker](../fpga/icebreaker)).
+Verilator 4.x. The [fpga](../.github/workflows/fpga.yaml) workflow builds a bitstream for
+each FPGA board ([fpga/](../fpga)), placed and routed against the clock the game runs at on
+that board, so a change that makes the design slower than that fails it: the FabricFox, at
+25.175 MHz; the 1BitSquared iCEBreaker, at 25.125 MHz; and the Sipeed Tang Nano 20K, at
+25.2 MHz. It uploads them together as one artifact, and runs each board's test (the
+iCEBreaker's and the Tang Nano's in simulation, the FabricFox's on its pins) and the
+packaging's.
 
 ## Reference models and formal proofs
 
