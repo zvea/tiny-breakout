@@ -64,6 +64,7 @@
   --tie: #8d8a33;
   --clock: #ef7d1a;
   --clknet: #c4600c;
+  --clkpin: #f5c400;
   --hold: #7a4f2e;
   --diode: #b8860b;
   --decap: #5b7fa6;
@@ -98,7 +99,7 @@
   --row: #22272c; --row-flip: #30373e; --row-edge: #3b434b; --site: rgba(200, 210, 222, 0.18); --dim: #c9d0d8; --gcell: rgba(201, 208, 216, 0.45); --ghost: 0.8; --guide: rgba(210, 123, 255, 0.34);
   --tap: #a9b6c4; --endcap: #66717d; --swatch-edge: rgba(255, 255, 255, 0.3);
   --vpwr: #ff6b5e; --vgnd: #5f95ff; --via: #e9edf2; --pin: #f1f3f5;
-  --logic: #b48f45; --ff: #4cc0ae; --buf: #ff86c4; --tie: #c9c56a; --clock: #ff9a3d; --clknet: #ffb067;
+  --logic: #b48f45; --ff: #4cc0ae; --buf: #ff86c4; --tie: #c9c56a; --clock: #ff9a3d; --clknet: #ffb067; --clkpin: #ffd84a;
   --hold: #c08a5c; --diode: #e8b23a; --decap: #7fa3c9; --fill: #a7b3bf;
   --pick: #f1f3f5; --hot: #d27bff;
   --setup: #ff8a65; --holdp: #c48bff;
@@ -146,6 +147,7 @@ button { font: inherit; color: inherit; }
 .legend i { flex: none; width: 14px; height: 10px; border: 1px solid var(--swatch-edge); border-radius: 1px; transition: opacity 0.6s; }
 .legend li.dimmed i { filter: grayscale(1); opacity: 0.4; }
 .legend i.line { height: 0; border: 0; border-top: 2px solid; border-radius: 0; }
+.legend i.dot { width: 6px; height: 6px; border: 0; border-radius: 50%; margin: 0 4px; }
 .legend i.lay { background: var(--c); }
 .legend.gds i.lay { background: color-mix(in srgb, var(--c) 18%, transparent); border: 1.5px solid var(--c); }
 
@@ -1226,7 +1228,7 @@ function start(D) {
   function readColours() {
     var cs = getComputedStyle(document.documentElement);
     ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "gcell", "ghost", "guide", "tap", "endcap", "ir0", "ir1", "ir2", "ir3",
-     "vpwr", "vgnd", "via", "pin", "logic", "ff", "hot", "buf", "tie", "clock", "clknet", "hold",
+     "vpwr", "vgnd", "via", "pin", "logic", "ff", "hot", "buf", "tie", "clock", "clknet", "clkpin", "hold",
      "li1", "met1", "met2", "met3", "met4", "pick", "diode", "decap", "fill", "wvia", "setup", "holdp", "nwell", "diff", "gtap", "poly", "cut", "ink", "muted", "bg", "font"]
       .forEach(function (k) { C[k] = cs.getPropertyValue("--" + k).trim(); });
     hatches = {}; rgbCache = {}; GHOST = parseFloat(C.ghost);
@@ -1846,14 +1848,29 @@ function start(D) {
       var dp = g > 0 ? clockDriver(c) : null;
       if (!dp) return;
       // thicker the nearer the root, so the trunk stands out from the many short leaf nets
-      ctx.lineWidth = [1.2, 1.6, 2.2, 3][Math.min(3, CLV - c.lv)];
-      ctx.globalAlpha = d * (c.lv === CLV ? 0.55 : 0.9);
+      ctx.lineWidth = [1.4, 1.8, 2.4, 3][Math.min(3, CLV - c.lv)];
+      ctx.globalAlpha = d * 0.9;
       ctx.beginPath();
       c.loads.forEach(function (l) {
         var lx = SX[l] + SWD[l] / 2, ly = SY[l] + RH / 2;
         ctx.moveTo(sx(dp[0]), sy(dp[1])); ctx.lineTo(sx(dp[0] + (lx - dp[0]) * g), sy(dp[1] + (ly - dp[1]) * g));
       });
       ctx.stroke();
+    });
+    // a dot where a line ends at a sink, a flip-flop or a dummy load (its clock pin), as the line
+    // arrives, so a line ending there is told from one passing over it
+    ctx.fillStyle = dimCol(C.clkpin, DIMC.clknet);
+    CLOCK_DRAW.forEach(function (c) {
+      var g = pos >= S.CTS ? 1 : ease(clamp01((t - lvStart(c.lv)) / 0.22));
+      if (g < 0.95) return;
+      ctx.globalAlpha = d * clamp01((g - 0.95) / 0.05);
+      ctx.beginPath();
+      c.loads.forEach(function (l) {
+        if (CLS[l] !== "ff" && !(CLS[l] === "clock" && !DRIVES[l])) return;
+        var x = sx(SX[l] + SWD[l] / 2), y = sy(SY[l] + RH / 2);
+        ctx.moveTo(x + 2.5, y); ctx.arc(x, y, 2.5, 0, 7);
+      });
+      ctx.fill();
     });
     ctx.globalAlpha = 1;
   }
@@ -2480,6 +2497,7 @@ function start(D) {
     { from: S.REPAIR, label: "Tie cell", c: "tie", g: "tie" },
     { from: S.CTS, label: "Clock buffer or dummy", c: "clock", g: "clock" },
     { from: S.CTS, to: S.CTS, label: "Clock net", c: "clknet", g: "clknet", line: true },
+    { from: S.CTS, to: S.CTS, label: "Clock pin (flip-flop or dummy)", c: "clkpin", g: "clknet", dot: true },
     { from: S.HOLD, label: "Delay cell (hold)", c: "hold", g: "hold" },
     { from: S.GRT, to: S.DRT, label: "Route guide", c: "guide", g: "guide" },
     { from: S.GRT, to: S.GRT, label: "Nets with guides per g-cell, " + MINALL + "–" + MAXALL, c: "hot", g: "route", ramp: true },
@@ -2521,6 +2539,7 @@ function start(D) {
     return items.map(function (it) {
       var l = it.l, sw;
       if (l.line) sw = '<i class="line" style="border-color:var(--' + l.c + ')"></i>';
+      else if (l.dot) sw = '<i class="dot" style="background:var(--' + l.c + ')"></i>';
       else if (l.layer) sw = '<i class="lay" style="--c:var(--' + l.c + ')"></i>';
       else sw = '<i style="background:' + swatchBg(l) + '"></i>';
       return "<li" + (it.dimmed ? ' class="dimmed"' : "") + ">" + sw + l.label + "</li>";
