@@ -443,7 +443,7 @@ function start(D) {
     SEG.push(wgt); segTotal += wgt;
   }
   // the rewind gets REWIND_MS of the step's play time, the rest is shared out by distance
-  var PLACE_MS = 14000, REWIND_MS = 2800, rwShare = REWIND_MS / (PLACE_MS * (1 - FADE));
+  var PLACE_MS = 15400, REWIND_MS = 4200, rwShare = REWIND_MS / (PLACE_MS * (1 - FADE));
   SEG.forEach(function (w, i) { if (GF[i + 1].rewind) SEG[i] = segTotal * rwShare / (1 - rwShare); });
   segTotal = SEG.reduce(function (a, b) { return a + b; }, 0);
   var SEGCUM = [0];
@@ -1677,14 +1677,17 @@ function start(D) {
   // Callouts, in ink, point at the centre of what they name (along a long thin thing, at a point on it).
   // Each takes the first of its candidate places (as asked, flipped up or down, mirrored left or
   // right, further out) that overlaps no callout already drawn this frame and stays between the
-  // legend and the foot band; if none does, it is left out.
+  // legend and the foot band; if none does, it is left out. A box (opts.box) names an event
+  // rather than a thing: it sits centred on the point, with no leader.
   var placed = [];
   function label(text, x, y, opts) {
     opts = opts || {};
     ctx.font = "500 12px " + C.font;
-    var w = ctx.measureText(text).width + 10, h = 20, dx = opts.dx || 0, dy = opts.dy || 0, al = opts.align || "left";
+    var lines = text.split("\n"), w = Math.max.apply(null, lines.map(function (l) { return ctx.measureText(l).width; })) + 10;
+    var h = 20 + 15 * (lines.length - 1), dx = opts.dx || 0, dy = opts.dy || 0, al = opts.align || "left";
     var flip = { left: "right", right: "left", center: "center" };
-    var cands = opts.fixed ? [[dx, dy, al], [-dx, dy, flip[al]]]   // only beside, never flipped
+    var cands = opts.box ? [[0, -h / 2, "center"]]                  // centred on the point, no leader
+              : opts.fixed ? [[dx, dy, al], [-dx, dy, flip[al]]]   // only beside, never flipped
               : [[dx, dy, al], [dx, -dy - h, al], [-dx, dy, flip[al]], [-dx, -dy - h, flip[al]],
                  [dx, dy * 2, al], [dx, -dy * 2 - h, al], [-dx, dy * 2, flip[al]], [-dx, -dy * 2 - h, flip[al]]];
     var best = null;
@@ -1701,18 +1704,20 @@ function start(D) {
     var bx = best[0], by = best[1];
     placed.push([bx - 3, by - 3, bx + w + 3, by + h + 3]);
     var ax = best[2] === "right" ? bx + w : best[2] === "center" ? bx + w / 2 : bx;
-    // the leader and dot, first wider in the background colour, then in ink: the halo keeps them
-    // visible on a fill as dark (or as light) as the ink, such as a via or a pin
-    ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2);
-    ctx.strokeStyle = C.bg; ctx.lineWidth = 3.6; ctx.stroke();
-    ctx.fillStyle = C.bg; ctx.beginPath(); ctx.arc(x, y, 2.75, 0, 7); ctx.fill();
-    ctx.lineCap = "butt"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2);
-    ctx.strokeStyle = C.pick; ctx.lineWidth = 1.2; ctx.stroke();
-    ctx.fillStyle = C.pick; ctx.beginPath(); ctx.arc(x, y, 1.75, 0, 7); ctx.fill();
+    if (!opts.box) {
+      // the leader and dot, first wider in the background colour, then in ink: the halo keeps them
+      // visible on a fill as dark (or as light) as the ink, such as a via or a pin
+      ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2);
+      ctx.strokeStyle = C.bg; ctx.lineWidth = 3.6; ctx.stroke();
+      ctx.fillStyle = C.bg; ctx.beginPath(); ctx.arc(x, y, 2.75, 0, 7); ctx.fill();
+      ctx.lineCap = "butt"; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, by + h / 2);
+      ctx.strokeStyle = C.pick; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fillStyle = C.pick; ctx.beginPath(); ctx.arc(x, y, 1.75, 0, 7); ctx.fill();
+    }
     ctx.fillStyle = C.bg; ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.rect(bx, by, w, h); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = C.ink; ctx.textBaseline = "middle"; ctx.textAlign = "left";
-    ctx.fillText(text, bx + 5, by + h / 2 + 0.5);
+    ctx.fillStyle = C.ink; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    lines.forEach(function (l, i) { ctx.fillText(l, bx + w / 2, by + 10.5 + 15 * i); });
   }
   function dimLine(x0, y0, x1, y1, text, side) {
     ctx.strokeStyle = C.dim; ctx.fillStyle = C.dim; ctx.lineWidth = 1;
@@ -1838,8 +1843,9 @@ function start(D) {
       var gg = gplAt(within(pos, S.PLACE));
       if (GF[gg.i + 1] && GF[gg.i + 1].rewind) {
         ctx.globalAlpha = clamp01(gg.f / 0.08) * clamp01((1 - gg.f) / 0.08);
-        label("Too congested: rewind to iteration " + SNAP.iter + ", inflate crowded cells",
-              sx((CORE[0] + CORE[2]) / 2), sy(CORE[1] + 0.62 * (CORE[3] - CORE[1])), { dx: -120, dy: -60 });
+        // an event, not a thing on the die: a box over the core's centre, with no leader
+        label("Too congested:\nrewind to iteration " + SNAP.iter + ",\ninflate crowded cells",
+              sx((CORE[0] + CORE[2]) / 2), sy((CORE[1] + CORE[3]) / 2), { box: true });
       }
     }
     if (pos > S.HOLD && pos < S.GRT) exBeingBuilt(routeT(), EX0, EXSLOT, 0.18);
