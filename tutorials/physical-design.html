@@ -1163,16 +1163,6 @@ function start(D) {
       for (var i = i0; i <= i1; i++) { var xx = Math.round(sx(CORE[0] + i * SW)) + 0.5; ctx.moveTo(xx, top); ctx.lineTo(xx, bot); }
       ctx.stroke();
     }
-    if (RH * cam.s > 24) {
-      // each row's name and orientation in the margin to its left
-      var fs = Math.min(11, RH * cam.s * 0.45);
-      ctx.font = "500 " + fs + "px " + C.font; ctx.textBaseline = "middle"; ctx.textAlign = "right"; ctx.fillStyle = C.muted;
-      for (var r3 = 0; r3 < NROWS; r3++) {
-        var ym = sy(CORE[1] + (r3 + 0.5) * RH);
-        if (ym < -20 || ym > H + 20) continue;
-        ctx.fillText("ROW_" + r3 + "  " + (D.rows[r3] ? "FS" : "N"), sx(CORE[0]) - 6, ym);
-      }
-    }
     ctx.globalAlpha = 1;
   }
 
@@ -1736,7 +1726,9 @@ function start(D) {
       ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5;
       ctx.beginPath(); rect(CORE[0], y0, CORE[2], y0 + RH); ctx.stroke();
       ctx.fillStyle = C.pick; ctx.beginPath(); rect(xs, y0, xs + SW, y0 + RH); ctx.fill();
-      label("ROW_" + rowMid + ": " + D.sitesPerRow + " sites", sx(CORE[0] + 0.12 * (CORE[2] - CORE[0])), sy(y0 + RH / 2), { dx: 10, dy: -50 });
+      // the row named just above its outline, from its left end
+      ctx.font = "500 11px " + C.font; ctx.fillStyle = C.ink; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+      ctx.fillText("row: " + D.sitesPerRow + " sites", sx(CORE[0]), sy(y0 + RH) - 3);
       label("site: " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm", sx(xs + SW / 2), sy(y0 + RH / 2), { dx: 14, dy: 30 });
     }
     if ((a = only(S.TAPS, 0.95)) > 0.01) {
