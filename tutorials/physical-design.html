@@ -1076,7 +1076,7 @@ function start(D) {
       "<h3>How it works</h3>" +
       "<p>TritonCTS first <b>clusters</b> the sinks: " + M.cts.sinks + " flip-flops into " + M.cts.clusters + " groups of at most " + M.cts.maxsinks + " close together, each driven by one leaf buffer. It then builds an <b>H-tree</b> over the clusters: a symmetric trunk, halved at each level, that gives the branches matched lengths. " + M.cts.dummies + " <b>dummy loads</b>, clock cells whose outputs drive nothing, even out the load on the branches. The nets at the top of the tree, " + M.cts.ndr.map(function (x) { return "<code>" + x + "</code>"; }).join(" and ") + ", get a non-default rule, double spacing, to cut coupling.</p>" +
       "<p>The buffers go where the tree wants them; then legalisation makes room, moving " + M.cts.disp[2] + " cells " + fmt(M.cts.disp[3], 1) + " µm on average.</p>",
-    note: "Lines join each clock net's driver to its loads, level by level from the pin." };
+    note: "Lines join each clock net's driver to its loads, level by level from the pin, thinner at each level down to the flip-flops." };
   STEPS[S.HOLD] = { short: "Hold", title: "Hold repair", tool: "OpenROAD <code>rsz</code>: <code>repair_timing -hold</code>", play: 6000,
     body:
       "<p>With the clock tree built, timing analysis uses real clock arrival times, so hold can be checked meaningfully. A <b>hold violation</b> is a path so fast that new data reaches a flip-flop before it has finished capturing the old: the data must stay stable for a short time after the clock edge, and skew can shorten that window further.</p>" +
@@ -1630,9 +1630,12 @@ function start(D) {
   function gdsFill(g) {
     ctx.fillStyle = C[g.c];
     if (g.o) {
-      // metals as outlines over a translucent fill, so the layers beneath still show through
+      // metals as a translucent fill, so the layers beneath still show through, outlined where
+      // the wires are wide enough on screen to show both edges (full from 5 px, none below 2 px,
+      // where the outlines would merge into solid colour)
       ctx.globalAlpha = 0.28; ctx.fill(GPATH[g.l]);
-      ctx.globalAlpha = 0.95; ctx.strokeStyle = C[g.c]; ctx.lineWidth = 1.1 / cam.s; ctx.stroke(GPATH[g.l]);
+      var ow = clamp01(({ li1: 170, met1: 140, met2: 140, met3: 300, met4: 300 }[g.l] * cam.s - 2) / 3);
+      if (ow > 0.01) { ctx.globalAlpha = 0.95 * ow; ctx.strokeStyle = C[g.c]; ctx.lineWidth = 1.1 / cam.s; ctx.stroke(GPATH[g.l]); }
     } else {
       ctx.globalAlpha = g.a; ctx.fill(GPATH[g.l]);
     }
@@ -2260,7 +2263,7 @@ function start(D) {
             { from: S.DRT, label: "Via (zoom in)", c: "wvia", g: "wire" },
             { from: S.FILL, label: "Decap cell", c: "decap", g: "decap" },
             { from: S.FILL, label: "Fill cell", c: "fill", g: "fill", hatch: true },
-            { from: S.STA, label: "Worst setup path", c: "setup", g: "path", line: true },
+            { from: S.STA, label: "Worst flip-flop to flip-flop setup path", c: "setup", g: "path", line: true },
             { from: S.STA, label: "Worst hold path", c: "holdp", g: "path", line: true },
             { from: S.IR, label: "IR drop, 0–" + Math.round(IRMAX) + " µV", c: "ir", g: "ir", irramp: true },
             { from: S.GDS, label: "n-well", c: "nwell", g: "gds" },
