@@ -66,7 +66,6 @@
   --diode: #b8860b;
   --decap: #5b7fa6;
   --fill: #8c99a6;
-  --trail: rgba(209, 70, 47, 0.7);
   --pick: #1b1d1f;
   --setup: #e4572e;
   --holdp: #7b2fd6;
@@ -99,7 +98,7 @@
   --vpwr: #ff6b5e; --vgnd: #5f95ff; --via: #e9edf2; --pin: #f1f3f5;
   --logic: #b48f45; --ff: #4cc0ae; --buf: #ff86c4; --tie: #c9c56a; --clock: #ff9a3d; --clknet: #ffb067;
   --hold: #c08a5c; --diode: #e8b23a; --decap: #7fa3c9; --fill: #a7b3bf;
-  --trail: rgba(255, 122, 92, 0.8); --pick: #f1f3f5; --hot: #d27bff;
+  --pick: #f1f3f5; --hot: #d27bff;
   --setup: #ff8a65; --holdp: #c48bff;
   --nwell: #6f9a3c; --diff: #c9bd5a; --gtap: #8c8433; --poly: #e0506a; --cut: #e9edf2;
   --ir0: #12301f; --ir1: #23733f; --ir2: #66bd63; --ir3: #d9f0a3;
@@ -499,7 +498,7 @@ function start(D) {
   // ---- the state of every cell at position p -----------------------------------------------
   var SX = new Float32Array(NU), SY = new Float32Array(NU), SWD = new Float32Array(NU), SA = new Float32Array(NU);
   var SXX = new Float32Array(NU), SYY = new Float32Array(NU), SFX = new Uint8Array(NU), SFY = new Uint8Array(NU);
-  var STY = new Uint8Array(NU), TX = new Float32Array(NU), TY = new Float32Array(NU), TA = new Float32Array(NU);
+  var STY = new Uint8Array(NU);
   function put(Sg, i) {
     SX[i] = Sg.xy[2 * i]; SY[i] = Sg.xy[2 * i + 1]; STY[i] = Sg.ty[i]; SWD[i] = WT[Sg.ty[i]];
     SFX[i] = flipX(Sg.or[i]); SFY[i] = flipY(Sg.or[i]); SA[i] = 1;
@@ -526,7 +525,7 @@ function start(D) {
     }
   }
   // A to B by legalisation: each cell slides to its new site (bottom rows first, for display),
-  // taking its new row's orientation on the way (a flip top to bottom), leaving a short trail;
+  // taking its new row's orientation on the way (a flip top to bottom);
   // then the cells mirrored left to right flip.
   function legalise(A, B, t) {
     for (var i = 0; i < NU; i++) {
@@ -537,10 +536,6 @@ function start(D) {
       var s0 = 0.3 * clamp01((by - CORE[1]) / (CORE[3] - CORE[1])) + 0.04 * hash01(i);
       var m = ease(clamp01((t - s0) / 0.4));
       SX[i] = ax + (bx - ax) * m; SY[i] = ay + (by - ay) * m;
-      if (ax !== bx || ay !== by) {
-        TX[i] = ax; TY[i] = ay;
-        TA[i] = m > 0 ? 1 - clamp01((t - s0 - 0.4) / 0.12) : 0;
-      }
       var ya = flipY(A.or[i]), yb = flipY(B.or[i]), xa = flipX(A.or[i]), xb = flipX(B.or[i]);
       if (ya !== yb) { SYY[i] = Math.abs(Math.cos(Math.PI * m)); SFY[i] = m > 0.5 ? yb : ya; }
       if (xa !== xb) {
@@ -557,7 +552,7 @@ function start(D) {
   function cellState(p) {
     if (p <= S.PINS) return false;
     var i;
-    for (i = 0; i < NU; i++) { SA[i] = 0; SXX[i] = 1; SYY[i] = 1; TA[i] = 0; }
+    for (i = 0; i < NU; i++) { SA[i] = 0; SXX[i] = 1; SYY[i] = 1; }
     if (p <= S.PLACE) {
       var g = gplAt(within(p, S.PLACE)), nx = GF[Math.min(g.i + 1, GF.length - 1)], a = GF[g.i].xy, b = nx.xy;
       var f = nx.rewind ? ease(clamp01((g.f - 0.3) / 0.4)) : g.f;
@@ -981,7 +976,7 @@ function start(D) {
       "<p>Then <code>optimize_mirroring</code> flips instances left to right (FN or S) where that shortens their nets: " + n(M.dpl.mirrored) + " of them, winning back " + fmt(100 * (1 - M.dpl.hpwl[2] / M.dpl.hpwl[1]), 1) + "% (to " + n(Math.round(M.dpl.hpwl[2])) + " µm).</p>" +
       "<h3>How it works</h3>" +
       "<p><code>dpl</code> searches outward from each cell's global position for the nearest free run of sites. Global placement has already spread the cells to the target density, so a free spot is never far. In LibreLane the repair step ends by legalising; the Detailed placement step after it finds nothing left to move.</p>",
-    note: "Each cell leaves a short trail from its global position (bottom rows go first only for display); then the mirrored cells flip." };
+    note: "Each cell slides from its global position to its legal one (bottom rows go first only for display); then the mirrored cells flip." };
   STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", tool: "OpenROAD <code>cts</code> (TritonCTS): <code>clock_tree_synthesis</code>", play: 8000,
     body:
       "<p>Until now <code>clk</code> was an ideal net, reaching all " + M.cts.sinks + " flip-flops at the same instant. As a real wire it would be far too heavily loaded, and the clock edge would reach near and far flip-flops at different times. That difference, <b>skew</b>, comes straight out of every timing path's budget.</p>" +
@@ -1066,7 +1061,7 @@ function start(D) {
   function readColours() {
     var cs = getComputedStyle(document.documentElement);
     ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "tap", "endcap", "cell-edge", "ir0", "ir1", "ir2", "ir3",
-     "vpwr", "vgnd", "via", "pin", "logic", "ff", "hot", "buf", "tie", "clock", "clknet", "hold", "trail",
+     "vpwr", "vgnd", "via", "pin", "logic", "ff", "hot", "buf", "tie", "clock", "clknet", "hold",
      "li1", "met1", "met2", "met3", "met4", "pick", "diode", "decap", "fill", "wvia", "setup", "holdp", "nwell", "diff", "gtap", "poly", "cut", "ink", "muted", "bg", "font"]
       .forEach(function (k) { C[k] = cs.getPropertyValue("--" + k).trim(); });
     hatches = {};
@@ -1124,7 +1119,7 @@ function start(D) {
     drawRows();
     drawFixed();
     var cells = cellState(pos);
-    if (cells) { drawCells(); drawFill(); drawBins(); drawTrails(); }
+    if (cells) { drawCells(); drawFill(); drawBins(); }
     drawPower();
     drawGuides();
     drawAntenna();
@@ -1211,20 +1206,6 @@ function start(D) {
       ctx.globalAlpha = a * 0.9; ctx.fillStyle = C[CLS[k]];
       ctx.beginPath(); rect(x0, y0, x0 + w, y0 + h); ctx.fill();
       if (edge) { ctx.globalAlpha = a * 0.6; ctx.strokeStyle = C["cell-edge"]; ctx.stroke(); }
-    }
-    ctx.globalAlpha = 1;
-  }
-  // each legalising cell's way from where it was
-  function drawTrails() {
-    var any = false;
-    for (var k = 0; k < NU; k++) if (TA[k] > 0.01) { any = true; break; }
-    if (!any) return;
-    ctx.strokeStyle = C.trail; ctx.lineWidth = 1.2;
-    for (var i = 0; i < NU; i++) {
-      if (TA[i] <= 0.01) continue;
-      ctx.globalAlpha = TA[i] * DIMC[cellGroup(i)];
-      var hw = SWD[i] / 2, hh = RH / 2;
-      ctx.beginPath(); ctx.moveTo(sx(TX[i] + hw), sy(TY[i] + hh)); ctx.lineTo(sx(SX[i] + hw), sy(SY[i] + hh)); ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
