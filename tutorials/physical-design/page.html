@@ -1621,6 +1621,30 @@ function start(D) {
     renderLayers(cv, j, j + 1);
     return { canvas: cv, at: viewNow() };
   }
+  // All the layers drawn ahead for the whole die (the view fit() goes to), while the camera heads
+  // there: shown under the moving image, it fills what that image never covered, and once the
+  // camera arrives it is the finished view
+  var gdsEnd = null, gdsEndPre = null;
+  function fitView() {
+    var keep = { x: cam.x, y: cam.y, s: cam.s };
+    cam.x = fitX(); cam.y = fitY(); cam.s = fitS; clampCam();
+    var v = viewNow();
+    cam.x = keep.x; cam.y = keep.y; cam.s = keep.s;
+    return v;
+  }
+  function nearView(a, b) {
+    // within a quarter pixel: a glide ends on its target only to rounding
+    return a.W === b.W && a.H === b.H && a.DPR === b.DPR && a.gen === b.gen && Math.abs(a.s / b.s - 1) < 1e-6 &&
+      Math.abs(a.x - b.x) * b.s < 0.25 && Math.abs(a.y - b.y) * b.s < 0.25;
+  }
+  function renderEnd() {
+    var keep = { x: cam.x, y: cam.y, s: cam.s }, cv = gdsEnd ? gdsEnd.canvas : document.createElement("canvas");
+    cam.x = fitX(); cam.y = fitY(); cam.s = fitS; clampCam();
+    cv.width = canvas.width; cv.height = canvas.height;
+    renderLayers(cv, 0, GDS_ORDER.length);
+    gdsEnd = { canvas: cv, at: viewNow() };
+    cam.x = keep.x; cam.y = keep.y; cam.s = keep.s;
+  }
   function blit(img, at, a) {
     // an image drawn for the view 'at', placed for the current one
     var k = cam.s / at.s;
@@ -1647,6 +1671,10 @@ function start(D) {
     var cur = pos > S.GDS ? -1 : Math.floor((u - GDS_START) / GDS_L), done = 0;
     if (cur >= alphas.length) cur = -1;
     while (done < alphas.length && alphas[done] >= 0.999 && done !== cur) done++;
+    var all = done === alphas.length, fv = all ? fitView() : null;
+    // with every layer in, playing or gliding, and not yet at the whole die: draw that ahead
+    if (all && target === S.GDS && (anim || camAnim) && !nearView(viewNow(), fv) && !(gdsEnd && gdsEnd.at.key === fv.key) && !gdsEndPre)
+      gdsEndPre = setTimeout(function () { gdsEndPre = null; renderEnd(); requestDraw(); }, 0);
     if (done > 0) {
       if (sameView(gdsBase) && gdsBase.done <= done) {
         for (var i = gdsBase.done; i < done; i++) {
@@ -1655,12 +1683,15 @@ function start(D) {
           else renderLayers(gdsBase.canvas, i, i + 1);
         }
         gdsBase.done = done;
+      } else if (all && gdsEnd && nearView(gdsEnd.at, viewNow())) {
+        gdsBase = { canvas: gdsEnd.canvas, done: done, at: viewNow() }; gdsEnd = null;   // arrived
       } else if (!(moving && movable(gdsBase) && gdsBase.done === done)) {
         var cv = gdsBase ? gdsBase.canvas : document.createElement("canvas");
         cv.width = canvas.width; cv.height = canvas.height;
         renderLayers(cv, 0, done);
         gdsBase = { canvas: cv, done: done, at: viewNow() };
       }
+      if (all && moving && gdsEnd && movable(gdsEnd)) blit(gdsEnd.canvas, gdsEnd.at, 1);
       blit(gdsBase.canvas, gdsBase.at, 1);
     }
     var r = 0, v = 0, last = alphas.length - 1;
