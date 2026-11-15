@@ -10,10 +10,13 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   the paddle sets its direction: off the left half it goes left, off the right half right, and
   at a flatter angle off the outer 16 px at each end. A brick hit on its side sends the ball
   back sideways; a hit on its top or bottom sends it back vertically.
-- **Speed:** every ball starts at 1x and goes up to 1.5x, 2x, 2.5x and 3x as it clears 4, 8,
-  12 and 16 bricks. The speed goes back to 1x for each new ball and after a cleared brick wall.
-  The paddle moves 4 px each time the ball moves, so it speeds up with the ball (in the
-  pause after a cleared brick wall it moves at 1x).
+- **Speed:** each brick wall starts at 1x, and the ball goes up a half step every 4 bricks it
+  clears: 1.5x, 2x, 2.5x, and 3x from 16. After a lost ball the next keeps half of those half
+  steps, rounded down, and the bricks the lost one cleared towards its next step don't count:
+  after 3x the next ball starts at 2x, after 2.5x or 2x at 1.5x, and after 1.5x or 1x at 1x.
+  The paddle moves 4 px each time the ball moves, so it speeds up with the ball; while a ball
+  waits on it, it moves at that ball's speed (in the pause after a cleared brick wall, and
+  while the next wall is built, at 1x).
 - **Lives and score:** you have 2 spare balls, shown top left; the score, top right, counts
   10 per brick, up to 9990. Once a ball has fallen past the paddle, the black margin around the
   playfield turns red, brightening as the ball drops off the screen. Losing the last ball ends

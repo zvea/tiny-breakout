@@ -140,8 +140,11 @@ module tt_um_tiny_breakout (
   // Speed: the ball and paddle make 0, 1 or 2 moves per frame (see move_tick), each by
   // their usual step, averaging 2, 3, 4, 5 or 6 moves per 4 frames: 1x, 1.5x, 2x, 2.5x, 3x
   // (1x is a move every other frame: 1 px per frame vertically). speed_level counts the
-  // bricks the current ball clears, and the speed rises a half step every 4, up to 3x from
-  // 16. Every ball starts at 1x; the levels get harder through a narrower paddle instead.
+  // bricks the ball clears, and the speed rises a half step every 4, up to 3x from 16. Each
+  // wall starts at 1x. After a lost ball the next keeps half the half steps, rounded down:
+  // 3x goes to 2x, 2.5x and 2x to 1.5x, 1.5x to 1x; it starts at the beginning of its step,
+  // the lost ball's bricks within its step forgotten. The levels get harder through a
+  // narrower paddle instead.
   //
   // In the pause after a cleared wall, speed_level is the timer: 16..31, one step every 4
   // frames (about a second), and the paddle moves at 1x (see moves). In a new wall's build
@@ -473,8 +476,9 @@ module tt_um_tiny_breakout (
   // What the frame update does. restart needs game over; otherwise exactly one of on_paddle,
   // lose_ball and fly holds. new_game (end_demo) can coincide with any of them and wins.
   // speed_level reaching 31 ends the pause after a cleared wall, a wall's build (see Wall
-  // build) and the game-over curtain's descent. A restart waits for the curtain, so FIRE held as the last ball falls
-  // (or autoplay, which always holds it) doesn't skip the curtain and cut the trombone at once.
+  // build) and the game-over curtain's descent. A restart waits for the curtain, so FIRE held
+  // as the last ball falls (or autoplay, which always holds it) doesn't skip the curtain and
+  // cut the trombone at once.
   wire timer_done = (speed_level == 31);
   wire restart    = game_over && btn_fire && timer_done;      // new game once the curtain is down
   assign new_game = restart || end_demo;                      // ... or when the demo ends
@@ -603,13 +607,16 @@ module tt_um_tiny_breakout (
     else if (frame_tick && build_done) building <= 0;
   end
 
-  // speed_level: 0 while the ball is on the paddle and from a lost ball, +1 per brick while
-  // it flies (up to 16); in the pause, 16..31, a step every 4th frame; in a wall's build,
-  // 0..31, a step every 4th frame, back to 0 as it ends; after game over, +1 per frame up to
-  // 31. A brick's step comes a clock after it is cleared (see Collisions): the speed is read
-  // at the moves, from line 480, and by the sound's brick note only at a line start; nothing
-  // else reads speed_level while the ball flies (the curtain, the twinkle, the build and
-  // timer_done are for game over, the pause and the build).
+  // speed_level: +1 per brick while the ball flies (up to 16), held while it rests on the
+  // paddle, so the paddle moves at the speed the ball will launch at; from a lost ball, half
+  // its half steps, rounded down (speed_level[4:2] / 2, times 4: 16 to 8, 12 and 8 to 4, 4
+  // and below to 0), or 0 from the last ball, for the curtain; in the pause, 16..31, a step
+  // every 4th frame; in a wall's build, 0..31, a step every 4th frame, back to 0 as it ends;
+  // after game over, +1 per frame up to 31. A brick's step comes a clock after it is cleared
+  // (see Collisions): the speed is read at the moves, from line 480, and by the sound's brick
+  // note only at a line start; nothing else reads speed_level while the ball flies or rests on
+  // the paddle (the curtain, the twinkle, the build and timer_done are for game over, the
+  // pause and the build).
   always_ff @(posedge clk) begin
     if (!rst_n || (frame_tick && new_game)) begin
       speed_level <= 0;
@@ -620,8 +627,8 @@ module tt_um_tiny_breakout (
       if (level_done) speed_level <= 0;
       else if (!speed_level[4]) speed_level <= 16;
       else if (frame_phase == 3) speed_level <= speed_level + 1;
-    end else if (frame_tick && (on_paddle || lose_ball)) begin
-      speed_level <= 0;
+    end else if (frame_tick && lose_ball) begin
+      speed_level <= (lives == 0) ? 5'd0 : {1'b0, speed_level[4:3], 2'b00};
     end else if (frame_tick && game_over && speed_level != 31) begin
       speed_level <= speed_level + 1;
     end else if (clear_brick_q && !speed_level[4]) begin  // stops at 16
@@ -659,10 +666,11 @@ module tt_um_tiny_breakout (
   // Celebration, in the pause after a cleared wall: the field twinkles behind the ball and
   // paddle while speed_level counts 17..31 (the pause starts at 16, where play stops, so 16
   // alone can't tell the two apart; 31 lasts a single frame, as the pause ends at the next
-  // frame update). A wall's build counts 17..31 too, so it is ruled out. In 16x16-px cells, crosses light up for 4 frames, coloured by height in
-  // 64-px bands like the brick rows. A hash of the cell's position (bit permutations, XOR and
-  // a 5-bit add) picks half the cells and gives each one of the timer's 16 steps, 28 cells to
-  // a step: those on step 0 never light, and those on step 15 only for that single frame.
+  // frame update). A wall's build counts 17..31 too, so it is ruled out. In 16x16-px cells,
+  // crosses light up for 4 frames, coloured by height in 64-px bands like the brick rows. A
+  // hash of the cell's position (bit permutations, XOR and a 5-bit add) picks half the cells
+  // and gives each one of the timer's 16 steps, 28 cells to a step: those on step 0 never
+  // light, and those on step 15 only for that single frame.
   wire       celebrate = !game_over && !building && speed_level[4] && (speed_level[3:0] != 0);
   wire [4:0] tw_hash = ({h_pos[4], h_pos[9], h_pos[6], h_pos[7], h_pos[8]} ^
                         {v_pos[4], v_pos[8], v_pos[6], v_pos[7], v_pos[5]}) +

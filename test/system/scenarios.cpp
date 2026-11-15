@@ -570,7 +570,8 @@ void controls() {
 // A new game in which every ball falls: LEFT is held throughout, so the paddle goes to the left
 // wall and stays there, and FIRE launches each ball as soon as it rests on the paddle.
 // - losses: the spare-ball markers count down one at a time, and every new ball starts at the
-//   base speed, a 2-px move every other frame, however fast the last one was. A ball that has
+//   base speed, a 2-px move every other frame, as none clears the 8 bricks (2x) after which
+//   the next would start faster (it keeps half its steps: see long_game). A ball that has
 //   fallen below the paddle (top at y >= 456) is lost: the border (the status line and the
 //   strips beside the walls) turns red, brighter in each 8-px band it falls through (maroon,
 //   dark red, red), and black again once the ball has left the screen; black at every other
@@ -730,10 +731,11 @@ void losing_every_ball() {
 // each costs one ball, and the next ball goes onto the paddle before it is launched. A lost ball
 // is put on the paddle at the next move, and at 1x odd frames have none: with FIRE held the game
 // once launched it from below the screen, losing it again and again, down to game over (from
-// 1.5x up, where the ball can be lost on either parity). Autoplay speeds each ball up to 1.5x (4
-// bricks), then the paddle is held at the left wall with FIRE until the ball is lost. A ball put
-// on the paddle a frame later shows a loss on the parity that failed; both must be seen. The last
-// ball's loss ends the game and is not checked, so that ball is lost at 1x, without autoplay.
+// 1.5x up, where the ball can be lost on either parity). Autoplay speeds each ball up by a step
+// (4 bricks), to 1.5x or more, then the paddle is held at the left wall with FIRE until the ball
+// is lost. A ball put on the paddle a frame later shows a loss on the parity that failed; both
+// must be seen. The last ball's loss ends the game and is not checked, so that ball is lost
+// without autoplay, at the speed it starts at (half the steps of the ball before it).
 void lost_at_speed() {
   Game g;
   power_up(g);
@@ -762,8 +764,9 @@ void lost_at_speed() {
     g.buttons = LEFT | FIRE;
     int lives = v.lives;
     // At 1.5x it falls past the paddle and off the screen in about 250 frames, or 650 if the
-    // paddle sends it up again; the last ball, launched at 1x, in about 600, or 1200 if sent up
-    // again, then the curtain comes down and FIRE starts a new game: 3600 is plenty
+    // paddle sends it up again; the last ball, launched at 1x or more, in at most about 600, or
+    // 1200 if sent up again, then the curtain comes down and FIRE starts a new game: 3600 is
+    // plenty
     int lost = 0;
     for (; lost < 3600 && v.lives == lives; lost++) v = run(g, 1);
     if (lives == 0) {  // the last ball: game over, and FIRE starts a new game
@@ -773,7 +776,7 @@ void lost_at_speed() {
       v = wait_for_wall(g, v);
       CHECK(v.bricks == 48 && v.lives == 2, "round %d: a new game with %d bricks, %d spare balls",
             round, v.bricks, v.lives);
-      printf("frame %5d: round %d: the last ball lost at 1x, and a new game, in %d frames\n",
+      printf("frame %5d: round %d: the last ball lost, and a new game, in %d frames\n",
              frame_no, round, lost);
       continue;
     }
@@ -872,20 +875,32 @@ struct BrickBounces {
   }
 };
 
-// The ball speeds up a half step every 4 bricks it clears: vertically it moves 4 px per 4
-// frames at first (1x), then 6 (1.5x), 8 (2x), 10 (2.5x), and 12 px (3x) once it has cleared
-// 16. Every ball starts at 1x, so the count starts again with each ball (and each wall).
+// The ball speeds up a step (a half of 1x) every 4 bricks it clears: vertically it moves 4 px
+// per 4 frames at first (1x), then 6 (1.5x), 8 (2x), 10 (2.5x), and 12 px (3x) at step 4.
+// The speed count is in bricks, 4 a step, up to 16. A new wall (and a new game) starts it at 0.
+// A lost ball keeps half its steps, rounded down, from the start of the step: after 3x the next
+// ball starts at 2x, after 2.5x or 2x at 1.5x, after 1.5x or 1x at 1x, and the bricks the lost
+// one cleared within its step are gone.
 struct SpeedSteps {
   int prev_y = -1, prev_bricks = -1, prev_lives = -1;
   int base = 48;  // the bricks when this ball started
+  int start = 0;  // the step this ball started at
+  int lost_at = -1;  // the speed count at the last ball lost (not the last of a game), -1: none
   bool prev_known = false;  // whether prev_y is where the ball was
   int run_step = -1, run_len = 0, window[4] = {};  // vertical moves of the last 4 frames
   int checked[5] = {};  // windows checked at 1x, 1.5x, 2x, 2.5x, 3x
-  int cleared(const View &v) const { return base - v.bricks; }
+  int count(const View &v) const { return std::min(4 * start + base - v.bricks, 16); }
   void feed(const View &v) {
-    // A new ball (a spare one used: a marker fewer), or a new wall (and a new game), restarts
-    // the count. Not a ball seen resting: one bouncing off the paddle's middle can look so.
-    if (v.lives < prev_lives || v.bricks > prev_bricks) base = v.bricks;
+    // A new ball (a spare one used: a marker fewer) starts at half the steps; a new wall at 0.
+    // Not a ball seen resting: one bouncing off the paddle's middle can look so.
+    if (v.bricks > prev_bricks) {
+      start = 0;
+      base = v.bricks;
+    } else if (v.lives < prev_lives) {
+      lost_at = count(v);
+      start = lost_at / 4 / 2;
+      base = v.bricks;
+    }
     prev_lives = v.lives;
     // A ball in the top wall (y 28 or 30, at most two moves in) is read as at y 32, where the
     // search for it starts: its move is known only if it is seen below that in both frames
@@ -899,14 +914,14 @@ struct SpeedSteps {
       run_len = 0;  // no window across a gap
       return;
     }
-    int step = std::min(cleared(v) / 4, 4);  // 0..4: 1x, 1.5x, 2x, 2.5x, 3x
+    int step = count(v) / 4;  // 0..4: 1x, 1.5x, 2x, 2.5x, 3x
     if (step != run_step) run_len = 0;
     run_step = step;
     window[run_len++ % 4] = dy;
     if (run_len >= 4) {
       int sum = window[0] + window[1] + window[2] + window[3];
-      CHECK(sum == 4 + 2 * step, "%d bricks cleared by this ball, moved %d px in 4 frames "
-            "(expected %d)", cleared(v), sum, 4 + 2 * step);
+      CHECK(sum == 4 + 2 * step, "speed count %d (this ball started at step %d), moved %d px in "
+            "4 frames (expected %d)", count(v), start, sum, 4 + 2 * step);
       checked[step]++;
     }
   }
@@ -952,22 +967,23 @@ struct PaddleZones {
 };
 
 // Each brick that goes alone plays its row's note an octave down (red highest), two scale steps
-// higher once the ball is fast (2x, from 8 bricks cleared by this ball), at volume 5. The brick
-// leaves the picture as its note starts, give or take a frame. Also keeps every frame's sound.
+// higher once the ball is fast (2x, from a speed count of 8: see SpeedSteps), at volume 5. The
+// brick leaves the picture as its note starts, give or take a frame. Also keeps every frame's
+// sound.
 struct BrickNotes {
   struct Hit {
-    int row, frame, cleared;  // cleared: by this ball, as the picture shows it
+    int row, frame, count;  // count: the speed count, as the picture shows it
   };
   std::vector<Sound> heard;
   std::vector<Hit> pending;
   int checked[2] = {};  // slow, fast
   std::vector<int> removals;  // frames in which bricks vanished from the picture
-  void feed(const View &before, const View &v, const Sound &s, int cleared) {
+  void feed(const View &before, const View &v, const Sound &s, int count) {
     heard.push_back(s);
     uint64_t gone = before.standing & ~v.standing;
     if (gone) removals.push_back(int(heard.size()) - 1);
     if (gone && v.bricks == before.bricks - 1)
-      pending.push_back({__builtin_ctzll(gone) / 8, int(heard.size()) - 1, cleared});
+      pending.push_back({__builtin_ctzll(gone) / 8, int(heard.size()) - 1, count});
     while (!pending.empty() && pending.front().frame + 2 < int(heard.size())) {
       // Not when another brick vanished a frame before or after, or two frames after: two
       // bricks hit in one frame can show a frame apart, and the note is the second's; and the
@@ -985,18 +1001,18 @@ struct BrickNotes {
   }
   void check(const Hit &h) {
     static const int scale[8] = {60, 54, 48, 40, 36, 30, 27, 24};  // C4 D4 E4 G4 A4 C5 D5 E5
-    // The picture can lag the game by a brick cleared after the beam passed it: with 7 shown
-    // cleared, this may be the 8th, and either note is right
-    if (h.cleared == 7) return;
-    bool fast = h.cleared >= 8;
+    // The picture can lag the game by a brick cleared after the beam passed it: with a count of
+    // 7 shown, this may be the 8th, and either note is right
+    if (h.count == 7) return;
+    bool fast = h.count >= 8;
     int n = scale[std::min(7, 5 - h.row + (fast ? 2 : 0))];
     bool ok = false;
     for (int f = h.frame - 1; f <= h.frame + 1; f++)
       ok |= f >= 0 && f < int(heard.size()) && heard[f].a.half == n && heard[f].a.vol == 5 &&
             !bass(heard[f]);
     auto at = [&](int f) { return f >= 0 && f < int(heard.size()) ? heard[f].a : Voice{}; };
-    CHECK(ok, "brick in row %d, %d cleared by this ball: no note of %d lines (heard %d/%d, %d/%d, "
-          "%d/%d: lines/volume)", h.row, h.cleared, n, at(h.frame - 1).half, at(h.frame - 1).vol,
+    CHECK(ok, "brick in row %d, speed count %d: no note of %d lines (heard %d/%d, %d/%d, "
+          "%d/%d: lines/volume)", h.row, h.count, n, at(h.frame - 1).half, at(h.frame - 1).vol,
           at(h.frame).half, at(h.frame).vol, at(h.frame + 1).half, at(h.frame + 1).vol);
     checked[fast]++;
   }
@@ -1019,7 +1035,7 @@ struct Follow {
     bounces.feed(v);
     speeds.feed(v);
     zones.feed(before, v);
-    notes.feed(before, v, listen(g), speeds.cleared(v));
+    notes.feed(before, v, listen(g), speeds.count(v));
     if (v.ball && before.ball && v.ball_y != before.ball_y) {
       int d = v.ball_y > before.ball_y ? 1 : -1;
       paddle_bounces += dir == 1 && d == -1 && before.ball_y >= 400;
@@ -1064,17 +1080,18 @@ void check_paddle_and_wall_sounds(const std::vector<Sound> &heard, int bounces) 
         bounces);
 }
 
-// Waits for the launch, then returns whether the ball rises at 1x for `frames` frames:
-// moves of 2 px, 4 px in every 4 frames.
-bool rises_at_1x(Follow &f, int frames) {
+// Waits for the launch, then returns whether the ball rises at speed step `step` (0..4: 1x to
+// 3x) for `frames` frames: moves of 2 px, one or none a frame at 1x and at most two above it,
+// 4 + 2 x step px in every 4 frames.
+bool rises_at(Follow &f, int step, int frames) {
   for (int i = 0; i < 2000 && resting(f.v); i++) f.step();  // wait for the launch
   int prev_y = f.v.ball_y, dys[64] = {};
   for (int i = 0; i < frames && i < 64; i++) {
     f.step();
     dys[i] = prev_y - f.v.ball_y;
     prev_y = f.v.ball_y;
-    if ((dys[i] != 0 && dys[i] != 2) ||
-        (i >= 3 && dys[i] + dys[i - 1] + dys[i - 2] + dys[i - 3] != 4)) {
+    if (dys[i] < 0 || dys[i] > (step == 0 ? 2 : 4) || dys[i] % 2 != 0 ||
+        (i >= 3 && dys[i] + dys[i - 1] + dys[i - 2] + dys[i - 3] != 4 + 2 * step)) {
       printf("  launch frame %d: moved %d px up\n", i, dys[i]);
       return false;
     }
@@ -1232,13 +1249,17 @@ void lose_a_ball(Follow &f, uint8_t buttons, bool fire, int frames) {
 //   (two steps higher once the ball is fast) are checked on every frame to the end of the game.
 // - the pause after the wall (see pause_after_clear)
 // - level 2: one of the pattern walls, with an 80-px paddle; no third spare ball, as autoplay
-//   lost none; the ball starts at 1x after the 3x it had. A ball lost with the paddle held at
-//   the left wall: the next one starts at 1x again, and the paddle stops at both walls. Then
-//   autoplay clears this wall too.
+//   lost none; the ball starts at 1x after the 3x it had. Autoplay plays it to 2.5x and on, 13
+//   to 15 bricks, then it is lost with the paddle held at the left wall: the next ball starts
+//   at half its steps, 1.5x, and the paddle moves at 1.5x while it rests there; then the paddle
+//   stops at the right wall too. Autoplay clears this wall, SpeedSteps checking that the ball
+//   reaches 2x only 4 bricks after it launched, the lost ball's bricks past 2.5x gone.
 // - the pause, and level 3: another pattern wall, a spare ball back for the one lost, and a
 //   64-px paddle that stops at both walls
-// - game over and a new game from it: a full wall, score 0, two spare balls, and the paddle 96 px
-//   again, centred, the ball resting on it
+// - game over: the last ball lost at 2x or more (autoplay plays it for 8 bricks), and the curtain
+//   still comes down from the top, as the last ball's speed count does not carry into it
+// - a new game from game over: a full wall, score 0, two spare balls, and the paddle 96 px again,
+//   centred, the ball resting on it
 void long_game() {
   Game g;
   power_up(g);
@@ -1276,18 +1297,38 @@ void long_game() {
   CHECK(v.lives == 2, "%d spare balls (expected no more than 2)", v.lives);
   CHECK(v.paddle_w == 80, "paddle %d px wide (expected 80)", v.paddle_w);
   CHECK(v.score == 480, "score %d after clearing level 1", v.score);
-  CHECK(rises_at_1x(f, 16), "the ball did not start at 1x");
+  CHECK(rises_at(f, 0, 16), "the ball did not start at 1x");
+  // Into 2.5x's step but not past it (the bricks within the step must be seen to go)
+  for (int end = frame_no + 20000; frame_no < end && f.v.bricks > 0 &&
+                                   !(f.speeds.count(f.v) >= 13 && f.speeds.count(f.v) % 4 != 0);)
+    f.step();
+  CHECK(f.v.bricks > 0, "the wall was cleared before the ball reached 2.5x (speed count %d)",
+        f.speeds.count(f.v));
   g.autoplay = false;
   lose_a_ball(f, LEFT, false, 10000);
+  int step = f.speeds.start;
+  printf("frame %5d: a ball lost at speed count %d, the next to start at step %d\n", frame_no,
+         f.speeds.lost_at, step);
+  CHECK(f.speeds.lost_at >= 13 && f.speeds.lost_at % 4 != 0,
+        "a ball lost at speed count %d (wanted 13 to 15)", f.speeds.lost_at);
   CHECK(f.v.paddle_x == 64 && f.v.paddle_w == 80, "left stop at x %d (%d px wide)", f.v.paddle_x,
         f.v.paddle_w);
   for (int i = 0; i < 100 && !resting(f.v); i++) f.step();
+  // The paddle moves 4 px a move, at the speed the resting ball will launch at: 2 + step moves
+  // in every 4 frames
+  g.buttons = RIGHT;
+  f.step();
+  int x0 = f.v.paddle_x;
+  for (int i = 0; i < 16; i++) f.step();
+  CHECK(resting(f.v) && f.v.paddle_x - x0 == 16 * (2 + step),
+        "with the next ball resting, the paddle moved %d px in 16 frames (expected %d)",
+        f.v.paddle_x - x0, 16 * (2 + step));
   g.buttons = FIRE;
   f.step();
   g.buttons = 0;
-  CHECK(rises_at_1x(f, 16), "the ball after a loss did not start at 1x");
-  g.buttons = RIGHT;  // from x 64, 2 px a frame takes 216 frames to x 496; the ball is high
-  for (int i = 0; i < 240; i++) f.step();
+  CHECK(rises_at(f, step, 16), "the ball after a loss did not start at step %d", step);
+  g.buttons = RIGHT;  // to x 496 at 3 px a frame or more: under 150 frames; the ball is high
+  for (int i = 0; i < 150; i++) f.step();
   g.buttons = 0;
   CHECK(f.v.paddle_x == 496 && f.v.paddle_w == 80, "right stop at x %d (%d px wide)",
         f.v.paddle_x, f.v.paddle_w);
@@ -1305,7 +1346,7 @@ void long_game() {
   CHECK(v.lives == lives_at_clear + 1, "%d spare balls after the level (expected one back)",
         v.lives);
   CHECK(v.paddle_w == 64, "paddle %d px wide (expected 64)", v.paddle_w);
-  CHECK(rises_at_1x(f, 16), "the ball did not start at 1x");
+  CHECK(rises_at(f, 0, 16), "the ball did not start at 1x");
   g.autoplay = false;
   lose_a_ball(f, LEFT, false, 10000);
   CHECK(f.v.paddle_x == 64 && f.v.paddle_w == 64, "left stop at x %d (%d px wide)", f.v.paddle_x,
@@ -1319,14 +1360,26 @@ void long_game() {
   CHECK(f.v.paddle_x == 512 && f.v.paddle_w == 64, "right stop at x %d (%d px wide)",
         f.v.paddle_x, f.v.paddle_w);
 
-  // Lose the remaining balls, then restart: the new game's paddle is 96 px again, centred
+  // Lose the remaining balls, the last at speed count 8 or more (autoplay speeds it up), then
+  // restart: the new game's paddle is 96 px again, centred
   part = "game over";
   // Game over is known by its curtain coming down: more than the status line black at the top
-  for (int i = 0; i < 20000 && black_from_top(g) <= 24; i++) {
-    g.buttons = LEFT | (resting(f.v) ? FIRE : 0);
+  int last_count = 0;  // the last ball's speed count, before the curtain
+  int i = 0;
+  for (; i < 20000 && black_from_top(g) <= 24; i++) {
+    g.autoplay = f.v.lives == 0 && f.speeds.count(f.v) < 8;
+    g.buttons = g.autoplay ? 0 : LEFT | (resting(f.v) ? FIRE : 0);
+    if (f.v.lives == 0 && f.v.ball) last_count = f.speeds.count(f.v);
     f.step();
   }
+  g.autoplay = false;
+  printf("frame %5d: game over after %d frames, the last ball lost at speed count %d\n", frame_no,
+         i, last_count);
   CHECK(black_from_top(g) > 24 && f.v.lives == 0, "no game over (%d spare balls)", f.v.lives);
+  // As in losing_every_ball, the curtain's first frame shows 32 lines
+  CHECK(last_count >= 8, "the last ball lost at speed count %d (wanted 8 or more)", last_count);
+  CHECK(black_from_top(g) == 32, "the curtain's first frame shows %d lines (expected 32)",
+        black_from_top(g));
   g.buttons = 0;
   for (int i = 0; i < 40; i++) f.step();  // the curtain
   part = "restart";
