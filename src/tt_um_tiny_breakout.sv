@@ -212,9 +212,13 @@ module tt_um_tiny_breakout (
   // Demo: autoplay while no controller is connected, until a direct button is pressed
   // (held at a frame update; for simulators that only toggle pins). Ending the demo starts
   // a new game, with its call. Unplugging the controller later resumes the demo in the current
-  // game. demo_was starts at 1, as if the demo had been running: a controller already
-  // connected at the first frame update ends it there, so a player's first game starts with
-  // the call too, while without a controller the demo starts silently.
+  // game. demo_was starts at 1, as if the demo had been running: the frame update that first
+  // sees a controller ends it there, so a player's first game starts with the call too, while
+  // without a controller the demo starts silently. After a reset a controller is seen only in
+  // the Gamepad PMOD's second report (see gamepad_rx), up to 2 s on, as an idle controller is
+  // reported once a second. That is usually during the first wall's build (about 2.1 s), which
+  // carries on (see the wall build), the demo holding the paddle and the ball until then; seen
+  // later, the demo has launched the ball, and the new game builds the wall again.
   //
   // The demo also starts, with or without a controller, when the game waits at a start for
   // about 16 s with nothing pressed (attract_start: the timeout, counted in speed_level, see
@@ -542,7 +546,9 @@ module tt_um_tiny_breakout (
   // A new game puts the paddle, the ball and its speed back as reset does (below): the paddle
   // centred, the ball resting on it, 1x. Doing it in the same clock for all three keeps the
   // ball on the paddle, and no state from the last game (such as speed_level's timeout count
-  // on the game-over screen) carries into the first frame of the new one.
+  // on the game-over screen) carries into the first frame of the new one. The one exception is
+  // a new game during a game's first wall's build: the build carries on, and with it
+  // speed_level, its timer (see the wall build); the moves are 1x while it lasts anyway.
   //
   // Autoplay leaves the paddle where it is while the ball rests on it: there is nothing to
   // aim at yet, and as the resting ball moves with the paddle, steering it over an outer zone
@@ -629,8 +635,12 @@ module tt_um_tiny_breakout (
     else if (frame_tick && level_done) level <= level_next;
   end
 
-  // Bricks come back for a new game, or after the pause for the next level
-  assign refill_bricks = frame_tick && (new_game || level_done);
+  // Bricks come back for a new game, or after the pause for the next level. A new game while
+  // a game's first wall is being built carries on with that build, as the wall is the same:
+  // starting again would show it twice. The demo after a reset ends that way when an idle
+  // controller is seen, which can take its Gamepad PMOD up to 2 s (see Demo).
+  wire restart_wall = new_game && !(building && level == 0);
+  assign refill_bricks = frame_tick && (restart_wall || level_done);
 
   // Wall build: after each refill (and from reset) the new wall is shown a row at a time from
   // the bottom while the ball waits on the paddle. speed_level is its timer, 0..31, a step
@@ -655,7 +665,7 @@ module tt_um_tiny_breakout (
   // flies or rests on the paddle mid-game (the curtain, the twinkle, the build and timer_done
   // are for game over, the pause, the build and the wait at a start).
   always_ff @(posedge clk) begin
-    if (!rst_n || (frame_tick && new_game)) begin
+    if (!rst_n || (frame_tick && restart_wall)) begin
       speed_level <= 0;
     end else if (frame_tick && building) begin
       if (frame_phase == 3) speed_level <= build_done ? 5'd0 : speed_level + 1;

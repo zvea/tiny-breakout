@@ -1549,6 +1549,45 @@ void long_game() {
         f.notes.checked[0], f.notes.checked[1]);
 }
 
+// The Gamepad PMOD reports a change at once, but an idle controller only once a second, and
+// the chip counts a report's bits from the latch that ends the report before: after a reset it
+// sees a controller only in the second report, up to 2 s on, and until then plays the demo,
+// as with no controller. Here the reports come every 60 frames from frame 30, so the
+// controller is seen at frame 90, while the first wall is being built:
+// - one build: the wall comes in once, no brick going again, full and with the ball resting
+//   by frame 140, as after any reset
+// - the call: it starts as the controller is seen, not before
+// - the paddle: held, through the demo and after it; then the game waits for input
+void slow_reports() {
+  part = "build";
+  Game g;
+  power_up(g);
+  g.pad_bits = 0;  // connected, nothing pressed
+  auto report = [](int f) { return f >= 30 && (f - 30) % 60 == 0; };
+  View v = look(g);
+  int bricks = 0, call_at = 0;
+  for (int f = 1; f <= 140; f++) {
+    g.pmod_plugged = report(f);  // between reports the PMOD's pins stay low
+    v = run(g, 1);
+    CHECK(v.bricks >= bricks, "frame %d: %d bricks, %d the frame before", f, v.bricks, bricks);
+    CHECK(v.paddle_x == 272, "frame %d: the paddle at %d", f, v.paddle_x);
+    bricks = v.bricks;
+    if (!call_at && bass(listen(g))) call_at = f;
+  }
+  CHECK(v.bricks == 48 && resting(v), "at frame 140: %d bricks, ball at (%d, %d)", v.bricks,
+        v.ball_x, v.ball_y);
+  part = "call";
+  CHECK(call_at >= 90 && call_at <= 93, "the call started at frame %d (expected 90 to 93)",
+        call_at);
+  part = "waiting";
+  for (int f = 141; f <= 260; f++) {
+    g.pmod_plugged = report(f);
+    v = run(g, 1);
+    CHECK(resting(v) && v.paddle_x == 272, "frame %d: ball at (%d, %d), paddle %d", f, v.ball_x,
+          v.ball_y, v.paddle_x);
+  }
+}
+
 // Two tiers: the cheap one runs all the time, the milestone one only at milestones.
 // lost_at_speed is a milestone scenario for its time (some 8 minutes, nearly all of it autoplay
 // speeding each ball up): run in parallel with the long game, it costs a milestone run nothing.
@@ -1566,6 +1605,7 @@ const Scenario scenarios[] = {
     {"demo", demo},
     {"losing_every_ball", losing_every_ball},
     {"waiting_at_start", waiting_at_start},
+    {"slow_reports", slow_reports},
     {"opening", opening},
     {"long_game", long_game, MILESTONE},
     {"lost_at_speed", lost_at_speed, MILESTONE},
