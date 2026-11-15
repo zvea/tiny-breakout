@@ -2,10 +2,10 @@
 # Usage: tools/flow.sh place|repair|harden TAG [SRC_DIR]
 # Runs the Tiny Tapeout flow (LibreLane, dockerized) with src/config.json on the sources in
 # SRC_DIR (default src), into runs/exp_TAG, and prints the results:
-#   place:  up to global placement; TT's utilisation figure (GPL-0019). About 4 minutes.
+#   place:  up to global placement; TT's utilisation figure (GPL-0019). About 1 minute.
 #   repair: on through CTS and its timing repair; also the utilisation after repair, which counts
 #           the cells the flow adds after placement (fanout buffers, clock tree, hold delay
-#           cells) and TT's figure does not. About 5 minutes.
+#           cells) and TT's figure does not. About 1.5 minutes.
 #   harden: the whole flow; also DRC, LVS, antenna, timing, tools/warnings.sh and tools/lec.sh.
 #           About 15 minutes.
 # EXTRA_CFG='{"KEY": value}' overrides config values, for experiments.

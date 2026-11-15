@@ -9,10 +9,10 @@ the script succeeds and kept when it fails.
 
 | Script | What it does | Time |
 |---|---|---|
-| `flow.sh place TAG [SRC_DIR]` | Tiny Tapeout flow up to global placement: TT's utilisation figure | ~4 min |
-| `flow.sh repair TAG [SRC_DIR]` | On through CTS and its timing repair: also the utilisation after repair | ~5 min |
+| `flow.sh place TAG [SRC_DIR]` | Tiny Tapeout flow up to global placement: TT's utilisation figure | ~1 min |
+| `flow.sh repair TAG [SRC_DIR]` | On through CTS and its timing repair: also the utilisation after repair | ~1.5 min |
 | `flow.sh harden TAG [SRC_DIR]` | The whole flow: also DRC, LVS, antenna, timing, `warnings.sh`, `lec.sh` and the GDS | ~15 min |
-| `flow_avg.sh NAME [SRC_DIR]` | `flow.sh repair` for 3 register orderings, and the means of both figures | ~15 min |
+| `flow_avg.sh NAME [SRC_DIR]` | `flow.sh repair` for 3 register orderings, run at the same time, and the means of both figures (tested by `test/flow_avg_test.sh`) | ~1.5 min |
 | `local_area.sh [REV]` | Local synthesis area of the working tree vs a git revision (5 orderings each) | ~1 min |
 | `equiv.sh [REV]` | Formal equivalence of the working tree vs a git revision, for refactors | ~1 min |
 | `lec.sh RUN_DIR [SRC_DIR]` | Formal equivalence of the RTL vs a hardened run's final netlist | ~1 min |
