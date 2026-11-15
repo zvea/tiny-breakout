@@ -1,17 +1,17 @@
 # SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
-"""The scenarios' two tiers, and one pytest-xdist worker per scenario.
+"""The scenarios' two tiers, and one pytest-xdist worker per test.
 
 Without options only the cheap tier runs: the scenarios marked milestone (the long game and
 lost_at_speed) are deselected. --milestone runs both tiers; -m picks by mark as usual, so
 -m milestone runs the milestone tier alone.
 
-With pytest-xdist, `-n auto` gives every scenario that will run a worker of its own. The
-scenarios take from half a minute to half an hour. With fewer than twice as many tests as
-workers, pytest-xdist hands them all out round-robin before any start, so two long ones can
-end up on one worker, one after the other, and nothing can take the second away. One worker
-per scenario avoids that: the run takes as long as the longest scenario, or the total work
-divided among the cores, whichever is more.
+With pytest-xdist, `-n auto` gives every scenario that will run a worker of its own, and the
+player test (test_player.py) one more. The tests take from half a minute to half an hour.
+With fewer than twice as many tests as workers, pytest-xdist hands them all out round-robin
+before any start, so two long ones can end up on one worker, one after the other, and nothing
+can take the second away. One worker per test avoids that: the run takes as long as the
+longest test, or the total work divided among the cores, whichever is more.
 """
 
 import pytest
@@ -46,4 +46,5 @@ def pytest_collection_modifyitems(config, items):
 
 
 def pytest_xdist_auto_num_workers(config):
-    return sum(_all_tiers(config) or not milestone for _, milestone in scenarios())
+    player_test = 1
+    return player_test + sum(_all_tiers(config) or not milestone for _, milestone in scenarios())

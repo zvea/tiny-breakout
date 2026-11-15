@@ -28,13 +28,19 @@
 <div id="help"><kbd>Left</kbd>/<kbd>Right</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> autoplay (arrows stop it) &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> <span id="mk">unmute</span></div>
 <script>
 // The server runs the RTL model at 60 fps and streams frames:
-// [u32 video length][u32 audio samples][video: RLE (count, RRGGBB) pairs][audio: s16 at 48 kHz].
+// [u32 video length][u32 audio samples][u32 state][video: RLE (count, RRGGBB) pairs]
+// [audio: s16 at 48 kHz]. State bit 0: the chip is playing by itself (the A key's AUTOPLAY pin,
+// or the demo it starts when a game waits at its start with nothing pressed).
 // One viewer at a time: when another tab connects, this one gets a video length of 0xFFFFFFFF
 // and the stream ends; it then stops (reconnecting would take the stream back, and so on).
 // Key changes are sent separately, so the frame rate does not depend on the network round trip.
 const c=document.getElementById('c'),ctx=c.getContext('2d'),img=ctx.createImageData(640,480),st=document.getElementById('s');
 const lv=[0,85,170,255];
-let keys=0,auto=0,n=0,t0=performance.now(),latest=null,taken=false,online=null;
+// auto: the AUTOPLAY pin, which A toggles. chipAuto: whether the chip is playing by itself, as
+// the frames say once it has held for 2 of them: the first frame after a reset is the demo's,
+// as the chip hasn't yet seen the player's gamepad. autoBit and autoRun: the newest frame's
+// bit and how many frames in a row have had it. shownAuto: what the status line last showed.
+let keys=0,auto=0,chipAuto=false,autoBit=false,autoRun=0,shownAuto=false,n=0,t0=performance.now(),latest=null,taken=false,online=null;
 // The status line: the stream's state, then a sound problem if there is one
 let line=st.textContent;
 // The status line is a meter, updated every second: screen readers can read it on demand. Changes
@@ -64,10 +70,10 @@ addEventListener('keydown',e=>{
  if(k==='m'||k==='M'){if(!e.repeat)toggleSound();return}  // a held A, R or M acts once
  if(e.target.closest?.('input,button'))return;  // a focused slider or button keeps its keys
  if(map[k]){e.preventDefault();let changed=!(keys&map[k]);keys|=map[k];
-  if(k!==' '&&auto){auto=0;changed=true;announce('autoplay off')}  // steering takes over, a held key's repeat too
+  if(k!==' '&&auto){auto=0;changed=true}  // steering takes over, a held key's repeat too
   if(changed)sendKeys()}
  else if(e.repeat)return;
- else if(k==='a'||k==='A'){auto^=1;announce(auto?'autoplay on':'autoplay off');sendKeys()}
+ else if(k==='a'||k==='A'){auto^=1;sendKeys()}
  else if(k==='r'||k==='R'){sendKeys(16)}});
 addEventListener('keyup',e=>{if(keys&map[e.key]){keys&=~map[e.key];sendKeys()}});
 addEventListener('blur',()=>{keys=0;sendKeys()});
@@ -182,19 +188,24 @@ async function stream(){
     const {value,done}=await rd.read();if(done)break;
     heard=performance.now();
     const nb=new Uint8Array(buf.length+value.length);nb.set(buf);nb.set(value,buf.length);buf=nb;
-    while(buf.length>=8){
+    while(buf.length>=12){
      const len=(buf[0]|buf[1]<<8|buf[2]<<16|buf[3]<<24)>>>0,ns=(buf[4]|buf[5]<<8|buf[6]<<16|buf[7]<<24)>>>0;
      if(len===0xFFFFFFFF){taken=true;break read}
-     if(buf.length<8+len+2*ns)break;
-     latest=buf.subarray(8,8+len);
+     if(buf.length<12+len+2*ns)break;
+     const bit=!!(buf[8]&1);autoRun=bit===autoBit?autoRun+1:1;autoBit=bit;
+     if(autoRun>=2)chipAuto=bit;
+     latest=buf.subarray(12,12+len);
      if(!online){online=true;announce('connected')}
-     playAudio(buf.subarray(8+len,8+len+2*ns));
-     buf=buf.slice(8+len+2*ns);n++;
+     playAudio(buf.subarray(12+len,12+len+2*ns));
+     buf=buf.slice(12+len+2*ns);n++;
     }
     const t=performance.now();
     // Every frame is simulated, none skipped: below 60 fps the game runs in slow motion, and
     // the server stretches the sound to match, at its true pitch
-    if(t-t0>1000){const fps=n*1000/(t-t0);line=`${fps.toFixed(1)} fps | running at ${Math.round(fps/60*100)}% of real speed${auto?' | AUTOPLAY':''}${soundOn?` | sound buffer ${Math.round(buffered/48)} ms`:''}`;showStatus();n=0;t0=t}
+    // AUTOPLAY is the chip's own state (chipAuto), announced when it changes
+    if(t-t0>1000){const fps=n*1000/(t-t0);
+     if(chipAuto!==shownAuto){shownAuto=chipAuto;announce(chipAuto?'autoplay on':'autoplay off')}
+     line=`${fps.toFixed(1)} fps | running at ${Math.round(fps/60*100)}% of real speed${chipAuto?' | AUTOPLAY':''}${soundOn?` | sound buffer ${Math.round(buffered/48)} ms`:''}`;showStatus();n=0;t0=t}
    }
   }catch(e){}
   clearInterval(watchdog);

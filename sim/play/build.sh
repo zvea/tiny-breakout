@@ -1,12 +1,24 @@
 #!/bin/sh
-# Builds the interactive player. Needs Verilator 4.x, in .tools/v4 or on PATH (see
-# test/README.md): sim.h relies on its internals (and 5.x is ~2x slower here). Run it from
-# anywhere; then, e.g. from this directory, ./obj_serve/Vtt_um_tiny_breakout [port] [index.html].
+# Usage: sim/play/build.sh [OUT_DIR]
+# Builds the interactive player into OUT_DIR (default sim/play/obj_serve). Needs Verilator 4.x,
+# in .tools/v4 or on PATH (see test/README.md): sim.h relies on its internals (and 5.x is ~2x
+# slower here). Run it from anywhere; then, e.g. from this directory,
+# ./obj_serve/Vtt_um_tiny_breakout [port] [index.html] (built elsewhere, give index.html).
 #
 # SPDX-FileCopyrightText: 2026 Alexei Zverovitch
 # SPDX-License-Identifier: Apache-2.0
 set -e
-cd "$(dirname "$0")"  # obj_serve and serve.cpp are relative to this directory
+case "${1-}" in -*) sed -n '2,6p' "$0"; exit 2 ;; esac  # --help, or an option by mistake
+[ $# -le 1 ] || { sed -n '2,6p' "$0"; exit 2; }
+OUT=${1:-$(dirname "$0")/obj_serve}
+mkdir -p "$OUT"
+OUT=$(CDPATH= cd -- "$OUT" && pwd)
+# It is emptied first, so it must be empty or hold an earlier build
+if [ -n "$(ls -A "$OUT")" ] && [ ! -f "$OUT/Vtt_um_tiny_breakout.mk" ]; then
+  echo "build.sh: $OUT holds files that aren't a player build; give an empty directory" >&2
+  exit 1
+fi
+CDPATH= cd -- "$(dirname "$0")"  # serve.cpp is relative to this directory
 ROOT=$(cd ../.. && pwd)
 export PATH="$ROOT/.tools/v4/bin:$PATH"
 # Verilator 5 fails later with a C++ error about __Vclklast__TOP__clk: say so up front
@@ -22,9 +34,9 @@ case "$(uname -s)" in
   Darwin) CFLAGS="-O3 -fomit-frame-pointer -pthread" ;;  # Apple clang: no -march=native or -fno-plt
   *)      CFLAGS="-O3 -march=native -fno-plt -fomit-frame-pointer -pthread" ;;
 esac
-rm -rf obj_serve
+rm -rf "${OUT:?}"/*
 verilator --cc --build -O3 --inline-mult -1 --output-split 0 -Wno-fatal \
   --x-assign fast --x-initial fast \
   -CFLAGS "$CFLAGS" -LDFLAGS "-pthread" \
-  --exe serve.cpp $SOURCES --top-module tt_um_tiny_breakout -Mdir obj_serve -j 8 >/dev/null
-echo "built obj_serve/Vtt_um_tiny_breakout"
+  --exe "$PWD/serve.cpp" "$PWD/public.vlt" $SOURCES --top-module tt_um_tiny_breakout -Mdir "$OUT" -j 8 >/dev/null
+echo "built $OUT/Vtt_um_tiny_breakout"

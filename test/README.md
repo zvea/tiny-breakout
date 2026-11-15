@@ -6,7 +6,7 @@ Three layers, from module to whole game, and formal proofs against reference mod
 |---|---|---|---|
 | [unit/](unit) | Each module on its own, through its ports (cocotb) | `pytest test/unit` | ~70 s (Verilator), ~5.5 min (`SIM=icarus`) |
 | [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus; Verilator locally) | `make -B` in `test/` | ~4 min (RTL), ~20 min (gate level); ~1 and ~2 min with `SIM=verilator` |
-| [system/](system), cheap tier | Short gameplay scenarios (the controls, the demo, lost balls, a game's opening and more), judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~4 min in parallel (the longest, `losing_every_ball`, ~3 min, plus ~1 min for a first build) |
+| [system/](system), cheap tier | Short gameplay scenarios (the controls, the demo, lost balls, a game's opening and more), judged only from the decoded video output and the audio pin; and that the interactive player's stream says when the chip is playing by itself ([test_player.py](system/test_player.py)) | `pytest test/system -n auto` | ~4 min in parallel (the longest, `losing_every_ball`, ~3 min, plus ~1 min for a first build) |
 | [system/](system), milestone tier | A long game, from a new game to the third brick wall and a restart, and balls lost at speed, judged the same way | `pytest test/system -n auto -m milestone` | ~30 min |
 | [formal/](formal) | That a module behaves exactly as its reference model in [reference/](reference), on every clock after reset, in the chip (yosys, k-induction) | `test/formal/prove.sh` | ~2 min |
 
@@ -111,7 +111,7 @@ autoconf && ./configure --prefix="$HOME/opt/verilator-4.228" && make -j8 && make
 ```sh
 .venv/bin/pytest test/unit                 # Verilator 5
 SIM=icarus .venv/bin/pytest test/unit      # Icarus, as in CI
-.venv/bin/pytest test/system -n auto       # cheap tier; needs Verilator 4; one worker per scenario
+.venv/bin/pytest test/system -n auto       # cheap tier; needs Verilator 4; one worker per test
 .venv/bin/pytest test/system -n auto -m milestone  # the milestone tier alone
 .venv/bin/pytest test/system -n auto --milestone   # both tiers
 .venv/bin/pytest test/system               # cheap tier, one after another

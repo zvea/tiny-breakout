@@ -6,13 +6,15 @@
 // GET /stream   long-lived response; the server runs the game at up to 60 fps (the real
 //               hardware rate; on a slower CPU it simulates every frame anyway, in slow
 //               motion) and pushes every frame as [u32 video length][u32 audio sample count]
-//               [video][audio], little-endian. Video is (count, RRGGBB) byte pairs covering
+//               [u32 state][video][audio], little-endian. State bit 0: the chip is playing by
+//               itself at the end of the frame (the AUTOPLAY pin, SELECT on the gamepad, or
+//               the demo it starts on its own). Video is (count, RRGGBB) byte pairs covering
 //               640x480. Audio is the Audio Pmod's output (uio[7], see sim.h) as s16 at
 //               48 kHz, stretched to the time the frame really took, at its true pitch (see
 //               stretch.h), so it plays continuously down to 3.75 fps (a stretch of 16). Only
 //               one viewer at a time: a new /stream takes over from the previous one, which
-//               gets a last header with video length 0xFFFFFFFF (and no samples) before its
-//               stream ends, so it knows not to reconnect.
+//               gets a last header with video length 0xFFFFFFFF (no samples, state 0) before
+//               its stream ends, so it knows not to reconnect.
 // GET /keys?k=K sets the controls. K bits: 1 left, 2 right, 4 fire (gamepad A), 8 autoplay,
 //               16 reset.
 // Anything else returns the page: the path given as the second argument, by default
@@ -73,11 +75,11 @@ static void reply(int fd, const char *status, const char *type, const std::strin
   send_all(fd, body.data(), body.size());
 }
 
-// Ends a viewer's stream with the takeover header (video length 0xFFFFFFFF, no samples), so
-// it knows another viewer has the stream and doesn't reconnect. Its buffer may be full (a
-// stalled tab): wait a little for room, but not long.
+// Ends a viewer's stream with the takeover header (video length 0xFFFFFFFF, no samples, state
+// 0), so it knows another viewer has the stream and doesn't reconnect. Its buffer may be full
+// (a stalled tab): wait a little for room, but not long.
 static void end_taken_over(int fd) {
-  const uint32_t taken_over[2] = {0xFFFFFFFFu, 0};
+  const uint32_t taken_over[3] = {0xFFFFFFFFu, 0, 0};
   timeval tv{0, 200000};
   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
   send_all(fd, taken_over, sizeof taken_over);
@@ -171,7 +173,7 @@ static void streamer() {
     std::vector<float> audio = stretcher.pull(r, (int)std::max(0L, owed));
     sent += audio.size();
 
-    msg.assign(8, '\0');
+    msg.assign(12, '\0');
     const auto &fb = g.fb;
     for (size_t i = 0; i < fb.size();) {
       size_t j = i;
@@ -181,9 +183,12 @@ static void streamer() {
       msg += (char)v;
       i = j;
     }
-    uint32_t len = msg.size() - 8, nsamp = audio.size();
+    // public.vlt keeps the chip's autoplay signal for this
+    uint32_t len = msg.size() - 12, nsamp = audio.size();
+    uint32_t state = g.top.rootp->tt_um_tiny_breakout__DOT__autoplay & 1;
     memcpy(&msg[0], &len, 4);
     memcpy(&msg[4], &nsamp, 4);
+    memcpy(&msg[8], &state, 4);
     for (float x : audio) {
       int v = (int)lrintf(x * 32767.0f);
       int16_t q = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);

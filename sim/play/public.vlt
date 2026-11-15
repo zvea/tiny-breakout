@@ -1,0 +1,9 @@
+`verilator_config
+// The internal signals the player reads (serve.cpp), kept by Verilator under their own names.
+// The tests that share sim.h judge only from the pins and don't use this.
+//
+// SPDX-FileCopyrightText: 2026 Alexei Zverovitch
+// SPDX-License-Identifier: Apache-2.0
+
+// Whether the chip is playing by itself: the AUTOPLAY pin, SELECT on the gamepad, or the demo
+public_flat_rd -module "tt_um_tiny_breakout" -var "autoplay"
