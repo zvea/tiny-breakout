@@ -62,6 +62,14 @@
   "CTS_ROOT_BUFFER": "sky130_fd_sc_hd__clkbuf_4",
   "CTS_CLK_BUFFERS": ["sky130_fd_sc_hd__clkbuf_4", "sky130_fd_sc_hd__clkbuf_2"],
 
+  "//": "Tiny Breakout: fewer, fuller clock-tree leaves. Setting a maximum cluster diameter skips",
+  "//": "OpenROAD's automatic clustering search, which chose 31 leaves of 5-8 flip-flops; leaves then",
+  "//": "fill to the SDC's maximum fanout of 10 (21 leaves). Measured 2026-11-15 (b4f01a9): 63 clock",
+  "//": "buffers and inverters became 30, -237 um2 of cells (utilisation after repair 78.4% -> 77.0%),",
+  "//": "timing unchanged, no clock pin over its slew limit; a similar gain at 745b089 and on three",
+  "//": "other placements. Utilisation as TT reports it (before CTS) is unchanged.",
+  "CTS_SINK_CLUSTERING_MAX_DIAMETER": 100,
+
   "//": "RUN_LINTER, LINTER_INCLUDE_PDK_MODELS - Disabling the linter is not recommended!",
   "RUN_LINTER": 1,
   "LINTER_INCLUDE_PDK_MODELS": 1,
