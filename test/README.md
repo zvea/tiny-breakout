@@ -5,7 +5,7 @@ Three layers, from module to whole game, and formal proofs against reference mod
 | Tests | What they check | Command | Time |
 |---|---|---|---|
 | [unit/](unit) | Each module on its own, through its ports (cocotb) | `pytest test/unit` | ~70 s (Verilator), ~5.5 min (`SIM=icarus`) |
-| [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus) | `make -B` in `test/` | ~4 min |
+| [test.py](test.py) | The whole chip through its pins, on the RTL or the gate-level netlist (cocotb, Icarus; Verilator locally) | `make -B` in `test/` | ~4 min (RTL), ~20 min (gate level); ~1 and ~2 min with `SIM=verilator` |
 | [system/](system), cheap tier | Short gameplay scenarios (the controls, the demo, lost balls, a game's opening and more), judged only from the decoded video output and the audio pin | `pytest test/system -n auto` | ~3 min in parallel (the longest scenarios ~2.2 min, plus ~1 min for a first build) |
 | [system/](system), milestone tier | A long game, from a new game to the third brick wall and a restart, and balls lost at speed, judged the same way | `pytest test/system -n auto -m milestone` | ~25 min |
 | [formal/](formal) | That a module behaves exactly as its reference model in [reference/](reference), on every clock after reset, in the chip (yosys, k-induction) | `test/formal/prove.sh` | ~2 min |
@@ -117,7 +117,16 @@ SIM=icarus .venv/bin/pytest test/unit      # Icarus, as in CI
 .venv/bin/pytest test/system               # cheap tier, one after another
 .venv/bin/pytest test/system -k controls   # one scenario
 (cd test && PATH=$PWD/../.venv/bin:$PWD/../.tools/env/bin:$PATH make -B)   # full chip
+(cd test && PATH=$PWD/../.venv/bin:$PWD/../.tools/env/bin:$PATH make -B SIM=verilator)  # faster
 ```
+
+`test.py` runs on Icarus by default, as Tiny Tapeout's GDS action and CI run it. `SIM=verilator`
+gives the same results several times faster (the gate-level test takes about 2 minutes instead
+of 20), so use it while working, but run Icarus before submitting: Verilator is two-valued, so
+it can't show an output that is unknown (X) when sampled, as one fed by a flip-flop that was
+never set would be. It also drops the cells' 1-ns delays, which the tests, sampling on clock
+edges, don't notice. [tb_public.vlt](tb_public.vlt) keeps only the testbench's signals visible
+to cocotb, which keeps the gate-level build short.
 
 `test.py`'s Makefile lists the sources in `PROJECT_SOURCES`, read from
 [info.yaml](../info.yaml), and the system tests read the same list. Each unit test names the
@@ -134,6 +143,7 @@ that is `~/.ciel/ciel/sky130/versions/HASH`, not `~/.ciel` itself.
 cp runs/exp_TAG/final/pnl/tt_um_tiny_breakout.pnl.v test/gate_level_netlist.v
 export PDK_ROOT=$HOME/.ciel/ciel/sky130/versions/HASH
 (cd test && PATH=$PWD/../.venv/bin:$PWD/../.tools/env/bin:$PATH make -B GATES=yes)
+(cd test && PATH=$PWD/../.venv/bin:$PWD/../.tools/env/bin:$PATH make -B GATES=yes SIM=verilator)
 ```
 
 ## Waveforms

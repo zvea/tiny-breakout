@@ -1,0 +1,8 @@
+`verilator_config
+// SPDX-FileCopyrightText: 2026 Alexei Zverovitch
+// SPDX-License-Identifier: Apache-2.0
+//
+// For SIM=verilator (see Makefile): cocotb reaches only the testbench's own signals, the
+// chip's pins, so only those are made visible to it. Making every net visible (Verilator's
+// default under cocotb) slowed the gate-level build from under a minute to about 16.
+public_flat_rw -module "tb" -var "*"
