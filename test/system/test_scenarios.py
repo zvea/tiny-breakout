@@ -4,8 +4,8 @@
 
 The scenarios come in two tiers (see the table at the end of scenarios.cpp):
 
-- cheap: the short scenarios, ~3 min in parallel (as long as the longest); run all the time
-- milestone: long_game, a game from a new game to the third wall, ~25 min, and lost_at_speed,
+- cheap: the short scenarios, ~4 min in parallel (as long as the longest); run all the time
+- milestone: long_game, a game from a new game to the third wall, ~30 min, and lost_at_speed,
   ~8 min, in parallel; run at milestones
 
     pytest test/system -n auto               # the cheap tier, in parallel (pytest-xdist)
@@ -53,10 +53,10 @@ def scenarios() -> list[tuple[str, bool]]:
 
 # Each scenario's time limit, by tier, only so that one that hangs fails instead of holding up
 # the run (the scenarios' own waits are capped, and their long rounds stop at the first
-# failure). The cheap scenarios take up to about 2.5 minutes, so 10 is a hang. In the milestone
-# tier the long game takes about 25 minutes, and lost_at_speed can play 8 rounds and pass: about
-# 14,000 frames, 12 minutes at 50 ms a frame, up to 20,000 if autoplay is slow to clear its
-# bricks. So 2 hours is a hang.
+# failure). The cheap scenarios take up to about 3 minutes (6 on a busy machine), so 10 is a
+# hang. In the milestone tier the long game takes about 30 minutes, and lost_at_speed can play
+# 8 rounds and pass: about 14,000 frames, 12 minutes at 50 ms a frame, up to 20,000 if autoplay
+# is slow to clear its bricks. So 2 hours is a hang.
 CHEAP_TIMEOUT = 10 * 60
 MILESTONE_TIMEOUT = 2 * 60 * 60
 

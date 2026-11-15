@@ -131,3 +131,25 @@ async def nothing_lit_outside_the_digits(dut):
 
 def test_score():
     run("score", ["score.sv"], "test_score")
+
+
+@cocotb.test()
+async def zero_says_whether_the_score_is_0(dut):
+    """zero: high from reset and after clear, low from the first point, including at 9990."""
+
+    async def zero() -> int:
+        await ReadOnly()
+        value = int(dut.zero.value)
+        await RisingEdge(dut.clk)
+        return value
+
+    await start(dut)
+    assert await zero() == 1, "after reset"
+    for step in [1, 9, 90, 899]:  # 1, 10, 100, 999: a carry into each digit, then the stop
+        await add(dut, step)
+        assert await zero() == 0, f"after {step} more points"
+    dut.clear.value = 1
+    await RisingEdge(dut.clk)
+    dut.clear.value = 0
+    await RisingEdge(dut.clk)
+    assert await zero() == 1, "after clear"

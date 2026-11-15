@@ -580,11 +580,17 @@ void controls() {
 //   comes down from the top, 16 px a frame, until only the score is left, unchanged; FIRE
 //   held while it comes down starts nothing, no ball comes without FIRE, and once the trombone
 //   has ended, all is quiet.
-// - restart: fire (A on the gamepad here) starts a new game. From its first frame nothing of the
-//   old one shows: the border is black and nothing twinkles in the field (the curtain's count
-//   once carried over, which flashed the level-clear rainbow then and would light the twinkle
-//   now), and once its wall is built the picture is back with a full wall, two spare balls,
-//   score 0 and the ball resting on the paddle.
+// - demo: with nothing pressed, the screen stays so, black but for the score, quiet and with no
+//   ball, for about 16 s (31 steps of the LFSR, which comes round every 31 frames), then the
+//   demo starts, though a controller is connected: a new game, which autoplay plays. From its
+//   first frame nothing of the old one shows: the border is black and nothing twinkles in the
+//   field (the curtain's count once carried over, which flashed the level-clear rainbow then
+//   and would light the twinkle now). Once its wall is built: a full wall, two spare balls,
+//   score 0, and the ball launched with nothing pressed.
+// - restart: fire (A on the gamepad here) ends the demo and starts a new game, with its call;
+//   from its first frame the border is black and nothing twinkles, and once its wall is built the
+//   ball rests on the paddle and nothing moves without input. (FIRE before
+//   the demo starts restarts at once: long_game and lost_at_speed do that.)
 void losing_every_ball() {
   Game g;
   power_up(g);
@@ -678,6 +684,7 @@ void losing_every_ball() {
     v = run(g, 1);
     listen_for_losses();
   }
+  int curtain_down = frame_no - 3;  // the frame whose picture first showed it all the way down
   int others = 0;
   for (int y = 0; y < 480; y++)
     for (int x = 0; x < 640; x++)
@@ -708,15 +715,53 @@ void losing_every_ball() {
           v.ball ? "showing" : "gone", border_colour(g));
   }
 
+  // The demo's new game shows first as its markers (its wall is built row by row after). The
+  // timeout is 931 to 961 frames from the curtain being down (curtain_down), so the markers show
+  // 925 to 1000 frames after it.
+  part = "demo";
+  int waited = 0;
+  while (waited < 1100 && v.lives != 2) {
+    v = run(g, 1);
+    s = listen(g);
+    waited++;
+    if (v.lives == 2) break;
+    CHECK(!v.ball && border_colour(g) == BLACK && black_from_top(g) == 480,
+          "%d frames on: ball %s, border %#x, %d black lines", waited, v.ball ? "showing" : "gone",
+          border_colour(g), black_from_top(g));
+    CHECK(s.a.vol == 0 && s.b.vol == 0, "%d frames on: volumes %d, %d", waited, s.a.vol, s.b.vol);
+  }
+  int since_down = frame_no - curtain_down;
+  if (v.lives == 2)
+    printf("frame %5d: the demo starts, %d frames after the curtain was down\n", frame_no,
+           since_down);
+  CHECK(v.lives == 2, "no demo %d frames after the curtain was down", since_down);
+  CHECK(since_down >= 925 && since_down <= 1000,
+        "the demo started %d frames after the curtain was down (expected 925 to 1000)", since_down);
+  for (int i = 0; i < 3; i++) {
+    CHECK(border_colour(g) == BLACK, "frame %d of the demo: border %#x", i, border_colour(g));
+    CHECK(!twinkling(g), "frame %d of the demo: a twinkle", i);
+    v = run(g, 1);
+  }
+  v = wait_for_wall(g, v);
+  CHECK(v.bricks == 48 && v.lives == 2 && v.score == 0, "the demo's game: %d bricks, %d spare "
+        "balls, score %d", v.bricks, v.lives, v.score);
+  int launch = 0;
+  for (; launch < 60 && !(v.ball && v.ball_y < 440 - 10); launch++) v = run(g, 1);
+  CHECK(v.ball && v.ball_y < 440 - 10, "the demo did not launch the ball: y %d", v.ball_y);
+
   part = "restart";
   g.pad_bits = GP_A;
   run(g, 1);
   g.pad_bits = 0;
-  for (int i = 0; i < 3; i++) {
+  bool call = false;  // the call starts within a few frames of the press
+  for (int i = 0; i < 8; i++) {
     v = run(g, 1);
+    call |= bass(listen(g));
+    if (i >= 3) continue;
     CHECK(border_colour(g) == BLACK, "frame %d of the new game: border %#x", i, border_colour(g));
     CHECK(!twinkling(g), "frame %d of the new game: a twinkle", i);
   }
+  CHECK(call, "no call as the new game starts");
   v = wait_for_wall(g, v);
   CHECK(!twinkling(g), "a twinkle once the new game's wall is built");
   CHECK(black_from_top(g) == 24, "%d black lines from the top", black_from_top(g));
@@ -724,8 +769,74 @@ void losing_every_ball() {
   CHECK(v.score == 0, "score %d", v.score);
   CHECK(v.bricks == 48, "bricks %d", v.bricks);
   CHECK(resting(v), "ball at (%d, %d)", v.ball_x, v.ball_y);
+  int x0 = v.paddle_x;
+  v = run(g, 60);
+  CHECK(resting(v) && v.paddle_x == x0, "without input, ball (%d, %d), paddle %d -> %d", v.ball_x,
+        v.ball_y, x0, v.paddle_x);
 }
 
+
+// A game waiting at its start, with a controller connected: after power-up the new game's first
+// ball rests on the paddle.
+// - waiting: with nothing pressed, the ball stays on the paddle, still, nothing twinkling. RIGHT
+//   pressed for two frames, 500 frames in (at 1x the paddle moves every other frame), moves the
+//   paddle and starts the wait again.
+// - demo: about 16 s after that press (31 steps of the LFSR, which comes round every 31 frames),
+//   the demo launches the ball and plays this game (still two spare balls and a full wall).
+// - restart: LEFT, a direct button, ends the demo and starts a new game, with its call, its ball
+//   resting on the paddle.
+void waiting_at_start() {
+  Game g;
+  power_up(g);
+  part = "waiting";
+  View v = start_game(g);
+  int x0 = v.paddle_x;
+  for (int i = 0; i < 500; i++) {
+    CHECK(resting(v) && !twinkling(g) && v.paddle_x == x0, "%d frames untouched: ball at (%d, "
+          "%d), twinkle %d, paddle %d -> %d", i, v.ball_x, v.ball_y, twinkling(g), x0, v.paddle_x);
+    v = run(g, 1);
+  }
+  g.buttons = RIGHT;
+  v = run(g, 2);
+  g.buttons = 0;
+  v = run(g, 2);
+  CHECK(resting(v) && v.paddle_x > x0, "after RIGHT: paddle %d -> %d, ball at (%d, %d)", x0,
+        v.paddle_x, v.ball_x, v.ball_y);
+  x0 = v.paddle_x;
+
+  // The press restarts the count: the timeout, 931 to 961 frames from it, then the launch
+  part = "demo";
+  int since = 2;  // frames since the press ended
+  for (; since < 1100 && resting(v); since++) {
+    CHECK(!twinkling(g) && v.paddle_x == x0, "%d frames after RIGHT: twinkle %d, paddle %d -> %d",
+          since, twinkling(g), x0, v.paddle_x);
+    v = run(g, 1);
+  }
+  if (!resting(v))
+    printf("frame %5d: the demo launches the waiting ball %d frames after RIGHT\n", frame_no,
+           since);
+  CHECK(since >= 925 && since <= 1000, "the demo launched the ball %d frames after RIGHT "
+        "(expected 925 to 1000)", since);
+  v = run(g, 30);
+  CHECK(v.ball && v.ball_y < 440 && v.lives == 2 && v.bricks == 48, "after the launch: ball %s "
+        "at y %d, %d spare balls, %d bricks", v.ball ? "showing" : "gone", v.ball_y, v.lives,
+        v.bricks);
+
+  part = "restart";
+  g.buttons = LEFT;
+  run(g, 1);
+  g.buttons = 0;
+  bool call = false;
+  for (int i = 0; i < 8; i++) {
+    v = run(g, 1);
+    call |= bass(listen(g));
+  }
+  CHECK(call, "no call as LEFT ends the demo");
+  v = wait_for_wall(g, v);
+  CHECK(v.bricks == 48 && v.lives == 2 && v.score == 0 && resting(v), "after LEFT: %d bricks, "
+        "%d spare balls, score %d, ball at (%d, %d)", v.bricks, v.lives, v.score, v.ball_x,
+        v.ball_y);
+}
 
 // Balls lost faster than the base speed with FIRE held, as autoplay and the demo always hold it:
 // each costs one ball, and the next ball goes onto the paddle before it is launched. A lost ball
@@ -1144,8 +1255,11 @@ void opening() {
 // paddle where it is while the ball waits on it: to see that wherever the paddle is (autoplay
 // often has it at a wall by now), it is steered away from the nearer wall by hand for the first
 // frames of the pause, which it does at 1x (the speed counter is the pause's timer there), then
-// handed back to autoplay. Returns the first frame after the launch, the wall complete.
-View pause_after_clear(Follow &f) {
+// handed back to autoplay. Returns the first frame after the launch, the wall complete. Without
+// launch, autoplay is switched off just before the build ends and left off, so the ball stays on
+// the paddle, and the frame where it would have launched is returned; the build's length (105
+// frames to the launch) is then checked only in that it doesn't launch sooner.
+View pause_after_clear(Follow &f, bool launch = true) {
   Game &g = f.g;
   auto twinkle = [&] { return twinkling(g); };
   int pause = 0, celebrated = 0, held_x = -1;
@@ -1194,7 +1308,10 @@ View pause_after_clear(Follow &f) {
   // The build: from its first row in colour, the ball rests on the paddle, which autoplay holds
   // still, until the build ends; no twinkle; the bricks only come in
   int build = 0, twinkled = 0, x0 = v.paddle_x, prev = v.bricks;  // the paddle is narrow by now
-  for (; build < 200 && resting(v); build++) {
+  // Without launch, autoplay is switched off before the build ends, so the ball stays: the
+  // build is then counted to where autoplay would have launched it (105 frames, below)
+  for (; build < 200 && resting(v) && (launch || build < 105); build++) {
+    if (!launch && build == 100) g.autoplay = false;
     twinkled += twinkle();
     CHECK(v.paddle_x == x0, "build frame %d: the paddle moved from %d to %d", build, x0,
           v.paddle_x);
@@ -1202,8 +1319,8 @@ View pause_after_clear(Follow &f) {
     prev = v.bricks;
     v = f.step();
   }
-  printf("frame %5d: empty wall for %d frames, twinkle in %d; build %d frames to the launch\n",
-         frame_no, pause, celebrated, build);
+  printf("frame %5d: empty wall for %d frames, twinkle in %d; build %d frames to the launch%s\n",
+         frame_no, pause, celebrated, build, launch ? "" : " (not launched)");
   // The empty wall: the pause's timer at 16 for 1 to 5 frames, by the frame phase the last
   // brick falls on; then the twinkle for exactly 57 (the timer's steps 17..30, 4 frames each,
   // and 31 for one frame, as it ends the pause at the next frame update); then 23 frames from
@@ -1249,11 +1366,14 @@ void lose_a_ball(Follow &f, uint8_t buttons, bool fire, int frames) {
 //   (two steps higher once the ball is fast) are checked on every frame to the end of the game.
 // - the pause after the wall (see pause_after_clear)
 // - level 2: one of the pattern walls, with an 80-px paddle; no third spare ball, as autoplay
-//   lost none; the ball starts at 1x after the 3x it had. Autoplay plays it to 2.5x and on, 13
-//   to 15 bricks, then it is lost with the paddle held at the left wall: the next ball starts
-//   at half its steps, 1.5x, and the paddle moves at 1.5x while it rests there; then the paddle
-//   stops at the right wall too. Autoplay clears this wall, SpeedSteps checking that the ball
-//   reaches 2x only 4 bricks after it launched, the lost ball's bricks past 2.5x gone.
+//   lost none. The ball waits on the paddle untouched for 1000 frames (over 16 s), and the demo
+//   doesn't take over, as it is mid-game; then it starts at 1x after the 3x it had. Autoplay
+//   plays it to 2.5x and on, 13 to 15 bricks, then it is lost with the paddle held at the left
+//   wall: the next ball waits on the paddle 1000 frames untouched (the demo doesn't take over a
+//   ball after a loss), then starts at half its steps, 1.5x, and the paddle moves at 1.5x while
+//   it rests there; then the paddle stops at the right wall too. Autoplay clears this wall,
+//   SpeedSteps checking that the ball reaches 2x only 4 bricks after it launched, the lost
+//   ball's bricks past 2.5x gone.
 // - the pause, and level 3: another pattern wall, a spare ball back for the one lost, and a
 //   64-px paddle that stops at both walls
 // - game over: the last ball lost at 2x or more (autoplay plays it for 8 bricks), and the curtain
@@ -1289,7 +1409,7 @@ void long_game() {
   for (int i = 0; i < 5; i++) CHECK(sc[i] > 0, "speed step %d was never reached", i);
 
   part = "pause after level 1";
-  v = pause_after_clear(f);
+  v = f.v = pause_after_clear(f, false);
   part = "level 2";
   CHECK(v.bricks < 48 && is_pattern_wall(v.standing),
         "the wall (%d bricks, %016llx) is not a pattern wall",
@@ -1297,6 +1417,16 @@ void long_game() {
   CHECK(v.lives == 2, "%d spare balls (expected no more than 2)", v.lives);
   CHECK(v.paddle_w == 80, "paddle %d px wide (expected 80)", v.paddle_w);
   CHECK(v.score == 480, "score %d after clearing level 1", v.score);
+  // After a cleared wall, with both spare balls, the ball waits for FIRE: 1000 frames (over
+  // 16 s) untouched, and the demo must not take over, as it is mid-game
+  g.buttons = 0;
+  for (int i = 1; i <= 1000; i++) {
+    f.step();
+    if (i % 100 == 0)
+      CHECK(resting(f.v), "after a cleared wall, %d frames untouched: ball at (%d, %d)", i,
+            f.v.ball_x, f.v.ball_y);
+  }
+  g.autoplay = true;
   CHECK(rises_at(f, 0, 16), "the ball did not start at 1x");
   // Into 2.5x's step but not past it (the bricks within the step must be seen to go)
   for (int end = frame_no + 20000; frame_no < end && f.v.bricks > 0 &&
@@ -1314,6 +1444,16 @@ void long_game() {
   CHECK(f.v.paddle_x == 64 && f.v.paddle_w == 80, "left stop at x %d (%d px wide)", f.v.paddle_x,
         f.v.paddle_w);
   for (int i = 0; i < 100 && !resting(f.v); i++) f.step();
+  // The ball after the loss waits on the paddle, 1000 frames (over 16 s) untouched: mid-game,
+  // the demo must not take over
+  g.buttons = 0;
+  int spare = f.v.lives;
+  for (int i = 1; i <= 1000; i++) {
+    f.step();
+    if (i % 100 == 0)
+      CHECK(resting(f.v) && f.v.lives == spare, "a ball after a loss, %d frames untouched: ball "
+            "at (%d, %d), %d spare balls (was %d)", i, f.v.ball_x, f.v.ball_y, f.v.lives, spare);
+  }
   // The paddle moves 4 px a move, at the speed the resting ball will launch at: 2 + step moves
   // in every 4 frames
   g.buttons = RIGHT;
@@ -1425,6 +1565,7 @@ const Scenario scenarios[] = {
     {"controls", controls},
     {"demo", demo},
     {"losing_every_ball", losing_every_ball},
+    {"waiting_at_start", waiting_at_start},
     {"opening", opening},
     {"long_game", long_game, MILESTONE},
     {"lost_at_speed", lost_at_speed, MILESTONE},

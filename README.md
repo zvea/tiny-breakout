@@ -68,8 +68,9 @@ cd sim/play
 The arrow keys move the paddle, <kbd>Space</kbd> launches the ball (or starts a new game after
 game over), <kbd>A</kbd> switches autoplay on and off (an arrow key also switches it off) and
 <kbd>R</kbd> resets the chip. The page starts muted; the speaker button or <kbd>M</kbd> turns
-the sound on and off. The player always acts as a connected controller, so the demo never
-runs there; [tools/movie.sh](tools/movie.sh) records the demo as a movie (see
+the sound on and off. The player always acts as a connected controller, so the demo runs
+there only after about 16 s with no key pressed at a game's start or on the game-over screen;
+[tools/movie.sh](tools/movie.sh) records the demo as a movie (see
 [tools/README.md](tools/README.md)).
 
 ## Hardware

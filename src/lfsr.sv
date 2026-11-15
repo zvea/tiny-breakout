@@ -8,7 +8,9 @@
  * where to aim from it, and the wall picks the shape of each new wall. Both read it when
  * something in play happens (a paddle hit, a cleared wall), so the value they get depends
  * on the exact frame of that event. The sound mixes the low four bits into its noise, a new
- * value every frame.
+ * value every frame. The timeout before the demo, while the game waits at a start, counts the
+ * frames on which it shows 1, so its length (31 steps of 31 frames, about 16 s) rests on this
+ * period of 31.
  */
 
 `default_nettype none

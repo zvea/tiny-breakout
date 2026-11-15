@@ -21,7 +21,8 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   10 per brick, up to 9990. Once a ball has fallen past the paddle, the black margin around the
   playfield turns red, brightening as the ball drops off the screen. Losing the last ball ends
   the game: a black curtain comes down over everything but the score, and once it is down
-  (about half a second) fire starts a new game.
+  (about half a second) fire starts a new game. With nothing pressed for about 16 s after
+  that, the demo starts (see Demo).
 - **Levels:** when the last brick is cleared, the game pauses for about a second while the
   playfield twinkles, then gives back a spare ball (up to 2) and builds a new brick wall. Every
   wall, a game's first too, is built a row at a time from the bottom, each row landing white,
@@ -33,9 +34,14 @@ buffer: every pixel is worked out from the beam position as the picture is drawn
   bricks.
 - **Demo:** from reset, while no controller is connected and no direct button (`ui[0]` to
   `ui[2]`) has been pressed, the game plays itself. Connecting a controller or pressing a
-  direct button starts a new game. A direct button ends the demo for good, until the next
-  reset; unplugging the controller instead resumes the demo, in the current game. With a
-  controller connected at reset, the game waits with the ball on the paddle.
+  direct button starts a new game. A direct button ends this demo until the next reset (the
+  demo after a wait, below, still comes); unplugging the controller instead resumes the demo,
+  in the current game. With a controller connected at reset, the game waits with the ball on
+  the paddle. The demo also starts, with or without a controller, when nothing is pressed for
+  about 16 s while the game waits at a start: on the game-over screen once the curtain is
+  down, or with a new game's first ball on the paddle (not a ball after a lost one, or after a
+  cleared wall). Left, right or fire, on the controller or the direct buttons, ends it and
+  starts a new game.
 - **Sound:** effects through the Audio Pmod on `uio[7]`: a note for each brick (higher rows,
   higher notes), a thock for the paddle, a low rumble for the side and top walls, a sigh for a
   lost ball and a sad trombone at game over; a rising call for a new game and a fanfare for a

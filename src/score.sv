@@ -20,12 +20,14 @@ module score (
     input  logic       add,       // adds one point per clock while high
     input  logic [9:0] h_pos,     // beam position
     input  logic [9:0] v_pos,
-    output logic       score_px   // a lit segment of a digit is under the beam
+    output logic       score_px,  // a lit segment of a digit is under the beam
+    output logic       zero       // the score is 0
 );
 
   localparam logic [5:0] FIRST_SLOT = 32;  // x 512: 16-px slots, hundreds first
 
   logic [2:0][3:0] digits;  // BCD: [2] hundreds, [1] tens, [0] ones
+  assign zero = (digits == '0);
   wire full = (digits[2] == 9) && (digits[1] == 9) && (digits[0] == 9);  // 999: stays there
 
   always_ff @(posedge clk) begin
