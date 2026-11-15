@@ -124,9 +124,10 @@ SIM=icarus .venv/bin/pytest test/unit      # Icarus, as in CI
 gives the same results several times faster (the gate-level test takes about 2 minutes instead
 of 20), so use it while working, but run Icarus before submitting: Verilator is two-valued, so
 it can't show an output that is unknown (X) when sampled, as one fed by a flip-flop that was
-never set would be. It also drops the cells' 1-ns delays, which the tests, sampling on clock
-edges, don't notice. [tb_public.vlt](tb_public.vlt) keeps only the testbench's signals visible
-to cocotb, which keeps the gate-level build short.
+never set (at RTL; see below for gate level) or by an undriven net would be. It also drops the
+cells' 1-ns delays, which the tests, sampling on clock edges, don't notice.
+[tb_public.vlt](tb_public.vlt) keeps only the testbench's signals visible to cocotb, which keeps
+the gate-level build short.
 
 `test.py`'s Makefile lists the sources in `PROJECT_SOURCES`, read from
 [info.yaml](../info.yaml), and the system tests read the same list. Each unit test names the
@@ -135,7 +136,18 @@ sources its module needs.
 ### Gate-level simulation
 
 Harden the design (`tools/flow.sh harden TAG`, see [tools/README.md](../tools/README.md)), then
-copy the netlist from the run and run `test.py` against it. The Makefile takes the cell models
+copy the netlist from the run and run `test.py` against it.
+
+At gate level, `test.py`'s reset first gives every flip-flop a random 0 or 1, held for two of the
+reset's clocks, as silicon powers up. A simulated flip-flop starts unknown, and Icarus can keep
+it unknown through reset: where synthesis folds a synchronous reset into logic that also reads
+the flip-flop ("q or not q", which gives the reset value in silicon), the unknown in gives an
+unknown out, the beam counters stay unknown, and the test waits for a vsync that never comes.
+Random values, rather than all 0, mean a flip-flop that the design wrongly leaves without a
+reset can still show up as wrong behaviour, though now only for some seeds. To check that such
+a hang is only this and hides no missing reset: simulate the netlist in Icarus with every
+flip-flop starting unknown except the ones found stuck (forced to a value for the first clocks
+of reset), and see that no output is ever unknown after reset. The Makefile takes the cell models
 from `$PDK_ROOT/sky130A`, so `PDK_ROOT` must be the directory that holds `sky130A`; under ciel
 that is `~/.ciel/ciel/sky130/versions/HASH`, not `~/.ciel` itself.
 

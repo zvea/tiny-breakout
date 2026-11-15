@@ -52,8 +52,10 @@ endif
 # takes about 2 min there against about 20 under Icarus, with the same results. Icarus stays
 # the default: Tiny Tapeout's GDS action runs this Makefile, and only Icarus, being
 # four-valued, shows an output that is unknown (X) when sampled, such as one fed by a
-# flip-flop that was never set; run it before submitting. The cells' 1-ns delays are dropped,
-# which the tests, sampling on clock edges, don't notice. Each simulator builds in its own
+# flip-flop that was never set (at RTL; at gate level test.py gives the flip-flops random
+# power-up values during reset, as silicon has) or by an undriven net; run it before
+# submitting. The cells' 1-ns delays are dropped, which the tests, sampling on clock edges,
+# don't notice. Each simulator builds in its own
 # directory. tb_public.vlt goes in EXTRA_ARGS, as that comes after cocotb's own
 # --public-flat-rw (which it turns off); the simulation, also given it, ignores it.
 ifeq ($(SIM),verilator)

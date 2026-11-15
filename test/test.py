@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tiny Tapeout full-chip tests (tb.v), on the RTL or the gate-level netlist (GATES=yes).
 
-They use only the chip's pins, as internal signal names don't survive synthesis.
+They use only the chip's pins, as internal signal names don't survive synthesis. The one
+exception is the gate-level netlist's flip-flops, found by their cell type, for the power-up
+state that reset() gives them.
 """
+
+import random
 
 import cocotb
 from cocotb.clock import Clock
+from cocotb.handle import Force, Release
 from cocotb.triggers import ClockCycles, Edge, FallingEdge, First, RisingEdge, Timer
 from cocotb.utils import get_sim_time
 
@@ -37,14 +42,53 @@ VSYNC_LINE = 490  # the vsync pulse's first line
 WIDTH = 640
 
 
+# The sky130 cells that hold state: flip-flops (df*, with an enable edf*, scan sdf* and sedf*)
+# and latches (dlx*, dlr*). Not dlygate*, the hold-repair delay cells, nor the clock gates
+# (dlclkp, sdlclkp), which have no Q.
+STATE_CELLS = tuple(
+    f"sky130_fd_sc_hd__{p}" for p in ("df", "edf", "sdf", "sedf", "dlx", "dlr"))
+
+
+def flip_flops(dut):
+    """The gate-level netlist's flip-flops and latches: none in the RTL, and none under
+    Verilator, which makes only the testbench's own signals visible (tb_public.vlt)."""
+    try:
+        cells = list(dut.user_project)
+    except (AttributeError, TypeError):
+        return []
+    return [c for c in cells if getattr(c, "_def_name", "").startswith(STATE_CELLS)]
+
+
 async def reset(dut):
+    """Reset for 10 clocks. At gate level each flip-flop first gets a random 0 or 1, held for
+    2 clocks of the reset, as silicon powers up: a simulated one starts unknown (X), and Icarus,
+    being four-valued, can keep it unknown through reset where synthesis folds a synchronous
+    reset into logic that also reads the flip-flop (as in "q or not q"), which in silicon gives
+    the reset value whatever q was. Random rather than 0, so a flip-flop that the game wrongly
+    relies on without resetting can still show as wrong behaviour."""
     clock = Clock(dut.clk, CLOCK_NS, unit="ns")
     cocotb.start_soon(clock.start())
     dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0
     dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
+    flops = flip_flops(dut)
+    outputs = []  # (handle, value): Q, and Q_N with the complement where the cell has one
+    for f in flops:
+        q = random.getrandbits(1)
+        outputs.append((f.Q, q))
+        try:
+            outputs.append((f.Q_N, 1 - q))
+        except AttributeError:
+            pass
+    for h, v in outputs:
+        h.value = Force(v)
+    await ClockCycles(dut.clk, 2)
+    for h, _ in outputs:
+        h.value = Release()
+    if flops:
+        dut._log.info(f"power-up: {len(flops)} flip-flops given random values during reset")
+    await ClockCycles(dut.clk, 8)
     dut.rst_n.value = 1
 
 
