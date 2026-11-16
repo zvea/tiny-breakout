@@ -25,7 +25,7 @@
   <path class="on" d="M15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12"/>
   <path class="off" d="M16 9l6 6M22 9l-6 6"/></svg></button>
  <label for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.3" disabled></div>
-<div id="help"><kbd>Left</kbd>/<kbd>Right</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> autoplay (arrows stop it) &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> <span id="mk">unmute</span></div>
+<div id="help"><kbd>&larr;</kbd>/<kbd>&rarr;</kbd> move &nbsp; <kbd>Space</kbd> launch / restart &nbsp; <kbd>A</kbd> autoplay &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> <span id="mk">unmute</span></div>
 <script>
 // The server runs the RTL model at 60 fps and streams frames:
 // [u32 video length][u32 audio samples][u32 state][video: RLE (count, RRGGBB) pairs]
@@ -63,20 +63,22 @@ async function sendNextKeys(){
   try{await fetch(`/keys?k=${k}`,{signal:AbortSignal.timeout(2000)})}catch(e){}}
  keyBusy=false;
 }
-const map={ArrowLeft:1,ArrowRight:2,' ':4};
+// The keys held down that drive the controls: Up launches too, as Space does (FIRE)
+const map={ArrowLeft:1,ArrowRight:2,' ':4,ArrowUp:4},held=new Set();
+function heldKeys(){let k=0;for(const h of held)k|=map[h];return k}
 addEventListener('keydown',e=>{
  if(e.ctrlKey||e.metaKey||e.altKey)return;  // browser shortcuts: Ctrl/Cmd+R reloads, Cmd+M minimises
  const k=e.key;
  if(k==='m'||k==='M'){if(!e.repeat)toggleSound();return}  // a held A, R or M acts once
  if(e.target.closest?.('input,button'))return;  // a focused slider or button keeps its keys
- if(map[k]){e.preventDefault();let changed=!(keys&map[k]);keys|=map[k];
-  if(k!==' '&&auto){auto=0;changed=true}  // steering takes over, a held key's repeat too
+ if(map[k]){e.preventDefault();held.add(k);let changed=heldKeys()!==keys;keys=heldKeys();
+  if(map[k]!==4&&auto){auto=0;changed=true}  // steering takes over, a held key's repeat too
   if(changed)sendKeys()}
  else if(e.repeat)return;
  else if(k==='a'||k==='A'){auto^=1;sendKeys()}
  else if(k==='r'||k==='R'){sendKeys(16)}});
-addEventListener('keyup',e=>{if(keys&map[e.key]){keys&=~map[e.key];sendKeys()}});
-addEventListener('blur',()=>{keys=0;sendKeys()});
+addEventListener('keyup',e=>{if(held.delete(e.key)&&heldKeys()!==keys){keys=heldKeys();sendKeys()}});
+addEventListener('blur',()=>{held.clear();keys=0;sendKeys()});
 
 // --- Sound: the frames' samples (48 kHz, from the server) go into an AudioWorklet ring buffer.
 // The worklet plays the 48 kHz stream at whatever rate the browser's audio runs (often 44.1

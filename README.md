@@ -65,12 +65,12 @@ cd sim/play
 ./obj_serve/Vtt_um_tiny_breakout    # then open http://localhost:8765/
 ```
 
-The arrow keys move the paddle, <kbd>Space</kbd> launches the ball (or starts a new game after
-game over), <kbd>A</kbd> switches autoplay on and off (an arrow key also switches it off) and
-<kbd>R</kbd> resets the chip. The page starts muted; the speaker button or <kbd>M</kbd> turns
-the sound on and off. The status line shows AUTOPLAY whenever the chip is playing by itself.
-The player always acts as a connected controller, so the demo runs there only after about
-16 s with no key pressed at a game's start or on the game-over screen;
+The left and right arrow keys move the paddle, <kbd>Space</kbd> launches the ball (or starts a
+new game after game over), <kbd>A</kbd> switches autoplay on and off (left or right also
+switches it off) and <kbd>R</kbd> resets the chip. The page starts muted; the speaker button or
+<kbd>M</kbd> turns the sound on and off. The status line shows AUTOPLAY whenever the chip is
+playing by itself. The player always acts as a connected controller, so the demo runs there
+only after about 16 s with no key pressed at a game's start or on the game-over screen;
 [tools/movie.sh](tools/movie.sh) records the demo as a movie (see
 [tools/README.md](tools/README.md)).
 
