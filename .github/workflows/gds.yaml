@@ -2,10 +2,12 @@ name: gds
 
 on:
   push:
+    branches: ['**']  # not tags: a tag marks a commit its branch push has tested
   workflow_dispatch:
 
-# Tiny Tapeout's template, plus these two settings, without its viewer job: site.yaml publishes
-# the 3D viewer, with the tutorials, after each successful run on main.
+# Tiny Tapeout's template, plus these two settings and branch pushes only (above), without its
+# viewer job: site.yaml publishes the 3D viewer, with the tutorials, after each successful run
+# on main.
 permissions:
   contents: read
 

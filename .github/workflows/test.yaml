@@ -1,5 +1,8 @@
 name: test
-on: [push, workflow_dispatch]
+on:
+  push:
+    branches: ['**']  # not tags: a tag marks a commit its branch push has tested
+  workflow_dispatch:
 permissions:
   contents: read
 # A newer push to the same branch replaces a run still going

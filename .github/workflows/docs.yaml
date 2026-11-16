@@ -2,6 +2,7 @@ name: docs
 
 on:
   push:
+    branches: ['**']  # not tags: a tag marks a commit its branch push has tested
   workflow_dispatch:
 
 permissions:
