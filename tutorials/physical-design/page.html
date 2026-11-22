@@ -1146,6 +1146,23 @@ function start(D) {
     t(X1 + 6, (y(Z.diff[0]) + y(Z.poly[0] + Z.poly[1])) / 2 + 1, "start", "transistors", "var(--muted)");
     return '<figure class="stack"><svg viewBox="0 0 384 ' + H + '" role="img" aria-label="Side view of the sky130 layer stack: substrate and transistors at the bottom, then li1 and met1 to met5. A met1 rail is joined by a via stack through met2 and met3 to a met4 stripe. Met5 is outlined.">' + o.join("") + '</svg><figcaption>The sky130 layer stack, side view, heights to scale</figcaption></figure>';
   }
+  // PROTOTYPE. An H-tree, for its glossary entry: from the root at the centre, each level splits
+  // in two at right angles, half as long as the level above, thinner at each level as on the die;
+  // a dot at each end, where a leaf buffer would go.
+  function hTreeFigure() {
+    var o = [], ends = [];
+    (function grow(x, y, len, horiz, lv) {
+      if (lv === 4) { ends.push([x, y]); return; }
+      var dx = horiz ? len : 0, dy = horiz ? 0 : len;
+      o.push('<path d="M' + (x - dx) + " " + (y - dy) + "L" + (x + dx) + " " + (y + dy) + '" stroke="var(--clknet)" stroke-width="' + [3, 2.4, 1.8, 1.4][lv] + '" stroke-linecap="round"/>');
+      grow(x - dx, y - dy, horiz ? len * 0.62 : len, !horiz, lv + 1);
+      grow(x + dx, y + dy, horiz ? len * 0.62 : len, !horiz, lv + 1);
+    })(130, 70, 64, true, 0);
+    ends.forEach(function (e) { o.push('<circle cx="' + e[0] + '" cy="' + e[1] + '" r="2.6" fill="var(--clkpin)"/>'); });
+    o.push('<rect x="125" y="65" width="10" height="10" fill="var(--clock)"/>');
+    o.push('<text x="130" y="92" text-anchor="middle" fill="var(--ink)" font-size="11">root</text>');
+    return '<figure class="stack"><svg viewBox="0 0 260 140" role="img" aria-label="An H-tree: from a root at the centre, each branch splits in two at right angles, so every path from the root to an end has the same length.">' + o.join("") + '</svg><figcaption>Every path from the root to an end has the same length</figcaption></figure>';
+  }
   var STEPS = [];
   STEPS[S.DIE] = { short: "Die", title: "The die area",
     body:
@@ -1201,12 +1218,12 @@ function start(D) {
     note: "All cells slide at once to their legal sites, some flipping to suit their row. Then the mirrored cells flip." };
   STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", play: 8000,
     body:
-      "<p>Until now timing analysis treated <code>clk</code> as ideal, arriving at all " + M.cts.sinks + " flip-flops at the same instant. As a real wire it would be far too heavily loaded, and the clock edge would reach near and far flip-flops at different times. That difference is called <b>skew</b>. If the capturing flip-flop gets the edge earlier than the launching one, a path has less time to meet setup. If it gets the edge later, hold is harder to meet.</p>" +
-      "<p><b>Clock tree synthesis</b> replaces the single <code>clk</code> net with a tree of " + M.cts.buffers + " clock buffers (<code>clkbuf_4</code>): the root buffer, " + NBRANCH + " branch buffers and " + M.cts.clusters + " leaf buffers, so that every flip-flop is " + (M.cts.mindepth === M.cts.depth ? "exactly " + M.cts.depth : M.cts.mindepth + " to " + M.cts.depth) + " buffers from the pin.</p>" +
-      "<h3>How it works</h3>" +
-      "<p>TritonCTS first <b>clusters</b> the sinks: " + M.cts.sinks + " flip-flops into " + M.cts.clusters + " groups of at most " + M.cts.maxsinks + " close together, each driven by one leaf buffer. It then builds an <b>H-tree</b> over the clusters. The trunk splits the area in half, each half splits again, and so on, which makes every branch from the root about equally long. " + M.cts.dummies + " <b>dummy loads</b> even out the load on the branches. The nets at the top of the tree, " + M.cts.ndr.map(function (x) { return "<code>" + x + "</code>"; }).join(" and ") + ", get a non-default rule with twice the usual spacing, which reduces coupling.</p>" +
-      "<p>The buffers go where the tree wants them. Then legalisation makes room, moving " + M.cts.disp[2] + " cells " + fmt(M.cts.disp[3], 1) + " µm on average.</p>",
-    note: "<b>Flylines</b> join each clock buffer to the cells it drives, level by level from the pin, thinner at each level down to the flip-flops. They show what connects to what. Routing draws the wires later. A dot marks each sink." };
+      "<p>So far the clock has been one net, <code>clk</code>, from its pin to all " + M.cts.sinks + " flip-flops. As a real wire it would be far too heavily loaded, and the clock edge would reach near and far flip-flops at different times. That difference is called <b>skew</b>. It shifts the window in which a signal sent from one flip-flop must arrive at another. Too much skew makes signals arrive too late or too early.</p>" +
+      "<p><b>Clock tree synthesis</b> replaces the single <code>clk</code> net with a tree of <b>clock buffers</b>. Each buffer drives only a small load. Every route from the pin to a flip-flop passes through the same number of buffers, so the clock edge reaches all the flip-flops at nearly the same time. The tree is built in two stages:</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Clustering</b> groups flip-flops that sit close together and gives each group its own <b>leaf buffer</b>.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span>An <b>H-tree</b> joins the leaf buffers to a <b>root buffer</b>, which the pin drives. The tree's trunk splits the area in half, each half splits again, and so on, which makes every branch from the root about equally long. <b>Dummy loads</b>, buffers that drive nothing, even out the load on the branches.</p>" +
+      "<p>Then legalisation makes room for the new buffers.</p>",
+    note: "<b>Flylines</b> join each clock buffer to the cells it drives, level by level from the pin, thinner at each level. They show what connects to what. Routing draws the real wires later. A dot marks each <b>sink</b>." };
   STEPS[S.HOLD] = { short: "Hold", title: "Hold repair", play: 6000,
     body:
       "<p>Timing analysis makes two checks on every path into a flip-flop, setup and hold. Now that the clock tree exists, it follows the clock through its buffers instead of assuming the clock arrives everywhere at once. Hold depends on exactly when the clock reaches each flip-flop, so it can only now be checked meaningfully, even though wire delays are still estimates.</p>" +
@@ -2012,9 +2029,22 @@ function start(D) {
               : [[dx, dy, al], [dx, -dy - h, al], [-dx, dy, flip[al]], [-dx, -dy - h, flip[al]],
                  [dx, dy * 2, al], [dx, -dy * 2 - h, al], [-dx, dy * 2, flip[al]], [-dx, -dy * 2 - h, flip[al]]].concat(opts.more || []);
     var best = null;
+    // PROTOTYPE: a caller's score(box) picks, among the clash-free places, the one that covers least
+    if (opts.score) {
+      var bestS = Infinity;
+      cands.forEach(function (cd, ci) {
+        var px = x + cd[0], py = y + cd[1];
+        if (cd[2] === "right") px -= w; else if (cd[2] === "center") px -= w / 2;
+        var box = [px - 3, py - 3, px + w + 3, py + h + 3];
+        if (box[0] < 0 || box[2] > W || box[1] < legendH + 14 || box[3] > H - footH - 12 || placed.some(function (b2) {
+          return box[0] < b2[2] && b2[0] < box[2] && box[1] < b2[3] && b2[1] < box[3]; })) return;
+        var sc = opts.score(box) + Math.hypot(cd[0], cd[1] + h / 2) * (opts.nearW || 0.05);   // nearer places win ties, or more when nearW asks
+        if (sc < bestS) { bestS = sc; best = [px, py, cd[2]]; }
+      });
+    }
     // a caller's avoid(box) rules out more places (what the callout must not cover); if it rules
     // out all of them, they are tried again without it
-    for (var c = 0; c < 2 * cands.length && !best; c++) {
+    for (var c = 0; c < 2 * cands.length && !best && !opts.score; c++) {
       var strict = c < cands.length;
       if (!strict && !opts.avoid) break;
       var cd = cands[c % cands.length], px = x + cd[0], py = y + cd[1];
@@ -2074,9 +2104,9 @@ function start(D) {
   }
   // PROTOTYPE: more places for a callout to try, in a ring of growing radius around its point
   // (offsets of the box's near corner; above the point the box's height is taken off)
-  function ringCands() {
+  function ringCands(radii) {
     var out = [];
-    [36, 56, 80].forEach(function (r) {
+    (radii || [36, 56, 80]).forEach(function (r) {
       [[1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) {
         var al = d[0] > 0 ? "left" : d[0] < 0 ? "right" : "center";
         out.push([d[0] * r, d[1] >= 0 ? d[1] * r * 0.7 + (d[1] ? 0 : -10) : d[1] * r * 0.7 - 20, al]);
@@ -2295,11 +2325,34 @@ function start(D) {
     if ((a = only(S.CTS, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
       var leaf = -1, dummy = -1;
-      CLOCK.forEach(function (c) { if (c.lv === CLV - 1 && leaf < 0) leaf = c.loads[0]; });
-      for (var j = NC; j < NU; j++) if (CLS[j] === "clock" && !DRIVES[j]) { dummy = j; break; }
-      if (ROOT && ROOT.loads.length) { var qr = centre(K.cts, ROOT.loads[0]); label("root buffer", qr[0], qr[1], { dx: 18, dy: -34 }); }
-      if (leaf >= 0) { var ql = centre(K.cts, leaf); label("leaf buffer", ql[0], ql[1], { dx: -18, dy: 30, align: "right" }); }
-      if (dummy >= 0) { var qd = centre(K.cts, dummy); label("dummy load", qd[0], qd[1], { dx: 18, dy: 28 }); }
+      // PROTOTYPE: the cell of a kind nearest a chosen spot on the die (in core fractions)
+      var nearest = function (ok, fx, fy) {
+        var tx = CORE[0] + fx * (CORE[2] - CORE[0]), ty = CORE[1] + fy * (CORE[3] - CORE[1]), bi = -1, bd = Infinity;
+        for (var q = 0; q < NU; q++) if (ok(q)) { var dd = Math.hypot(SX[q] + SWD[q] / 2 - tx, SY[q] + RH / 2 - ty); if (dd < bd) { bd = dd; bi = q; } }
+        return bi;
+      };
+      // a leaf buffer near the bottom, just right of the centre; a dummy load on the left, low in the upper half
+      var leaves = {};
+      CLOCK.forEach(function (c) { if (c.lv === CLV - 1) c.loads.forEach(function (l) { if (CLS[l] === "clock" && DRIVES[l]) leaves[l] = 1; }); });
+      leaf = nearest(function (q) { return leaves[q]; }, 0.62, 0.08);
+      dummy = nearest(function (q) { return CLS[q] === "clock" && !DRIVES[q]; }, 0.03, 0.62);
+      // PROTOTYPE: what the callouts should cover least: the flip-flops and clock cells, and the flylines
+      var busy = [], segs = [];
+      for (var j = 0; j < NU; j++) if (CLS[j] === "ff" || CLS[j] === "clock") busy.push([sx(SX[j]), sy(SY[j] + RH), sx(SX[j] + SWD[j]), sy(SY[j])]);
+      CLOCK_DRAW.forEach(function (c) {
+        var dp = clockDriver(c); if (!dp) return;
+        c.loads.forEach(function (l) { segs.push([sx(dp[0]), sy(dp[1]), sx(SX[l] + SWD[l] / 2), sy(SY[l] + RH / 2)]); });
+      });
+      var cover = function (bx) {
+        var sc = 0;
+        busy.forEach(function (r) { var ox = Math.min(bx[2], r[2]) - Math.max(bx[0], r[0]), oy = Math.min(bx[3], r[3]) - Math.max(bx[1], r[1]); if (ox > 0 && oy > 0) sc += ox * oy; });
+        segs.forEach(function (g) { for (var t = 0; t <= 1; t += 0.1) { var px = g[0] + (g[2] - g[0]) * t, py = g[1] + (g[3] - g[1]) * t; if (px > bx[0] && px < bx[2] && py > bx[1] && py < bx[3]) sc += 60; } });
+        return sc;
+      };
+      var far = ringCands([36, 56, 80, 110, 140]);
+      if (ROOT && ROOT.loads.length) { var qr = centre(K.cts, ROOT.loads[0]); label("root buffer", qr[0], qr[1], { dx: 14, dy: -30, more: ringCands([24, 36, 56]), score: cover, nearW: 12 }); }
+      if (leaf >= 0) { var ql = centre(K.cts, leaf); label("leaf buffer", ql[0], ql[1], { dx: -18, dy: 30, align: "right", more: far, score: cover }); }
+      if (dummy >= 0) { var qd = centre(K.cts, dummy); label("dummy load", qd[0], qd[1], { dx: 14, dy: 20, more: ringCands([24, 36, 56]), score: cover, nearW: 12 }); }
     }
     if ((a = only(S.HOLD, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
@@ -2782,18 +2835,13 @@ function start(D) {
     { k: "SDC", rx: /\bSDC\b/, def: "The design's timing constraints file (Synopsys Design Constraints). It sets the clock period, the input and output delays, and limits on slew, capacitance and fanout." },
     { k: "fanout", rx: /\bfanout\b/, def: "The number of inputs a net drives. A high fanout loads its driver and slows the signal." },
     { k: "Steiner tree", rx: /\bSteiner tree\b/, def: "A tree of horizontal and vertical lines joining a net's pins, with extra branch points where they save length. Tools quickly build a nearly shortest one and use its length to estimate the net's wiring before routing." },
-    { k: "legalisation", rx: /\b(re-)?legali[sz](ation|es|ed|ing)\b/, from: S.LEGAL, home: true, inBold: true, def: "Moving cells to legal positions, each in a row, on a site, and overlapping nothing." },
+    { k: "legalisation", rx: /\b(re-)?[Ll]egali[sz](ation|es|ed|ing)\b/, from: S.LEGAL, home: true, inBold: true, def: "Moving cells to legal positions, each in a row, on a site, and overlapping nothing." },
     { k: "mirroring", rx: /\bmirror(ing|ed|s)?\b/, from: S.LEGAL, def: "Flipping a cell left to right, N to FN or FS to S, where that shortens its nets." },
-    { k: "timing analysis", rx: /\b[Tt]iming analysis\b/, from: S.CTS, home: true, def: "Working out when each signal reaches each flip-flop, and checking it against the clock period." },
+    { k: "timing analysis", rx: /\b[Tt]iming analysis\b/, from: S.HOLD, home: true, def: "Working out when each signal reaches each flip-flop, and checking it against the clock period." },
     { k: "clock tree", rx: /\bclock tree\b/, from: S.CTS, def: "The buffers, and the nets between them, that carry the clock from its pin to every flip-flop with nearly equal delays." },
-    { k: "skew", rx: /\bskew\b/, from: S.CTS, def: "The difference in clock arrival time between two flip-flops." },
-    { k: "launching, capturing", rx: /\b(launching|capturing) flip-flops?\b/, from: S.CTS, home: true, def: "On a timing path, the launching flip-flop sends the data at one clock edge, and the capturing flip-flop receives it at the next." },
-    { k: "sink", rx: /\bsinks?\b/, from: S.CTS, home: true, def: "A pin a clock net must reach. Here that is a flip-flop's clock input or a dummy load's input." },
-    { k: "dummy load", rx: /\bdummy loads?\b/, from: S.CTS, home: true, inBold: true, def: "A clock cell whose output drives nothing. It only adds load, to even out a branch of the clock tree." },
-    { k: "non-default rule", rx: /\bnon-default rules?\b/, from: S.CTS, home: true, def: "A routing rule that gives chosen nets a different width or spacing from the layer's usual one." },
-    { k: "coupling", rx: /\bcoupling\b/, from: S.CTS, home: true, def: "The capacitance between neighbouring wires, through which a signal on one disturbs the other." },
-    { k: "flyline", rx: /\bflylines?\b/, from: S.CTS, def: "A straight line drawn between two pins of a net to show that they connect. It is not a wire. It ignores layers and tracks, and the real wire, drawn at routing, takes a different path." },
-    { k: "timing path", rx: /\btiming paths?\b/, from: S.CTS, home: true, def: "The route a signal takes from where it starts (a flip-flop's output or an input pin) through logic to where it is captured." },
+    { k: "launching, capturing", rx: /\b(launching|capturing) flip-flops?\b/, from: S.HOLD, home: true, def: "On a timing path, the launching flip-flop sends the data at one clock edge, and the capturing flip-flop receives it at the next." },
+    { k: "H-tree", rx: /\bH-trees?\b/, from: S.CTS, home: true, inBold: true, def: "A tree shaped like a repeated letter H. Its trunk splits into two branches, each branch splits into two again, and so on, so every path from the root to the end of a branch is about the same length.", fig: hTreeFigure },
+    { k: "sink", rx: /\bsinks?\b/, from: S.CTS, home: true, inBold: true, def: "A pin a clock net must reach. Here that is a flip-flop's clock input or a dummy load's input." },
     { k: "setup", rx: /\b[Ss]etup\b/, from: S.HOLD, home: true, def: "Data launched at one clock edge must reach the capturing flip-flop before the next edge, with the flip-flop's setup time to spare." },
     { k: "hold", rx: /\b[Hh]old\b/, from: S.HOLD, home: true, not: [S.FILL], def: "Data must stay stable at a flip-flop for a short time after a clock edge, so new data launched by that same edge must not arrive too soon." },
     { k: "endpoint", rx: /\bendpoints?\b/, from: S.HOLD, home: true, def: "Where a timing path ends, at a flip-flop's data input or an output pin." },
