@@ -225,8 +225,10 @@ h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text
 .body code { font-family: var(--mono); font-size: 0.86em; }
 /* PROTOTYPE: a figure in the panel text, such as the layer stack */
 .body figure { margin: 4px 0 12px; }
-.body figure svg { display: block; width: 100%; height: auto; font: 500 11px var(--font); }
-.body figcaption { margin-top: 2px; font-size: 12px; color: var(--muted); }
+.gloss figure { margin: 6px 0 2px; }
+.gloss.wide { max-width: 390px; }
+figure.stack svg { display: block; width: 100%; height: auto; font: 500 11px var(--font); }
+figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted); }
 /* PROTOTYPE: the power nets in the colours the pictures draw them in (on the steps that use it) */
 .body code.vpwr { color: var(--vpwr); font-weight: 600; }
 .body code.vgnd { color: var(--vgnd); font-weight: 600; }
@@ -257,8 +259,8 @@ h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text
   .seg { font-size: 10.5px; padding: 0; }
   .track { gap: 2px; }
 }
-/* tablets in landscape: the play bar's text may take two lines */
-@media (max-width: 1150px) and (min-width: 761px) {
+/* laptops below 1400 px and tablets in landscape: the play bar's text may take two lines */
+@media (max-width: 1400px) and (min-width: 761px) {
   .readout { white-space: normal; }
   .readout .what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
 }
@@ -1134,7 +1136,7 @@ function start(D) {
     return '<figure class="stack"><svg viewBox="0 0 384 ' + H + '" role="img" aria-label="Side view of the sky130 layer stack: substrate and transistors at the bottom, then li1 and met1 to met5. A met1 rail is joined by a via stack through met2 and met3 to a met4 stripe. Met5 is outlined.">' + o.join("") + '</svg><figcaption>The sky130 layer stack, side view, heights to scale</figcaption></figure>';
   }
   var STEPS = [];
-  STEPS[S.DIE] = { short: "Die", title: "The die area", tool: "Tiny Tapeout's 1×1 tile",
+  STEPS[S.DIE] = { short: "Die", title: "The die area", tool: "",
     body:
       "<p>Turning SystemVerilog code (the <b>RTL</b>) into a chip layout takes two main steps:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"Step 1\">1</span><b>Synthesis</b> maps the RTL to a gate-level <b>netlist</b>, which lists <b>instances</b> of <b>standard cells</b> and the <b>nets</b> that connect their pins, but gives no positions. In this tutorial the cells come from <code>sky130_fd_sc_hd</code>, SkyWater's 130 nm high-density library, which has logic gates, flip-flops, multiplexers, adders and buffers.</p>" +
@@ -1163,18 +1165,14 @@ function start(D) {
       "<p>Where a stripe crosses a rail of its own net, a <b>via stack</b> joins them, from met1 through met2 and met3 to met4, each via an array of cuts. Met2 and met3 carry no power anywhere else, which leaves them free for signal routing.</p>" };
   STEPS[S.PINS] = { short: "Pins", title: "Pins", tool: "LibreLane <code>ApplyDEFTemplate</code>",
     body:
-      "<p>Every Tiny Tapeout tile has the same " + PINS.length + " signal pins in the same places, so the chip-level routing can reach any design. All sit on the top edge, on met4, each " + fmt(um(PINW)) + " × " + fmt(um(PINH)) + " µm, " + fmt(um(PINPITCH)) + " µm apart.</p>" +
-      "<ul><li><code>clk</code>: the clock</li><li><code>ena</code>: high while this design is selected</li><li><code>rst_n</code>: the reset, active low</li><li><code>ui_in[7:0]</code>: the dedicated inputs</li><li><code>uo_out[7:0]</code>: the dedicated outputs</li><li><code>uio_in[7:0]</code>, <code>uio_out[7:0]</code> and <code>uio_oe[7:0]</code>: the bidirectional IOs, each with an input, an output and an output enable</li></ul>" +
-      "<p>This design leaves " + unusedList.length + " unused (" + busList(unusedList) + "). Their pins are there, with nothing connected.</p>" +
-      "<h3>How it works</h3>" +
-      "<p>There is no algorithm here. The step copies the pin shapes from Tiny Tapeout's template DEF. Without a fixed pin-out, OpenROAD's pin placer would put each pin near the cells it connects to. To know roughly where those cells are, LibreLane normally runs a rough global placement first. Here the pins are fixed, so both steps are skipped.</p>" };
+      "<p>A design's <b>pins</b> are where its signals enter and leave. Here their positions are fixed in advance, so that the wiring of the chip around the design can reach them. All " + PINS.length + " signal pins sit on met4 along the top edge. They carry the clock, a reset, an enable, and 8-bit buses of inputs, outputs and bidirectional IOs. This design uses all but " + unusedList.length + " of them. The unused pins are still there, with nothing connected.</p>" +
+      "<p>The step copies the pin shapes from a template DEF file. Without a fixed pin-out, a pin placer would put each pin near the cells it connects to.</p>" };
   STEPS[S.PLACE] = { short: "Place", title: "Global placement", tool: "OpenROAD <code>gpl</code> (RePlAce)", play: PLACE_MS,
     body:
-      "<p><b>Global placement</b> gives each of the " + n(NC) + " instances a position that keeps connected cells close while spreading them evenly over the core. Positions are continuous, so cells may overlap and sit between rows until legalisation.</p>" +
-      "<h3>How it works</h3>" +
-      "<p>Every instance starts at the core centre. <b>Initial placement</b> minimises the sum of the squared lengths of the connections, a quadratic model that is quick to solve by conjugate gradient (" + nIP + " iterations). With the pins, all on the top edge, as its only anchors, it pulls the netlist into a heap under them.</p>" +
-      "<p><b>Nesterov placement</b> then treats cells as charges in an electrostatic field, which pushes them out of dense regions, while a smooth wirelength model pulls connected cells together. The weight on density rises as it goes. Density is measured on a " + BINS + " × " + BINS + " grid of <b>bins</b>, and a <b>target density</b> of " + fmt(TARGET) + " lets cells cover at most " + fmt(100 * TARGET, 0) + "% of each bin. To leave room for wires to reach crowded pins, the tool pads cells where cell pins are dense. With that padding, the movable cells fill " + fmt(M.gpl.util, 0) + "% of the core area left free by the taps and endcaps, or " + fmt(100 * MOVABLE_UM2 / (CORE_UM2 - FIXED_UM2), 0) + "% without it. The configuration asked for a target of " + fmt(M.gpl.asked) + ", below that fill, so the tool raised the target to " + fmt(TARGET) + ". Progress is measured by <b>overflow</b>, and the placer stops when it falls below 0.1.</p>" +
-      "<p>The run is <b>routability-driven</b>. Near 0.3 overflow it estimates routing congestion. It inflates the cells in congested regions so that they spread further apart, and rewinds to a snapshot saved at about 0.6 overflow. It did so " + LASTF.rounds + " times without reaching its congestion target, then kept the least congested round's inflation for the final pass.</p>",
+      "<p><b>Global placement</b> gives each of the " + n(NC) + " instances a position that keeps connected cells close while spreading them evenly over the core. Positions are continuous, so cells may overlap and sit between rows until legalisation. It works in two phases:</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Initial placement</b> starts every instance at the core centre and minimises the sum of the squared lengths of the connections, which is quick to solve. With the pins along the top edge as its only anchors, it pulls the netlist into a heap under them.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Nesterov placement</b> then treats cells as charges in an electrostatic field, which pushes them out of dense regions, while a wirelength model pulls connected cells together. Density is measured over a grid of <b>bins</b>, and a <b>target density</b> of " + fmt(TARGET) + " lets cells cover at most " + fmt(100 * TARGET, 0) + "% of each bin. Progress is measured by <b>overflow</b>, and the placer stops when it falls below 0.1.</p>" +
+      "<p>The run is <b>routability-driven</b>. Near 0.3 overflow it estimates routing congestion and inflates the cells in congested regions. It then rewinds to a snapshot taken while the cells were still crowded, and redoes the spreading with the inflated cells so that they end up further apart. It did this " + LASTF.rounds + " times, then kept the least congested round for the final pass.</p>",
     note: "The animation shows the first descent, one rewind and the final pass." };
   STEPS[S.REPAIR] = { short: "Repair", title: "Repair design", tool: "OpenROAD <code>rsz</code>: <code>buffer_ports</code>, <code>repair_design</code>, <code>repair_tie_fanout</code>", play: 5000,
     body:
@@ -2278,7 +2276,7 @@ function start(D) {
       if (GF[gg.i + 1] && GF[gg.i + 1].rewind) {
         ctx.globalAlpha = clamp01(gg.f / 0.08) * clamp01((1 - gg.f) / 0.08);
         // an event, not a thing on the die: a box over the core's centre, with no leader
-        label("Too congested:\nrewind to iteration " + SNAP.iter + ",\ninflate crowded cells",
+        label("Too congested:\ninflate crowded cells,\nrewind and spread again",
               sx((CORE[0] + CORE[2]) / 2), sy((CORE[1] + CORE[3]) / 2), { box: true });
       }
     }
@@ -2517,10 +2515,12 @@ function start(D) {
   function readoutText(k, u) {
     if (k === S.PLACE) {
       var g = gplAt(u), cur = GF[g.i], nxt = GF[Math.min(g.i + 1, GF.length - 1)], f = g.f > 0.5 ? nxt : cur;
-      if (nxt.rewind && g.f > 0.05) return "<b>Congestion check</b>: back to iteration " + SNAP.iter;
-      if (f.ip !== undefined) return f.ip === 0 ? "<b>Start</b>: all cells at the core centre" : "<b>Initial placement</b>: CG iteration " + f.ip + " of " + nIP;
-      var pass = f.rewind ? "Final pass</b> from it. " : f.rounds ? "Final pass</b> it. " : "Nesterov</b> it. ";
-      return "<b>" + pass + f.iter + " · overflow " + f.overflow.toFixed(2) + " · HPWL " + n(f.hpwl) + " µm";
+      // the phase in the panel's words; then overflow, the measure that ends placement, and
+      // wirelength, which rises as overflow falls
+      if (nxt.rewind && g.f > 0.05) return "<b>Congestion check</b>: inflate crowded cells, rewind";
+      if (f.ip !== undefined) return f.ip === 0 ? "<b>Start</b>: every instance at the core centre" : "<b>Initial placement</b>, iteration " + f.ip + " of " + nIP;
+      var pass = f.rewind || f.rounds ? "Nesterov placement</b>, again" : "Nesterov placement</b>";
+      return "<b>" + pass + " · overflow " + f.overflow.toFixed(2) + " · wirelength " + n(f.hpwl) + " µm";
     }
     if (k === S.REPAIR) {
       if (u >= 0.6) return "<b>Resizing</b> " + M.rsz.resized + " instances";
@@ -2705,7 +2705,6 @@ function start(D) {
   var GLOSSARY = [
     { k: "RTL", rx: /\bRTL\b/, from: S.DIE, home: true, inBold: true, def: "Register-transfer level. It describes the design as registers and the logic between them, written in a hardware description language (here SystemVerilog)." },
     { k: "synthesis", rx: /\b[Ss]ynthesis\b/, from: S.DIE, def: "The step before physical design. It builds the logic the RTL describes from the library's standard cells, and writes it out as a netlist. Here Yosys does it." },
-    { k: "tile", rx: /\btiles?\b/, def: "The fixed rectangle Tiny Tapeout gives each design on its shared chip. This design takes one tile, and the tile is its die area." },
     { k: "layout", rx: /\blayouts?\b/, from: S.DIE, home: true, def: "The shapes on every layer that make up a chip or a cell. The fab makes its masks from the chip's layout." },
     { k: "flip-flop", rx: /\bflip-flops?\b/, from: S.DIE, home: true, def: "A cell that stores one bit. At each rising edge of its clock it takes the value at its data input and holds it until the next edge." },
     { k: "buffer", rx: /\bbuffers?\b/, from: S.DIE, home: true, def: "A cell whose output repeats its input. Buffers are inserted to drive long wires or many inputs, or to add delay." },
@@ -2729,7 +2728,7 @@ function start(D) {
     { k: "thyristor", rx: /\bthyristors?\b/, from: S.TAPS, home: true, def: "A switch made of four alternating layers of p- and n-type silicon (PNPN). Once triggered, it stays on until the current through it stops." },
     { k: "design rules (DRC)", rx: /\bDRC\b|\bdesign[- ]rules?\b/, from: S.TAPS, home: true, def: "The fab's geometric rules on the widths, spacings and distances of shapes. DRC checks a layout against them." },
     { k: "decap cell", rx: /\bdecap cells?\b/, from: S.FILL, home: true, inBold: true, def: "A cell that holds a capacitor between VPWR and VGND, which steadies the supply when nearby cells switch." },
-    { k: "li1, met1–met5", rx: /\b(met[1-5]|li1)\b/, from: S.PDN, home: true, def: "The wiring layers above the transistors. The lowest, li1, is used inside the cells and for their pins. Above it are met1 to met5. This design is wired on met1 to met4, with met1 and met3 horizontal and met2 and met4 vertical." },
+    { k: "li1, met1–met5", rx: /\b(met[1-5]|li1)\b/, from: S.PDN, home: true, def: "The wiring layers above the transistors. The lowest, li1, is used inside the cells and for their pins. Above it are met1 to met5. This design is wired on met1 to met4, with met1 and met3 horizontal and met2 and met4 vertical.", fig: stackFigure },
     { k: "stripe", rx: /\bstripes?\b/, from: S.PDN, def: "A wide vertical met4 power line that feeds the rails. The stripes are also the design's power pins." },
     { k: "power grid", rx: /\bpower grid\b/, from: S.PDN, def: "The rails, stripes and via stacks that carry VPWR and VGND to every cell." },
     { k: "cut", rx: /\bcuts?\b/, from: S.PDN, home: true, def: "A small metal-filled hole through the insulation between two layers. A via is made of one or more cuts." },
@@ -2802,7 +2801,8 @@ function start(D) {
   function showGloss(span) {
     var g = GLOSSARY[+span.dataset.g];
     var grid = g.grid ? '<table class="ggrid">' + g.grid.map(function (r, i) { return "<tr>" + r.map(function (c, j) { return i && j ? "<td>" + c + "</td>" : "<th>" + c + "</th>"; }).join("") + "</tr>"; }).join("") + "</table>" + (g.after ? "<div>" + g.after + "</div>" : "") : "";
-    gloss.innerHTML = "<b>" + g.k + "</b>: " + g.def + grid + (g.from !== undefined && g.from !== target ? '<div class="from">Introduced in <button type="button" data-step="' + g.from + '">' + STEPS[g.from].short + "</button></div>" : "");
+    gloss.classList.toggle("wide", !!g.fig);
+    gloss.innerHTML = "<b>" + g.k + "</b>: " + g.def + grid + (g.fig ? g.fig() : "") + (g.from !== undefined && g.from !== target ? '<div class="from">Introduced in <button type="button" data-step="' + g.from + '">' + STEPS[g.from].short + "</button></div>" : "");
     gloss.hidden = false; glossFor = span;
     var r = span.getBoundingClientRect(), w = gloss.offsetWidth, h = gloss.offsetHeight;
     var x = Math.max(8, Math.min(window.innerWidth - w - 8, r.left)), y = r.bottom + 6;
