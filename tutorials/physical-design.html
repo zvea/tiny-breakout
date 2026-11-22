@@ -1250,10 +1250,9 @@ function start(D) {
     note: "First, three example nets, their wires drawn over their guides. Seen from above, the wires stay inside the guides. Then all the wiring, layer by layer. Vias show when you zoom in." };
   STEPS[S.FILL] = { short: "Fill", title: "Fill insertion", play: 4000,
     body:
-      "<p>Every empty site now gets a cell, " + n(FILL.length) + " in all. <b>Fill cells</b> (" + Object.keys(FILLT).filter(function (t) { return /^fill/.test(t); }).sort().map(function (t) { return "<code>" + t + "</code> × " + FILLT[t]; }).join(", ") + ") hold no transistors. They continue the wells, implants and power rails across the gaps, so every row is unbroken. Where there is room, <b>decap cells</b> (<code>decap_3</code> × " + (FILLT.decap_3 || 0) + ") go in instead.</p>" +
-      "<p>That completes the layout. The flow then extracts the parasitics, checks timing again on the routed design, and writes the GDS for the final DRC and LVS checks.</p>" +
-      "<h3>How it works</h3>" +
-      "<p><code>filler_placement</code> walks each row and fills each gap from the cells it is given, largest first.</p>",
+      "<p>Placement leaves gaps between the cells. <b>Fill insertion</b> puts a cell in every empty site, " + n(FILL.length) + " in all. In each gap it places the widest cells that fit: a <b>decap cell</b> wherever there is room for one, and <b>fill cells</b> in the space that is left. Decap cells make up " + n(FILLT.decap_3 || 0) + " of the " + n(FILL.length) + ".</p>" +
+      "<p>Neither kind has any logic. Each continues the wells, implants and power rails across its gap, so every row is unbroken, as the design rules require. A decap cell also holds a capacitor between <code>VPWR</code> and <code>VGND</code>, which steadies the supply when nearby cells switch.</p>" +
+      "<p>That completes the layout. The flow then extracts the parasitics, checks timing again on the routed design, and writes the GDS for the final DRC and LVS checks.</p>",
     note: "Fill cells are hatched, decap cells solid." };
   STEPS[S.STA] = { short: "Timing", title: "Signoff timing", play: 9000,
     body:
