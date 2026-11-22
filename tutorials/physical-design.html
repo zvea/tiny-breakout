@@ -1195,11 +1195,9 @@ function start(D) {
     note: "New cells pop in where the resizer put them, overlapping others until legalisation. The resized cells grow." };
   STEPS[S.LEGAL] = { short: "Legalise", title: "Detailed placement", play: 6500,
     body:
-      "<p>Detailed placement, or <b>legalisation</b>, moves every instance from its global position to a legal one, on a row and aligned to a site. No two cells may overlap. The taps and endcaps are fixed and do not move. Each moved cell takes its row's orientation, flipping top to bottom when it lands in a row of the other orientation, so its power rails line up with the row's. The moves are small (in a straight line, " + fmt(M.dpl.disp[3]) + " µm on average, " + fmt(M.dpl.disp[1]) + " µm at most) but they lengthen the nets' estimated wiring: HPWL rises " + Math.round(100 * (M.dpl.hpwl[1] / M.dpl.hpwl[0] - 1)) + "%, from " + n(Math.round(M.dpl.hpwl[0])) + " to " + n(Math.round(M.dpl.hpwl[1])) + " µm.</p>" +
-      "<p>In LibreLane this legalisation already happens at the end of the repair step, so the Detailed placement step itself finds nothing left to move. The moves shown here are that legalisation.</p>" +
-      "<p>Then <code>optimize_mirroring</code> flips " + n(M.dpl.mirrored) + " instances left to right, to FN or S. A flip moves a cell's pins to its other side, so it is kept only where it shortens the cell's nets. Together the flips win back " + fmt(100 * (1 - M.dpl.hpwl[2] / M.dpl.hpwl[1]), 1) + "% of HPWL, to " + n(Math.round(M.dpl.hpwl[2])) + " µm.</p>" +
-      "<h3>How it works</h3>" +
-      "<p><code>dpl</code> searches outward from each cell's global position for the nearest free run of sites. Global placement has already spread the cells to the target density, so a free spot is never far.</p>",
+      "<p><b>Detailed placement</b> moves every instance from its global position to a legal one, in two parts:</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Legalisation</b> puts each cell on a row, aligned to a site, overlapping no other. The taps and endcaps are fixed and do not move. A cell that lands in an FS row is flipped top to bottom, so its power rails line up with the row's. The moves are small, because global placement has already spread the cells out, but they still lengthen the estimated wire length by " + Math.round(100 * (M.dpl.hpwl[1] / M.dpl.hpwl[0] - 1)) + "%.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Mirroring</b> then flips some cells left to right. A flip moves a cell's pins to its other side, so it is kept only where it shortens the cell's nets. Together the flips win back " + fmt(100 * (1 - M.dpl.hpwl[2] / M.dpl.hpwl[1]), 0) + "% of the wire length.</p>",
     note: "All cells slide at once to their legal sites, some flipping to suit their row. Then the mirrored cells flip." };
   STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", play: 8000,
     body:
@@ -2785,7 +2783,6 @@ function start(D) {
     { k: "fanout", rx: /\bfanout\b/, def: "The number of inputs a net drives. A high fanout loads its driver and slows the signal." },
     { k: "Steiner tree", rx: /\bSteiner tree\b/, def: "A tree of horizontal and vertical lines joining a net's pins, with extra branch points where they save length. Tools quickly build a nearly shortest one and use its length to estimate the net's wiring before routing." },
     { k: "legalisation", rx: /\b(re-)?legali[sz](ation|es|ed|ing)\b/, from: S.LEGAL, home: true, inBold: true, def: "Moving cells to legal positions, each in a row, on a site, and overlapping nothing." },
-    { k: "HPWL", rx: /\bHPWL\b/, def: "Half-perimeter wirelength, a quick estimate of the total wiring. For each net it takes half the perimeter of the box around the net's pins, and it sums these over all nets." },
     { k: "mirroring", rx: /\bmirror(ing|ed|s)?\b/, from: S.LEGAL, def: "Flipping a cell left to right, N to FN or FS to S, where that shortens its nets." },
     { k: "timing analysis", rx: /\b[Tt]iming analysis\b/, from: S.CTS, home: true, def: "Working out when each signal reaches each flip-flop, and checking it against the clock period." },
     { k: "clock tree", rx: /\bclock tree\b/, from: S.CTS, def: "The buffers, and the nets between them, that carry the clock from its pin to every flip-flop with nearly equal delays." },
