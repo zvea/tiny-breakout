@@ -7,6 +7,7 @@ Everything it shows comes from one run of the flow, described under Provenance b
 |---|---|
 | [page.html](page.html) | The page, without its data. |
 | [build.py](build.py) | Inlines the data (`data.json`, gzipped) into the page and writes `../physical-design.html`. If there is no `data.json`, it keeps the data already in the page, so edits to the page need nothing else. |
+| [check.py](check.py) | Checks the built page in a browser at the screen sizes it supports (below). [test_check.py](test_check.py) tests it. |
 | [regenerate.sh](regenerate.sh) | Remakes `data.json` from a run, then the page. It runs the four captures below in LibreLane's container, then `extract.py`. |
 | [extract.py](extract.py) | Reads the run's DEFs, logs and reports, and the captures, and writes `data.json`. |
 | [gpl/](gpl/) | Re-runs global placement stopped at intermediate states: initial placement after k iterations, Nesterov placement at overflow targets, and the routability snapshot. The end state is checked against the run. |
@@ -14,6 +15,43 @@ Everything it shows comes from one run of the flow, described under Provenance b
 | [guides/](guides/) | Dumps the route guides after antenna repair, which detailed routing follows. |
 | [gds/](gds/) | Dumps the GDS: each cell master's shapes and the top cell's instances of them. |
 | [provenance/](provenance/) | What the run was made from (below). |
+
+## Checking the page
+
+The page is meant for laptops and for tablets in landscape. `check.py` opens the built page in
+a headless Chromium at six such sizes, two of them touch screens, and reports:
+
+- **layout** (every size, both themes): the legend, zoom buttons, play bar, scale or play prompt
+  overlapping, the page scrolling sideways, or a step name in the stepper clipped or running
+  into the next, at the start and end of every step;
+- **callouts** (every size): a callout left out, outside the view, or overlapping another
+  callout or the controls, at the picture each step waits on and at ten points through its
+  animation, and the Floorplan close-up missing;
+- **keyboard** (the first size): Tab from the panel text not reaching the picture, the arrow
+  keys held by the stepper after a click, a replay from a badge losing the panel's scroll or
+  focus, and the play prompt not first in the picture's Tab order;
+- **touch** (the touch sizes): a tap on a term or on the picture doing nothing, a tap elsewhere
+  not closing a popup, and a drag not moving the view;
+- **transitions** (the first size): Play changing the picture at once instead of going on from
+  the one the step waited on, over the first two frames on a paused clock. GDS is left out: its
+  camera starts to zoom as it plays, which changes the picture by design;
+- any script error on the page, and a page that does not start (with its error).
+
+The page records its callouts for the check only when the check asks it to (`window.pdProbe`).
+Setup, once, in the project's `.venv` (pytest and pytest-xdist, for the tests, come with the
+project's test setup in [test/requirements.txt](../../test/requirements.txt)); then a run, about
+3 minutes for everything, and the tests, about 1.5 minutes with four workers:
+
+```sh
+.venv/bin/pip install -r tutorials/physical-design/requirements.txt
+.venv/bin/playwright install chromium
+.venv/bin/python tutorials/physical-design/check.py                     # every check, every size
+.venv/bin/python tutorials/physical-design/check.py --only callouts --size 1024x768t
+.venv/bin/pytest tutorials/physical-design -n 4
+```
+
+It prints what it finds and exits 0 if it finds nothing, 1 if it finds something, and 2 if it
+cannot run (a bad argument, a missing browser, or a page that does not start).
 
 ## Provenance
 
