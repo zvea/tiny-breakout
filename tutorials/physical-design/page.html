@@ -283,6 +283,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
 .body a { color: inherit; text-underline-offset: 2px; }
 /* what the picture shows, as opposed to what the tool does */
 .body .note { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13.5px; }
+.body.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); }
 .body .note.lead { margin: 0 0 12px; padding: 0 0 8px; border-top: 0; border-bottom: 1px solid var(--rule); }
 /* the numbered part the animation is showing, and the badges that play a part */
 .body .mainstep { transition: background-color 0.3s; border-radius: 4px; }
@@ -383,16 +384,19 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
       <table>
         <tr><td><kbd>&rarr;</kbd> or <kbd>Page Down</kbd></td><td>Play the step's animation, or go to the next step once it has played. While it plays, skip to its end.</td></tr>
         <tr><td><kbd>&larr;</kbd> or <kbd>Page Up</kbd></td><td>Previous step</td></tr>
+        <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd> in the step bar</td><td>Move between steps, and <kbd>Enter</kbd> goes to one</td></tr>
+        <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd> on the play bar</td><td>Move through the animation, or in bigger jumps with <kbd>Page Up</kbd> <kbd>Page Down</kbd></td></tr>
         <tr><td><kbd>+</kbd> <kbd>&minus;</kbd></td><td>Zoom in, zoom out</td></tr>
         <tr><td><kbd>0</kbd></td><td>Show the whole die</td></tr>
         <tr><td><kbd>Esc</kbd></td><td>Close a popup or this panel</td></tr>
         <tr><td><kbd>?</kbd></td><td>Show this panel</td></tr>
       </table>
-      <h3>With the mouse</h3>
+      <h3>With the mouse or by touch</h3>
       <table>
         <tr><td>Scroll</td><td>Zoom</td></tr>
         <tr><td>Drag</td><td>Move the view</td></tr>
-        <tr><td>Hover</td><td>Name what is under the pointer, or show a term's definition</td></tr>
+        <tr><td>The play bar</td><td>Play, pause or replay the animation, or drag its slider to any moment</td></tr>
+        <tr><td>Hover, or tap</td><td>Name what is under the pointer, or show a term's definition</td></tr>
       </table>
     </div>
   </div>
@@ -658,6 +662,10 @@ function start(D) {
       }
     }
   }
+  var MIRRORED = [];
+  for (var mi = 0; mi < NU; mi++) if (has(K.rszB, mi) && has(K.dpl, mi) && flipX(K.rszB.or[mi]) !== flipX(K.dpl.or[mi])) MIRRORED.push(mi);
+  // when cell i turns over in the mirroring (t through the step), as legalise() times it
+  function mirrorAt(i) { return 0.74 + 0.1 * hash01(i + 7) + 0.08; }
   var CTS_SPLIT = 0.72, HOLD_SPLIT = 0.45, ANT_SPLIT = 0.6;   // each step's share for adding cells, then legalising
   function popRepair(i) { return 0.2 + 0.45 * hash01(i); }
   function popClock(i) { var d = DRVNET[i], j = FEED[i]; return d !== undefined ? lvStart(CLOCK[d].lv) : j === undefined ? 0.5 : lvStart(CLOCK[j].lv) - 0.22; }
@@ -1266,19 +1274,19 @@ function start(D) {
       "<p>The tutorial assumes that synthesis has already been done, and follows physical design all the way to the finished layout.</p>" +
       "<p>We start with an empty <b>die area</b>, the " + fmt(um(DIE[2])) + " × " + fmt(um(DIE[3])) + " µm rectangle the design must fit in. The design is a block inside a larger chip, which fixes this size, its pins and how power reaches it.</p>",
     note: "This is one run of the flow, made in November 2026 from <a href=\"https://github.com/zvea/tiny-breakout/tree/8e82a8f\">commit 8e82a8f</a> with LibreLane 3.0.14 and sky130." };
-  STEPS[S.FLOOR] = { short: "Floorplan", title: "Floorplan",
+  STEPS[S.FLOOR] = { short: "Floorplan", title: "Floorplan", replay: true,
     body:
       "<p>The <b>core area</b> is the die less a <b>core margin</b> (" + fmt(um(CORE[0])) + " µm left and right, " + fmt(um(CORE[1])) + " µm top and bottom). Standard cells may be placed only inside the core. <b>Utilisation</b> is the usual measure of how full a design is. Our design has " + n(D.netlistCells) + " cells. They fill " + fmt(100 * MOVABLE_UM2 / CORE_UM2, 0) + "% of this core.</p>" +
       "<p>The core is divided into " + NROWS + " <b>placement rows</b>, each " + D.sitesPerRow + " <b>sites</b> long. A site is " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm. Every standard cell is one row high and a whole number of sites wide, so a legal placement gives each instance a row, a site and an orientation.</p>" +
       "<p>Rows alternate orientation: <b>N</b> (north), then <b>FS</b> (flipped south), in which cells sit upside down. Every cell has its power rail (<code class=vpwr>VPWR</code>) along the top and its ground rail (<code class=vgnd>VGND</code>) along the bottom, so flipping every other row lets neighbouring rows share a rail.</p>" +
       "<p>The floorplan also sets out each metal layer's <b>routing tracks</b>, the evenly spaced lines that wires will later follow. They are not shown here.</p>" };
-  STEPS[S.TAPS] = { short: "Taps", title: "Tap and endcap insertion",
+  STEPS[S.TAPS] = { short: "Taps", title: "Tap and endcap insertion", replay: true,
     body:
       "<p>Two kinds of cell with no logic function go in before any logic:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Well taps</b> tie the n-well to <code>VPWR</code> and the p-substrate to <code>VGND</code>. The library's cells have no well or substrate contacts of their own. Far from a tap, neighbouring PMOS and NMOS transistors can act as an unintended thyristor which, once triggered, shorts <code>VPWR</code> to <code>VGND</code>. This is <b>latch-up</b>. The design rules cap the distance from any transistor to a tap.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Endcaps</b> sit at both ends of every row. In many cell libraries the last cell in a row cannot meet the design rules alone, because its n-well and implants must continue past its edge, and a dedicated endcap cell gives them somewhere to end. This library has none, so the flow uses a decap cell (see Fill).</p>" +
       "<p>Taps and endcaps are marked <code>FIXED</code>, so placement may not move them and has to place the logic cells around them.</p>" };
-  STEPS[S.PDN] = { short: "Power", title: "Power distribution network",
+  STEPS[S.PDN] = { short: "Power", title: "Power distribution network", replay: true,
     body:
       "<p>Above the transistors, wiring is built in stacked layers: local interconnect li1, then the metal layers met1 to met5.</p>" +
       stackFigure() +
@@ -1286,7 +1294,7 @@ function start(D) {
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Follow-pin rails</b> on met1, along every row boundary. They lie exactly over the cells' own rails and touch them directly, so the cells need no routing to reach power.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Stripes</b> on met4, vertical, in pairs of <code class=vpwr>VPWR</code> and <code class=vgnd>VGND</code>. They are also the design's power pins, where the chip's own power grid, on met5, connects to it.</p>" +
       "<p>Where a stripe crosses a rail of its own net, a <b>via stack</b> joins them, from met1 through met2 and met3 to met4, each via an array of cuts. Met2 and met3 carry no power anywhere else, which leaves them free for signal routing.</p>" };
-  STEPS[S.PINS] = { short: "Pins", title: "Pins",
+  STEPS[S.PINS] = { short: "Pins", title: "Pins", replay: true,
     body:
       "<p>A design's <b>pins</b> are where its signals enter and leave. Here their positions are fixed in advance, so that the wiring of the chip around the design can reach them. All " + PINS.length + " signal pins sit on met4 along the top edge. They carry the clock, a reset, an enable, and 8-bit buses of inputs, outputs and bidirectional IOs. This design uses all but " + unusedList.length + " of them. The unused pins are still there, with nothing connected.</p>" +
       "<p>The step copies the pin shapes from a template DEF file. Without a fixed pin-out, a pin placer would put each pin near the cells it connects to.</p>" };
@@ -2578,6 +2586,15 @@ function start(D) {
       if (qf) label("fill cell", qf[0], qf[1], { dx: 18, dy: -34, more: far, score: cover, nearW: 4 });
       if (qd) label("decap cell", qd[0], qd[1], { dx: -18, dy: 30, align: "right", more: far, score: cover, nearW: 4 });
     }
+    // the cells mirroring flips, outlined while it plays
+    if (pos > S.LEGAL - 1 && pos < S.LEGAL) {
+      var ul = within(pos, S.LEGAL), am = clamp01((ul - 0.7) / 0.04) * clamp01((0.99 - ul) / 0.04);
+      if (am > 0.01) {
+        ctx.globalAlpha = am; ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5; ctx.beginPath();
+        MIRRORED.forEach(function (i) { var w = SWD[i]; rect(SX[i], SY[i], SX[i] + w, SY[i] + RH); });
+        ctx.stroke(); ctx.globalAlpha = 1;
+      }
+    }
     if ((a = only(S.HOLD, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
       var kh = CLS.indexOf("hold");
@@ -2829,12 +2846,12 @@ function start(D) {
     return pos >= target - 1e-9 ? "Replay" : "Play";
   }
   function syncNav() {
-    var st = STEPS[target], state = st.play ? playState() : "Play";
-    navPlay.setAttribute("aria-disabled", st.play ? "false" : "true");   // focusable even when there is nothing to play
+    var st = STEPS[target], can = st.play || st.replay, state = can ? playState() : "Play";
+    navPlay.setAttribute("aria-disabled", can ? "false" : "true");   // focusable even when there is nothing to play
     if (navPlay.getAttribute("data-state") !== state) { navPlay.setAttribute("data-state", state); navPlay.innerHTML = PLAYICON[state] + "<span>" + state + "</span>"; }
-    navPlay.title = st.play ? state + " this step's animation (→ plays too)" : "Nothing to play on this step";
+    navPlay.title = st.play ? state + " this step's animation (→ plays too)" : st.replay ? "Replay this step" : "Nothing to play on this step";
   }
-  navPlay.addEventListener("click", function () { if (STEPS[target].play) togglePlay(); });
+  navPlay.addEventListener("click", function () { if (STEPS[target].play || STEPS[target].replay) togglePlay(); });
   function readoutText(k, u) {
     if (k === S.PLACE) {
       var g = gplAt(u), cur = GF[g.i], nxt = GF[Math.min(g.i + 1, GF.length - 1)], f = g.f > 0.5 ? nxt : cur;
@@ -2851,7 +2868,11 @@ function start(D) {
       for (var r = NC; r < NU; r++) if (has(K.rszB, r)) { totR++; if (u >= popRepair(r)) cntR++; }
       return "<b>New cells</b>: " + cntR + " of " + totR;
     }
-    if (k === S.LEGAL) return u < 0.72 ? "<b>Legalising</b>" : "<b>Mirroring</b> " + n(M.dpl.mirrored) + " cells";
+    if (k === S.LEGAL) {
+      if (u < 0.72) return "<b>Legalising</b>: every cell slides to a legal site";
+      var nm = MIRRORED.filter(function (i) { return u >= mirrorAt(i); }).length;
+      return "<b>Mirroring</b>: " + n(nm) + " of " + n(MIRRORED.length) + " cells flipped";
+    }
     if (k === S.CTS) {
       if (u >= CTS_SPLIT) return "<b>Legalising</b> around the clock cells";
       var t = u / CTS_SPLIT, L = CLV;
@@ -2882,7 +2903,11 @@ function start(D) {
       for (var ll = 1; ll < DR.layers.length; ll++) if (wireLayerAt(u, ll) > 0) cl = ll;
       return "<b>" + DR.layers[cl] + "</b>: " + (DR.length[DR.layers[cl]] / 1000).toFixed(1) + " mm";
     }
-    if (k === S.FILL) return u < 1 ? "<b>Filling</b>" : "<b>" + n(FILL.length) + "</b> cells: " + n(FILLT.decap_3 || 0) + " decap cells, " + n(FILL.length - (FILLT.decap_3 || 0)) + " fill cells";
+    if (k === S.FILL && u < 1) {
+      var nf = FILL.filter(function (f) { return u - 0.6 * f.row / NROWS - 0.25 * f.site / D.sitesPerRow > 0; }).length;
+      return "<b>Filling</b>: " + n(nf) + " of " + n(FILL.length) + " cells";
+    }
+    if (k === S.FILL) return "<b>" + n(FILL.length) + "</b> cells: " + n(FILLT.decap_3 || 0) + " decap cells, " + n(FILL.length - (FILLT.decap_3 || 0)) + " fill cells";
     if (k === S.GDS) {
       if (u < GDS_START) return "<b>Stream-out</b>: every shape on every layer";
       var gi2 = 0;
@@ -3234,6 +3259,10 @@ function start(D) {
     });
   }
   window.addEventListener("resize", fitFigureText);
+  // the panel text fades out at its foot while there is more to scroll to
+  function syncMore() { var b = document.getElementById("body"); b.classList.toggle("more", b.scrollHeight - b.scrollTop - b.clientHeight > 4); }
+  document.getElementById("body").addEventListener("scroll", syncMore);
+  window.addEventListener("resize", syncMore);
   function updatePanel() {
     var st = STEPS[target];
     document.getElementById("title").textContent = st.title;
@@ -3249,6 +3278,7 @@ function start(D) {
     shownPhase = -1;
     markTerms(document.getElementById("body"), target);
     fitFigureText();
+    document.getElementById("body").scrollTop = 0; syncMore();
     // unavailable at the ends, but still focusable, so a keyboard user's focus stays put
     document.getElementById("prev").setAttribute("aria-disabled", target === 0 ? "true" : "false");
     document.getElementById("next").setAttribute("aria-disabled", target >= STEPS.length - 1 ? "true" : "false");
