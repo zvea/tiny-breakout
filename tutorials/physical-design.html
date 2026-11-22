@@ -2797,8 +2797,11 @@ function start(D) {
     if (toGDS && reduce) setTimeout(gdsCloseUp, 0);
     if ((reduce || STEPS[k].play) && !(opts && opts.replay)) {
       // a step that plays waits at its start for Play or → (and, with reduced motion, nothing
-      // moves unasked)
-      pos = STEPS[k].play && k > from ? stepStart(k) : k;
+      // moves unasked); stepping back to it shows it as it ended, but jumping to it (fresh: the
+      // stepper, a glossary link) always starts it afresh
+      var fresh = opts && opts.fresh;
+      pos = STEPS[k].play && (k > from || fresh) ? stepStart(k) : k;
+      if (fresh && k === S.GDS && !toGDS) fit();   // GDS waits at its start with the whole die in view
       draw(); syncReadout(); return;
     }
     // A step is shown from its start (the end of the one before) playing to its end, however it
@@ -3062,7 +3065,7 @@ function start(D) {
     b.setAttribute("aria-label", st.short + ": " + st.title.toLowerCase() + ", step " + (i + 1) + " of " + STEPS.length);
     // a click or tap lets go of the focus, so the arrow keys step the tutorial again rather than
     // move along the stepper (Enter or Space from the keyboard keeps it there)
-    b.addEventListener("click", function (e) { goTo(i); if (e.detail > 0) b.blur(); });
+    b.addEventListener("click", function (e) { goTo(i, { fresh: true }); if (e.detail > 0) b.blur(); });
     b.tabIndex = i === 0 ? 0 : -1;
     track.appendChild(b);
   });
@@ -3305,7 +3308,7 @@ function start(D) {
   // Esc, a click elsewhere or moving away closes it
   bodyEl.addEventListener("click", function (e) { var t = e.target.closest(".term"); if (t) showGloss(t); });
   // the step a link leads to: focus goes to its title, so a keyboard user carries on from there
-  gloss.addEventListener("click", function (e) { var b = e.target.closest("button[data-step]"); if (b) { hideGloss(); goTo(+b.dataset.step); document.getElementById("title").focus(); } });
+  gloss.addEventListener("click", function (e) { var b = e.target.closest("button[data-step]"); if (b) { hideGloss(); goTo(+b.dataset.step, { fresh: true }); document.getElementById("title").focus(); } });
   document.addEventListener("click", function (e) { if (!e.target.closest(".term, .gloss")) hideGloss(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !gloss.hidden) { var t = glossFor; hideGloss(); if (t && gloss.contains(document.activeElement)) t.focus(); e.stopPropagation(); } }, true);
   // Tab from a term with an open popup that holds a link moves into the popup; Tab out of it closes
