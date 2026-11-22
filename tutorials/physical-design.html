@@ -234,12 +234,18 @@ button { font: inherit; color: inherit; }
   width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--rule); background: var(--bg); font-size: 10.5px;
 }
 .track.numbered .seg .long { visibility: hidden; }
-.track.numbered .seg.now .long { visibility: visible; max-width: none; overflow: visible; }
+.track.numbered .seg.now .long { visibility: visible; }
+/* the current step's name is bold and so a little wider than when it was measured: it may run
+   into the space between the names rather than be clipped */
+.seg.now .long { max-width: none; overflow: visible; }
 @media (pointer: coarse) {
   .seg .num { width: 28px; height: 28px; font-size: 12px; }
   .track::before { top: 14px; }
   .iconbtn { width: 40px; height: 40px; }
+  .legend .more button { min-height: 28px; }
+  .readout input { flex: 1 1 160px; width: auto; max-width: 260px; height: 28px; }
 }
+@media (hover: none) { .playprompt kbd { display: none; } }
 .seg:hover { color: var(--ink); }
 .seg:hover .num { border-color: var(--muted); }
 .seg:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -258,6 +264,7 @@ button { font: inherit; color: inherit; }
 }
 h1 { font-size: 17px; font-weight: 700; margin: 0; color: var(--focus); }
 h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text-wrap: balance; }
+#title:focus { outline: none; }
 .body { font-size: 15px; line-height: 1.55; flex: 1; min-height: 0; overflow-y: auto; margin-right: -20px; padding-right: 20px; padding-bottom: 16px; }
 .body p { margin: 0 0 10px; }
 .body ul { margin: 0 0 10px; padding-left: 18px; }
@@ -289,8 +296,9 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
 .body .mainstep { transition: background-color 0.3s; border-radius: 4px; }
 .body .mainstep.playing { background: color-mix(in srgb, var(--focus) 9%, transparent); }
 .body .mainstep.playing .runin { background: var(--focus); }
-.body .runin.seek { cursor: pointer; }
-.body .runin.seek:hover { background: var(--focus); }
+.body .runin.seek { left: 4px; cursor: pointer; box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px color-mix(in srgb, var(--ink) 40%, transparent); }
+.body .runin.seek:hover, .body .runin.seek:focus-visible { background: var(--focus); color: transparent; }
+.body .runin.seek:hover::after, .body .runin.seek:focus-visible::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-35%, -50%); border-left: 7px solid var(--bg); border-block: 4.5px solid transparent; }
 .body .runin.seek:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .nav { display: flex; gap: 8px; }
 .nav button {
@@ -360,6 +368,12 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
 .gloss .ggrid tr:first-child th:first-child { border: 0; }
 .gloss .ggrid td { font-family: var(--mono); font-weight: 600; }
 .gloss button { font: inherit; color: var(--focus); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+/* touch screens: the badges and the popup's link big enough to tap (after their own rules) */
+@media (pointer: coarse) {
+  .body .mainstep { padding-left: 38px; }
+  .body .mainstep .runin { width: 28px; height: 28px; line-height: 28px; top: -2px; }
+  .gloss button { min-height: 28px; padding: 0 4px; }
+}
 </style>
 </head>
 <body>
@@ -393,7 +407,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
       </table>
       <h3>With the mouse or by touch</h3>
       <table>
-        <tr><td>Scroll</td><td>Zoom</td></tr>
+        <tr><td>Scroll or pinch</td><td>Zoom</td></tr>
         <tr><td>Drag</td><td>Move the view</td></tr>
         <tr><td>The play bar</td><td>Play, pause or replay the animation, or drag its slider to any moment</td></tr>
         <tr><td>Hover, or tap</td><td>Name what is under the pointer, or show a term's definition</td></tr>
@@ -407,7 +421,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
       <button type="button" id="next">Next<span aria-hidden="true"> &rarr;</span></button>
     </div>
     <section aria-live="polite">
-      <h2 id="title"></h2>
+      <h2 id="title" tabindex="-1"></h2>
     </section>
     <div class="body" id="body"></div>
   </main>
@@ -415,6 +429,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
     <div class="view" id="view" tabindex="0" role="group" aria-label="The die: scroll or + and - to zoom, drag to move, arrow keys to step">
       <canvas id="canvas" role="img" aria-label="The die"></canvas>
       <div class="loading" id="loading">Loading the layout…</div>
+      <button type="button" class="playprompt" id="playprompt" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7.5-4.5z" fill="currentColor"/></svg>Play the animation <kbd>→</kbd></button>
       <div class="zoom">
         <button type="button" class="iconbtn" id="zin" aria-label="Zoom in (+)" title="Zoom in (+)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
         <button type="button" class="iconbtn" id="zout" aria-label="Zoom out (-)" title="Zoom out (-)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 8h10"/></svg></button>
@@ -429,7 +444,6 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
           <span class="what" id="what"></span>
         </div>
       </div>
-      <button type="button" class="playprompt" id="playprompt" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7.5-4.5z" fill="currentColor"/></svg>Play the animation <kbd>→</kbd></button>
       <div class="tip" id="tip" hidden></div>
     </div>
   </section>
@@ -916,6 +930,18 @@ function start(D) {
   });
   var ONPATH = {};   // cell -> which paths it is on
   [PSETUP, PHOLD].forEach(function (P) { P.cells.forEach(function (c) { ONPATH[c] = (ONPATH[c] || []).concat([P]); }); });
+  // A path's figures as the text gives them, each rounded as shown (to 0.001 ns), so that the
+  // sums add up as written: the slack and the arrival as reported, the
+  // required time from those two, and the clock's arrival as what is left of the required time
+  function staShown(P) {
+    var q = P.q, setup = P === PSETUP, dp = 3, r = function (v) { return +v.toFixed(dp); };
+    var o = { dp: dp, slack: r(q.slack), arr: r(P.t1), unc: r(q.uncertainty), lib: r(q.libtime), crpr: r(q.crpr) };
+    o.req = r(setup ? o.arr + o.slack : o.arr - o.slack);
+    o.clk = r(o.req - o.unc - o.lib - o.crpr - (setup ? q.period : 0));
+    o.f = function (v) { return Math.abs(v).toFixed(dp); };
+    return o;
+  }
+  var SS = staShown(PSETUP), SH = staShown(PHOLD);
   var STA_SET0 = 0.04, STA_SET1 = 0.5, STA_HOLD0 = 0.56, STA_HOLD1 = 0.86;
   function staSpan(P) { return P === PSETUP ? [STA_SET0, STA_SET1] : [STA_HOLD0, STA_HOLD1]; }
   // the time the signal has reached on a path at step progress u (-1 before it starts)
@@ -1276,8 +1302,8 @@ function start(D) {
     note: "This is one run of the flow, made in November 2026 from <a href=\"https://github.com/zvea/tiny-breakout/tree/8e82a8f\">commit 8e82a8f</a> with LibreLane 3.0.14 and sky130." };
   STEPS[S.FLOOR] = { short: "Floorplan", title: "Floorplan", replay: true,
     body:
-      "<p>The <b>core area</b> is the die less a <b>core margin</b> (" + fmt(um(CORE[0])) + " µm left and right, " + fmt(um(CORE[1])) + " µm top and bottom). Standard cells may be placed only inside the core. <b>Utilisation</b> is the usual measure of how full a design is. Our design has " + n(D.netlistCells) + " cells. They fill " + fmt(100 * MOVABLE_UM2 / CORE_UM2, 0) + "% of this core.</p>" +
-      "<p>The core is divided into " + NROWS + " <b>placement rows</b>, each " + D.sitesPerRow + " <b>sites</b> long. A site is " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm. Every standard cell is one row high and a whole number of sites wide, so a legal placement gives each instance a row, a site and an orientation.</p>" +
+      "<p>The <b>core area</b> is the die less a <b>core margin</b> (" + fmt(um(CORE[0])) + " µm left and right, " + fmt(um(CORE[1])) + " µm top and bottom). Standard cells may be placed only inside the core. Our design's " + n(D.netlistCells) + " cells fill " + fmt(100 * MOVABLE_UM2 / CORE_UM2, 0) + "% of the core. That share is its <b>utilisation</b>.</p>" +
+      "<p>The core is divided into " + NROWS + " <b>placement rows</b>, each " + D.sitesPerRow + " <b>sites</b> long. A site is " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm. Every standard cell is one row high and a whole number of sites wide, so the <b>final placement</b> gives each instance a row, a site and an orientation.</p>" +
       "<p>Rows alternate orientation: <b>N</b> (north), then <b>FS</b> (flipped south), in which cells sit upside down. Every cell has its power rail (<code class=vpwr>VPWR</code>) along the top and its ground rail (<code class=vgnd>VGND</code>) along the bottom, so flipping every other row lets neighbouring rows share a rail.</p>" +
       "<p>The floorplan also sets out each metal layer's <b>routing tracks</b>, the evenly spaced lines that wires will later follow. They are not shown here.</p>" };
   STEPS[S.TAPS] = { short: "Taps", title: "Tap and endcap insertion", replay: true,
@@ -1291,26 +1317,26 @@ function start(D) {
       "<p>Above the transistors, wiring is built in stacked layers: local interconnect li1, then the metal layers met1 to met5.</p>" +
       stackFigure() +
       "<p>The <b>power distribution network</b> (PDN), or power grid, carries <code class=vpwr>VPWR</code> and <code class=vgnd>VGND</code> to every cell. Here it has two levels:</p>" +
-      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Follow-pin rails</b> on met1, along every row boundary. They lie exactly over the cells' own rails and touch them directly, so the cells need no routing to reach power.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Follow-pin rails</b> on met1, along every row boundary. They coincide with the cells' own met1 rails, so the cells need no routing to reach power.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Stripes</b> on met4, vertical, in pairs of <code class=vpwr>VPWR</code> and <code class=vgnd>VGND</code>. They are also the design's power pins, where the chip's own power grid, on met5, connects to it.</p>" +
       "<p>Where a stripe crosses a rail of its own net, a <b>via stack</b> joins them, from met1 through met2 and met3 to met4, each via an array of cuts. Met2 and met3 carry no power anywhere else, which leaves them free for signal routing.</p>" };
   STEPS[S.PINS] = { short: "Pins", title: "Pins", replay: true,
     body:
-      "<p>A design's <b>pins</b> are where its signals enter and leave. Here their positions are fixed in advance, so that the wiring of the chip around the design can reach them. All " + PINS.length + " signal pins sit on met4 along the top edge. They carry the clock, a reset, an enable, and 8-bit buses of inputs, outputs and bidirectional IOs. This design uses all but " + unusedList.length + " of them. The unused pins are still there, with nothing connected.</p>" +
+      "<p>A design's <b>pins</b> are where its signals enter and leave. Here their positions are fixed in advance, so that the wiring of the chip around the design can reach them. All " + PINS.length + " signal pins sit on met4 along the top edge. They carry the clock, a reset, an enable, an 8-bit input bus, an 8-bit output bus, and three 8-bit buses (input, output and output enable) for the chip's bidirectional pins. This design uses all but " + unusedList.length + " of them. The unused pins are still there, with nothing connected.</p>" +
       "<p>The step copies the pin shapes from a template DEF file. Without a fixed pin-out, a pin placer would put each pin near the cells it connects to.</p>" };
   STEPS[S.PLACE] = { short: "Place", title: "Global placement", play: PLACE_MS,
     body:
       "<p><b>Global placement</b> gives each of the " + n(NC) + " instances a position that keeps connected cells close while spreading them evenly over the core. Positions are continuous, so cells may overlap and sit between rows until legalisation. It works in two phases:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Initial placement</b> starts every instance at the core centre and minimises the sum of the squared lengths of the connections, which is quick to solve. With the pins along the top edge as its only anchors, it pulls the netlist into a heap under them.</p>" +
-      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Nesterov placement</b> then treats cells as charges in an electrostatic field, which pushes them out of dense regions, while a wirelength model pulls connected cells together. Density is measured over a grid of <b>bins</b>, and a <b>target density</b> of " + fmt(TARGET) + " lets cells cover at most " + fmt(100 * TARGET, 0) + "% of each bin. Progress is measured by <b>overflow</b>, and the placer stops when it falls below 0.1.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Nesterov placement</b> then treats cells as charges in an electrostatic field, which pushes them out of dense regions, while a wire length model pulls connected cells together. Density is measured over a grid of <b>bins</b>, and a <b>target density</b> of " + fmt(TARGET) + " lets cells cover at most " + fmt(100 * TARGET, 0) + "% of each bin. Progress is measured by <b>overflow</b>, and the placer stops when it falls below 0.1.</p>" +
       "<p>The run is <b>routability-driven</b>. Near 0.3 overflow it estimates routing congestion and inflates the cells in congested regions. It then rewinds to a snapshot taken while the cells were still crowded, and redoes the spreading with the inflated cells so that they end up further apart. It did this " + LASTF.rounds + " times, then kept the least congested round for the final pass.</p>",
     note: "The animation shows the first descent, one rewind and the final pass." };
-  STEPS[S.REPAIR] = { short: "Repair", title: "Repair design", play: 5000,
+  STEPS[S.REPAIR] = { short: "Repair", title: "Design repair", play: 5000,
     body:
       "<p>With every cell placed, each net's wire length can be estimated from a Steiner tree over its pins, and with it the net's capacitance and the slew at its pins. The resizer checks these against the design's limits, set in the SDC, and the library's pin limits, and repairs the violations in three ways:</p>" +
-      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Input buffers</b> go in after each input pin in use, so the pin sees a single small load and the buffer drives the logic inside. Each buffer starts at its pin, on the die's top edge, so it lies mostly outside the die until legalisation.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Input buffers</b> go in after each input pin in use except the clock, so the pin sees a single small load and the buffer drives the logic inside. Each buffer starts at its pin, on the die's top edge, so it lies mostly outside the die until legalisation.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Buffering and sizing</b> fix nets with too much slew or fanout. The resizer inserts buffers, splitting heavy loads into trees, or swaps in a stronger cell.</p>" +
-      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"3\">3</span><b>Tie cells</b> supply constant 0s and 1s. A transistor gate is never wired straight to <code>VPWR</code> or <code>VGND</code>, which would expose its thin oxide to supply noise. Synthesis left the tie cells wherever global placement put them, and the resizer replaces each with a new one beside the pin it drives.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"3\">3</span><b>Tie cells</b> supply constant 0s and 1s. A transistor gate is never wired straight to <code>VPWR</code> or <code>VGND</code>, which would expose its thin oxide to supply noise. The resizer replaces each tie cell from synthesis with a new one beside the pin it drives, so no constant needs a long wire.</p>" +
       "<p>None of this checks whether each signal reaches its flip-flop before the next clock edge. That comes after the clock tree is built.</p>",
     note: "New cells pop in where the resizer put them, overlapping others until legalisation. The resized cells grow." };
   STEPS[S.LEGAL] = { short: "Legalise", title: "Detailed placement", play: 6500,
@@ -1321,7 +1347,7 @@ function start(D) {
     note: "All cells slide at once to their legal sites, some flipping vertically to suit their row. Then the mirrored cells flip horizontally." };
   STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", play: 15000,
     body:
-      "<p>So far the clock has been one net, <code>clk</code>, from its pin to all " + M.cts.sinks + " flip-flops. As a real wire it would be far too heavily loaded, and the clock edge would reach near and far flip-flops at different times. That difference is called <b>skew</b>. It shifts the window in which a signal sent from one flip-flop must arrive at another. Too much skew makes signals arrive too late or too early.</p>" +
+      "<p>So far the clock has been one net, <code>clk</code>, from its pin to all " + M.cts.sinks + " flip-flops. As a real wire it would be far too heavily loaded, and the clock edge would reach near and far flip-flops at different times. That difference is called <b>skew</b>. It shifts the window in which a signal sent from one flip-flop must arrive at another. Too much skew can push a signal outside that window.</p>" +
       "<p><b>Clock tree synthesis</b> replaces the single <code>clk</code> net with a tree of <b>clock buffers</b>. Each buffer drives only a small load. Every route from the pin to a flip-flop passes through the same number of buffers and about the same length of wire, so the clock edge reaches all the flip-flops at nearly the same time. The tree is built in two stages:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Clustering</b> splits the flip-flops into groups of nearby ones, so that each group's load capacitance stays within what one clock buffer may drive. The tool tries several limits on group size and span, and the best result here came from groups of at most " + M.cts.maxsinks + " flip-flops. Each group gets its own <b>leaf buffer</b>, placed near its centre. Where a buffer's load is light, a <b>dummy load</b> goes beside it, mostly beside leaf buffers. A dummy load is a clock buffer or inverter that drives nothing. It evens out the loads, so that every route delays the clock by about the same amount.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Branch buffers</b> then join the leaf buffers to the <b>root buffer</b>, which the pin drives. Each branch buffer drives the leaf buffers in its part of the die, and the root drives the branch buffers.</p>" +
@@ -1338,15 +1364,15 @@ function start(D) {
     body:
       "<p><b>Global routing</b> plans every net's route before any wire is drawn. Routing uses met1 to met4: met1 and met3 run horizontally, and met2 and met4 vertically, so wires on neighbouring layers cross at right angles and join through vias.</p>" +
       "<p>The router lays a grid of <b>g-cells</b> over the die. For each net it first finds a tree through the g-cells, in two dimensions, and then gives each stretch of the tree a layer. The g-cells and layers a net is given are its <b>route guides</b>.</p>" +
-      "<p>The limit is capacity. Wires pass from one g-cell to the next across their shared edge, and each edge can take only as many wires as it has routing tracks, less those the power grid blocks. Where too many nets would cross an edge, the router detours some through quieter g-cells. Its first pass left some edges over capacity. After " + GR.extra + " rounds of rip-up and reroute, none were left.</p>" +
+      "<p>Wires pass from one g-cell to the next across their shared edge, and each edge can take only as many wires as it has routing tracks, less those the power grid blocks and a " + fmt(GR.adjust, 0) + "% reserve. Where too many nets would cross an edge, the router detours some through quieter g-cells. Its first pass left some edges over capacity. After " + GR.extra + " rounds of rip-up and reroute, none were left.</p>" +
       "<p>The last picture counts, for every g-cell, the nets with a guide in it. The stronger the colour, the busier the g-cell. The router itself works with the wires across each edge, so the picture shows where routing is dense, not exactly where it is tight.</p>",
     note: "First the guides of " + ROUTE_EX.length + " example nets, one at a time, then every net as a count per g-cell." };
   STEPS[S.ANT] = { short: "Antenna", title: "Antenna repair", play: 6500,
     body:
-      "<p>During fabrication the chip is built up layer by layer, and plasma etching charges every exposed wire. While a layer is etched, a wire on it may reach transistor gates but not yet any diffusion, which only higher layers will connect. With nowhere to discharge, a long wire can damage the thin gate oxide. This is the <b>antenna effect</b>. In sky130 the rule limits, on each layer, the area of a wire's sidewalls (perimeter × thickness) relative to the gate area it reaches.</p>" +
-      "<p>After global routing, the <b>antenna check</b> estimates every net's wires from its route guides and tests them against the rule. Only one net breaks it, <code>clk</code>, at the root clock buffer's input. Its driver is outside the block, so the clock pin's long route reaches only transistor gates. On " + AM.layer + " its sidewall area is " + Math.round(100 * (AM.pr - 1)) + "% over the limit.</p>" +
+      "<p>During fabrication the chip is built up layer by layer, and plasma etching charges every exposed wire. While a layer is etched, a wire on it may reach transistor gates but not yet any diffusion, which only higher layers will connect. With nowhere to discharge, a long wire can damage the thin gate oxide. This is the <b>antenna effect</b>. The sky130 <b>antenna rule</b> limits, on each layer, the area of a wire's sidewalls (perimeter × thickness) relative to the gate area it reaches.</p>" +
+      "<p>After global routing, the <b>antenna check</b> estimates every net's wires from its route guides and tests them against the rule. Only one net breaks it, <code>clk</code>, at the root buffer's input. Its driver is outside the block, so the clock pin's long route reaches only transistor gates. On " + AM.layer + " its sidewall area is " + Math.round(100 * (AM.pr - 1)) + "% over the limit.</p>" +
       "<p>The repair can move a stretch of wiring up a layer or add a diode. For <code>clk</code> it adds one <b>antenna diode</b> beside the root buffer, and the check after detailed routing finds no net breaking the rule.</p>" +
-      "<p>Placing the diode makes the tool legalise the whole placement again. That puts almost every cell back in its row's orientation, and the version of LibreLane used here does not mirror them again, so " + n(AM.flipped) + " cells lose their mirroring, at some cost in wire length. Because cells moved and flipped, the global router re-routes the nets they touch, and " + n(AM.rerouted) + " nets end up with new guides.</p>",
+      "<p>Placing the diode makes the tool legalise the whole placement again. That puts almost every cell back in its row's orientation, and the version of LibreLane used here does not mirror them again, so " + n(AM.flipped) + " cells lose their mirroring, at some cost in wire length. Because cells moved and flipped, the global router reroutes the nets they touch, and " + n(AM.rerouted) + " nets end up with new guides.</p>",
     note: "First the clk net's guides from the pin to the root buffer, and the wires the check estimates from them. Then the diode, and the cells that lose their mirroring flipping back." };
   STEPS[S.DRT] = { short: "Detail", title: "Detailed routing", play: 14000,
     body:
@@ -1365,27 +1391,27 @@ function start(D) {
     note: "Fill cells are hatched, decap cells solid." };
   STEPS[S.STA] = { short: "Timing", title: "Signoff timing", play: 9000,
     body:
-      "<p><b>Parasitic extraction</b> works out each wire's resistance and capacitance from its shape. <b>Static timing analysis</b> then uses them to check every timing path. It needs no test inputs. Instead it propagates the earliest and latest arrival times through every cell and wire, from the library's delay tables and the extracted parasitics.</p>" +
+      "<p><b>Signoff</b> is the last round of checks before the layout goes to the fab. <b>Parasitic extraction</b> works out each wire's resistance and capacitance from its shape. <b>Static timing analysis</b> then uses them to check every timing path. It needs no test inputs. Instead it propagates the earliest and latest arrival times through every cell and wire, from the library's delay tables and the extracted parasitics.</p>" +
       "<p>The checks run in " + CORNERS.length + " <b>corners</b>, the conditions the chip must work under. There are three cases for the transistors, slow, typical and fast, each with its own supply voltage and temperature. Each case is checked with small, typical and large wire parasitics.</p>" +
       "<p>Every delay is also derated by " + fmt(ST.derate, 0) + "% for variation across the chip. Where the launching and capturing flip-flops share part of the clock tree, derating counts that part as late for one and early for the other, which the same wires and buffers cannot be. <b>Clock reconvergence pessimism removal</b> (CRPR) gives that difference back.</p>" +
-      "<p>In this design no corner fails setup or hold. The closest paths are these:</p>" +
-      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Setup</b> is tightest with slow transistors and large parasitics (" + cornerName("max_ss_100C_1v60") + "). The worst path between flip-flops passes through " + PSETUP.between + " cells. The next clock edge comes at " + fmt(PSETUP.q.period) + " ns and reaches the capturing flip-flop " + fmt(PSETUP.q.required - PSETUP.q.period - PSETUP.q.uncertainty - PSETUP.q.libtime - PSETUP.q.crpr) + " ns later through the clock tree. With " + fmt(-PSETUP.q.uncertainty) + " ns of uncertainty and " + fmt(-PSETUP.q.libtime) + " ns of setup time taken off, and " + fmt(PSETUP.q.crpr, 3) + " ns of CRPR added back, the data must arrive by " + fmt(PSETUP.q.required) + " ns. It arrives at " + fmt(PSETUP.t1) + " ns, so the slack is " + fmt(PSETUP.q.slack) + " ns. Paths from input pins and to output pins have less room, because the SDC assumes a fifth of the period is spent outside the design. The worst of them has " + fmt(ST.worst.slack) + " ns of slack.</p>" +
-      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Hold</b> is tightest with fast transistors and small parasitics (" + cornerName("min_ff_n40C_1v95") + "). The worst path is a flip-flop that feeds itself back through " + PHOLD.between + " cells. The clock edge reaches the flip-flop at " + fmt(PHOLD.q.required - PHOLD.q.uncertainty - PHOLD.q.libtime - PHOLD.q.crpr, 3) + " ns. With " + fmt(PHOLD.q.uncertainty) + " ns of uncertainty and the hold time (" + (PHOLD.q.libtime < 0 ? "−" : "") + fmt(Math.abs(PHOLD.q.libtime), 3) + " ns) added, and " + fmt(-PHOLD.q.crpr, 3) + " ns of CRPR taken off, the new value may arrive from " + fmt(PHOLD.q.required, 3) + " ns. It arrives at " + fmt(PHOLD.t1, 3) + " ns, so the slack is " + fmt(PHOLD.q.slack, 3) + " ns.</p>" +
+      "<p>In this design no corner fails setup or hold. The paths closest to failing are these:</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Setup</b> is tightest with slow transistors and large parasitics (" + cornerName("max_ss_100C_1v60") + "). The worst path between flip-flops passes through " + PSETUP.between + " cells. The next clock edge comes at " + fmt(PSETUP.q.period) + " ns and reaches the capturing flip-flop " + SS.f(SS.clk) + " ns later through the clock tree. With " + fmt(-SS.unc) + " ns of uncertainty and " + SS.f(SS.lib) + " ns of setup time taken off, and " + SS.f(SS.crpr) + " ns of CRPR added back, the data must arrive by " + SS.f(SS.req) + " ns. It arrives at " + SS.f(SS.arr) + " ns, so the slack is " + SS.f(SS.slack) + " ns. Paths from input pins and to output pins have less room, because the SDC assumes a fifth of the period is spent outside the design. The worst of them has " + ST.worst.slack.toFixed(3) + " ns of slack.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Hold</b> is tightest with fast transistors and small parasitics (" + cornerName("min_ff_n40C_1v95") + "). The worst path runs from a flip-flop back to itself through " + PHOLD.between + " cells. The clock edge reaches the flip-flop at " + SH.f(SH.clk) + " ns. With " + fmt(SH.unc) + " ns of uncertainty and the hold time (" + (SH.lib < 0 ? "−" : "") + SH.f(SH.lib) + " ns) added, and " + SH.f(SH.crpr) + " ns of CRPR taken off, the new value may arrive from " + SH.f(SH.req) + " ns. It arrives at " + SH.f(SH.arr) + " ns, so the slack is " + SH.f(SH.slack) + " ns.</p>" +
       "<p>The slowest path between flip-flops uses only " + Math.round(100 * PSETUP.t1 / PSETUP.q.period) + "% of the " + fmt(PSETUP.q.period) + " ns cycle, so in this design hold is the tight check. Up to " + slewMax("ss") + " pins exceed the SDC's slew limit, most in the slow corners, because repair worked from wire estimates made before routing. All stay within the library's own limit. LibreLane reports them as warnings, which do not stop the flow.</p>",
     note: "Each path's signal travels at the arrival times the analysis computed." };
   STEPS[S.IR] = { short: "IR drop", title: "IR drop analysis", play: 7000,
     body:
       "<p>The power grid has resistance, so the supply sags on its way to the cells. A cell far from where power enters sees a little less than 1.8 V on <code>VPWR</code>, and a little more than 0 V on <code>VGND</code>. Too much <b>IR drop</b> slows cells down and can break timing.</p>" +
-      "<p>The analysis is static. It models each power net's rails, stripes and vias as a network of resistors, with each met4 stripe, where power enters the design, held at its net's voltage. Each cell is a current source at its power pins, drawing its average current, its estimated power divided by the supply voltage. The power comes from the library's power tables, measured in simulations of each cell, and an assumed rate of signal switching. Solving the network gives the voltage at every point of the grid.</p>" +
+      "<p>The analysis models each power net's rails, stripes and vias as a network of resistors, with each met4 stripe, where power enters the design, held at its net's voltage. Each cell is a current source at its power pins, drawing its average current, its estimated power divided by the supply voltage. The power comes from the library's power tables, measured in simulations of each cell, and an assumed rate of signal switching. Solving the network gives the voltage at every point of the grid.</p>" +
       "<p>This design draws about " + fmt(IR.power * 1000, 2) + " mW in the typical corner, so the drop is tiny. At worst it is " + fmt(IR.worst[0], 1) + " µV on <code>VPWR</code> and " + fmt(IR.worst[1], 1) + " µV on <code>VGND</code>, about " + fmt(IR.worst[0] / 18000, 4) + "% of the supply. The drop is smallest beside the stripes, about " + fmt(IRNEAR, 0) + " µV on average, and the worst values are at the far ends of rails, beyond the outermost stripes. It also differs from rail to rail, with the current drawn by the cells along each. This is the average drop. The momentary drop when many cells switch at once is larger, and that is what the decap cells guard against.</p>",
     note: "The drop is shown in colour along every rail." };
   STEPS[S.GDS] = { short: "GDS", title: "GDS stream-out", play: GDS_MS,
     body:
-      "<p>Finally the layout is <b>streamed out</b> to a GDS file, from which the fab makes the masks. Until now the tools knew each cell only by its outline, its pins and the areas wiring must avoid, and the pictures so far have drawn it as a box. Stream-out puts in each cell's full layout from the library and adds the routing and the power grid.</p>" +
+      "<p>Finally the layout is <b>streamed out</b> to a GDS file, from which the fab makes the masks. Until now the tools knew each cell only by its outline, its pins and the areas wiring must avoid, and the pictures so far have drawn it as a box. Stream-out writes the routing and the power grid together with each cell's full layout from the library.</p>" +
       "<p>The layers build up from the substrate: the n-well, diffusion, poly, contacts and li1 inside the cells, then the metals and the vias between them. Each kind of standard cell is stored once, as a <b>master</b>, and placed by reference. The design uses " + n(GD.masters.length) + " masters for its " + n(u16len(GD.insts) / 6) + " instances, the " + n(D.netlistCells) + " from synthesis and every cell the flow added.</p>" +
-      "<p>Zoomed in far enough, the transistors become visible. A <b>transistor</b> forms wherever a poly line crosses diffusion. The poly is its <b>gate</b>, and the diffusion on either side are its <b>source</b> and <b>drain</b>. A voltage on the gate opens or closes a channel between them.</p>" +
+      "<p>Zoomed in far enough, the transistors become visible. A transistor forms wherever a poly line crosses diffusion. The poly is its gate, and the diffusion on either side are its <b>source</b> and <b>drain</b>. A voltage on the gate opens or closes a channel between them.</p>" +
       mosfetFigure() +
-      "<p>Two checks remain. <b>DRC</b> checks the GDS against the full sky130 rule set, which covers far more rules than the router knows. For <b>LVS</b>, a netlist is extracted from the layout and compared with the flow's final netlist, which holds every cell added since synthesis. Each standard cell is treated as a black box here, so LVS checks the wiring between cells, and the cells' insides come from the library unchanged. Both checks are clean.</p>",
+      "<p>Two checks remain. <b>Design rule checking</b> (DRC) checks the GDS against the full sky130 rule set, which covers far more rules than the router knows. For <b>LVS</b>, a netlist is extracted from the layout and compared with the flow's final netlist, which holds every cell added since synthesis. Each standard cell is treated as a black box here, so LVS checks the wiring between cells, and the cells' insides come from the library unchanged. Both checks are clean.</p>",
     note: "The view zooms in to show transistors, then back out to the whole die. Zoom in again to explore. Metals are drawn translucent, so the layers beneath show through." };
   function u16len(b64) { return Math.floor(b64.length * 3 / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0); }
   // a run time to the minute (seconds only when under a minute)
@@ -1434,7 +1460,7 @@ function start(D) {
     // the legend at its fullest: the tallest any step shows
     var el = document.getElementById("legend"), keep = el.innerHTML;
     legendH = 0;
-    for (var k = 0; k < STEPS.length; k++) { el.innerHTML = legendHTML(legendItems(k, false), LEG_OPEN); legendH = Math.max(legendH, el.offsetHeight); }
+    for (var k = 0; k < STEPS.length; k++) [false, true].forEach(function (early) { el.innerHTML = legendHTML(legendItems(k, false, early), LEG_OPEN); legendH = Math.max(legendH, el.offsetHeight); });
     el.innerHTML = keep;
     footH = Math.max(44, document.getElementById("foot").offsetHeight);
   }
@@ -1827,6 +1853,7 @@ function start(D) {
     // only on their own step: they fade as the next begins, with the change of focus
     var out = focusFade(S.IR);
     if (pos <= S.FILL || pos >= S.STA + out) return;
+    if (pos > S.STA && !anim && target !== S.STA) return;   // the next step waiting at its start
     var u = within(pos, S.STA), d = DIMC.path * (pos > S.STA ? clamp01((S.STA + out - pos) / out) : 1);
     if (d <= 0.01) return;
     // the paths' cells first, then their wires over them, as the metal lies over the cells
@@ -2402,7 +2429,7 @@ function start(D) {
       ctx.beginPath(); rect(CORE[0], yr, CORE[2], yr + RH); ctx.stroke();
       var fsz = Math.min(11, Math.floor(RH * cam.s * 0.72));
       // named inside the row when that is legible, otherwise by a callout (placed below, after the close-up)
-      var rowCallout = fsz < 8;
+      var rowCallout = fsz < 11;
       if (!rowCallout) {
         ctx.font = "500 " + fsz + "px " + C.font; ctx.fillStyle = C.ink; ctx.textAlign = "left"; ctx.textBaseline = "middle";
         ctx.fillText("row: " + D.sitesPerRow + " sites", sx(CORE[0]) + 6, sy(yr + RH / 2) + 0.5);
@@ -2681,7 +2708,8 @@ function start(D) {
       if (GPATH) GDS_ORDER.forEach(function (g, i) {
         var t0 = GDS_START + GDS_L * i, al = clamp01((uf - t0) / GDS_Q) * clamp01((t0 + GDS_L - uf) / GDS_Q);
         if (al <= 0.01) return;
-        above(g.what + (g.l !== "poly" && !gdsShapeNear(g) ? " (none in this view)" : ""), g.l === "poly" ? [GFOCUS.x, GFOCUS.y] : gdsShapeNear(g), al);
+        // the callout names the layer; the play bar says what it is
+        above(g.what.split(":")[0] + (g.l !== "poly" && !gdsShapeNear(g) ? " (none in this view)" : ""), g.l === "poly" ? [GFOCUS.x, GFOCUS.y] : gdsShapeNear(g), al);
       });
     }
     // each net's worst drop, from when its drop is drawn. The two points may be a row apart, so
@@ -2711,11 +2739,11 @@ function start(D) {
       if (us >= STA_SET0 || pos > S.STA) {
         ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_SET0) / 0.04);
         var pl = ce(PSETUP.st[0].ci); label("setup path: launching flip-flop", pl[0], pl[1], { dx: 18, dy: -40, avoid: pathsOverlap });
-        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("setup path: capturing flip-flop, slack " + fmt(PSETUP.q.slack) + " ns", pc[0], pc[1], { dx: -40, dy: -44, align: "right", avoid: pathsOverlap }); }   // above to the left: the path arrives from the left, below
+        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("setup path: capturing flip-flop, slack " + SS.f(SS.slack) + " ns", pc[0], pc[1], { dx: -40, dy: -44, align: "right", avoid: pathsOverlap }); }   // above to the left: the path arrives from the left, below
       }
       if (us >= STA_HOLD0 || pos > S.STA) {
         ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_HOLD0) / 0.04);
-        var ph = ce(PHOLD.st[0].ci); label("hold path: flip-flop to itself, slack " + fmt(PHOLD.q.slack, 3) + " ns", ph[0], ph[1], { dx: 18, dy: 30, avoid: pathsOverlap });
+        var ph = ce(PHOLD.st[0].ci); label("hold path: flip-flop to itself, slack " + SH.f(SH.slack) + " ns", ph[0], ph[1], { dx: 18, dy: 30, avoid: pathsOverlap });
       }
     }
     ctx.globalAlpha = 1;
@@ -2750,8 +2778,10 @@ function start(D) {
     var from = pos;
     var toGDS = k === S.GDS && target !== S.GDS;
     if (target === S.GDS && k !== S.GDS && Math.abs(cam.s - fitS) > 1e-9) fit(600);   // back out of the close-up
-    if (k !== target) { hideTip(); hideGloss(); }
-    target = k; updatePanel(); setHash(k);
+    // a replay keeps the panel as it is: its scroll position and the focus stay put
+    var changed = k !== target;
+    if (changed) { hideTip(); hideGloss(); }
+    target = k; if (changed) updatePanel(); setHash(k);
     if (toGDS && reduce) setTimeout(gdsCloseUp, 0);
     if ((reduce || STEPS[k].play) && !(opts && opts.replay)) {
       // a step that plays waits at its start for Play or → (and, with reduced motion, nothing
@@ -2861,7 +2891,7 @@ function start(D) {
       if (nxt.rewind && g.f > 0.05) return "<b>Congestion check</b>: inflate crowded cells, rewind";
       if (f.ip !== undefined) return f.ip === 0 ? "<b>Start</b>: every instance at the core centre" : "<b>Initial placement</b>, iteration " + f.ip + " of " + nIP;
       var pass = f.rewind || f.rounds ? "Nesterov placement</b>, again" : "Nesterov placement</b>";
-      return "<b>" + pass + " · overflow " + f.overflow.toFixed(2) + " · wirelength " + (f.hpwl / 1000).toFixed(1) + " mm";
+      return "<b>" + pass + " · overflow " + f.overflow.toFixed(2) + " · wire length " + (f.hpwl / 1000).toFixed(1) + " mm";
     }
     if (k === S.REPAIR) {
       if (u >= 0.6) return "<b>Resizing</b> " + M.rsz.resized + " instances";
@@ -2926,11 +2956,11 @@ function start(D) {
       // which of them the signal has reached
       var seq = [], atI = 0;
       P.st.forEach(function (x) { var nm = x.pin.split("/")[0]; if (seq[seq.length - 1] !== nm) seq.push(nm); if (x.t <= T) { at = x; atI = seq.length - 1; } });
-      var dp = P === PSETUP ? 2 : 3;
-      if (T >= P.t1) return P === PSETUP ? "<b>Setup slack</b> " + fmt(P.q.slack) + " ns (arrives " + fmt(P.t1) + " ns, must arrive by " + fmt(P.q.required) + " ns)"
-                                         : "<b>Hold slack</b> " + fmt(P.q.slack, 3) + " ns (arrives " + fmt(P.t1, 3) + " ns, may arrive from " + fmt(P.q.required, 3) + " ns)";
+      var dp = 3;
+      if (T >= P.t1) return P === PSETUP ? "<b>Setup slack</b> " + SS.f(SS.slack) + " ns (arrives " + SS.f(SS.arr) + " ns, must arrive by " + SS.f(SS.req) + " ns)"
+                                         : "<b>Hold slack</b> " + SH.f(SH.slack) + " ns (arrives " + SH.f(SH.arr) + " ns, may arrive from " + SH.f(SH.req) + " ns)";
       var where = atI === 0 ? "leaving the launching flip-flop" : atI === seq.length - 1 ? "at the capturing flip-flop" : "cell " + atI + " of " + (seq.length - 2);
-      return "<b>" + (P === PSETUP ? "Setup path" : "Hold path") + "</b>: " + fmt(T, dp) + " ns, " + where;
+      return "<b>" + (P === PSETUP ? "Setup path" : "Hold path") + "</b>: " + T.toFixed(dp) + " ns, " + where;
     }
     return "";
   }
@@ -2952,12 +2982,17 @@ function start(D) {
   function seekPhase(n) {
     var f = PHASES[target]; if (!f) return;
     for (var u = 0; u < 1; u += 0.002) if (f(u) === n) break;
-    stopAnim(); pos = target - 1 + Math.max(u, 0.0005);
+    // just inside the part, and past where the step waits to be played, so the first frame
+    // already shows it
+    stopAnim(); pos = Math.max(target - 1 + u + 1e-6, stepStart(target) + 1e-4);
     goTo(target, { replay: true });
+    var p = document.querySelectorAll("#body .mainstep")[n - 1];
+    if (p) p.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }
   // the play prompt over the picture: a step that plays, waiting at its start
   var prompt = document.getElementById("playprompt");
-  prompt.addEventListener("click", function () { togglePlay(); });
+  // the prompt goes once the step plays: the focus moves to the play bar's button, not to nowhere
+  prompt.addEventListener("click", function () { var had = document.activeElement === prompt; togglePlay(); if (had) playBtn.focus(); });
   // where a step that plays waits before it is played (placement's fade-in already done)
   function stepStart(k) { return k - 1 + (k === S.PLACE ? FADE : 0.001); }
   function syncPrompt() {
@@ -2967,12 +3002,13 @@ function start(D) {
   function syncReadout() {
     syncPrompt();
     syncNav();
+    if (gdsEarly() !== legendEarly) updateLegend();
     var st = STEPS[target], show = !!st.play && pos > target - 1 - 1e-9 && pos <= target + 1e-9;
     if (!show && readout.contains(document.activeElement)) view.focus();
     readout.hidden = !show;
     if (!show) { syncPhase(null); return; }
     var u = clamp01(pos - (target - 1)), text = readoutText(target, u);
-    syncPhase(u);
+    syncPhase(prompt.hidden ? u : null);   // no part is playing while the step waits at its start
     scrub.value = Math.round(u * 1000);
     scrub.setAttribute("aria-valuetext", plain(text));
     // the icon only when it changes: replaced every frame while playing, the one a click
@@ -3010,7 +3046,9 @@ function start(D) {
     b.innerHTML = '<span class="long">' + st.short + '</span><span class="num">' + (i + 1) + "</span>";
     b.title = st.title;
     b.setAttribute("aria-label", st.short + ": " + st.title.toLowerCase() + ", step " + (i + 1) + " of " + STEPS.length);
-    b.addEventListener("click", function () { goTo(i); });
+    // a click or tap lets go of the focus, so the arrow keys step the tutorial again rather than
+    // move along the stepper (Enter or Space from the keyboard keeps it there)
+    b.addEventListener("click", function (e) { goTo(i); if (e.detail > 0) b.blur(); });
     b.tabIndex = i === 0 ? 0 : -1;
     track.appendChild(b);
   });
@@ -3042,9 +3080,9 @@ function start(D) {
     { from: S.PLACE, label: "Flip-flop", c: "ff", g: "ff" },
     { from: S.REPAIR, label: "Buffer (repair)", c: "buf", g: "buf" },
     { from: S.REPAIR, label: "Tie cell", c: "tie", g: "tie" },
-    { from: S.CTS, label: "Clock buffer or dummy", c: "clock", g: "clock" },
+    { from: S.CTS, label: "Clock buffer or dummy load", c: "clock", g: "clock" },
     { from: S.CTS, to: S.CTS, label: "Clock flyline", c: "clknet", g: "clknet", line: true },
-    { from: S.CTS, to: S.CTS, label: "Clock sink (flip-flop or dummy)", c: "clkpin", g: "clknet", dot: true },
+    { from: S.CTS, to: S.CTS, label: "Clock sink (flip-flop or dummy load)", c: "clkpin", g: "clknet", dot: true },
     { from: S.HOLD, label: "Delay cell (hold)", c: "hold", g: "hold" }
   ].concat(GLAY.map(function (l) { return { from: l === "li1" ? S.DRT : S.ANT, label: l, c: l, g: l === "li1" ? "route" : "wire", layer: true }; }))
    .concat([{ from: S.GRT, to: S.DRT, label: "Route guide", c: "guide", g: "guide" },
@@ -3053,7 +3091,7 @@ function start(D) {
             { from: S.DRT, label: "Via (zoom in)", c: "wvia", g: "wire" },
             { from: S.FILL, label: "Decap cell", c: "decap", g: "decap" },
             { from: S.FILL, label: "Fill cell", c: "fill", g: "fill", hatch: true },
-            { from: S.STA, to: S.STA, label: "Worst flip-flop to flip-flop setup path", c: "setup", g: "path", line: true },
+            { from: S.STA, to: S.STA, label: "Worst setup path", c: "setup", g: "path", line: true },
             { from: S.STA, to: S.STA, label: "Worst hold path", c: "holdp", g: "path", line: true },
             { from: S.IR, to: S.IR, label: "VPWR drop", lo: 0, hi: Math.round(IR.worst[0]) + " µV", c: "ir", g: "ir", irramp: "vpwr" },
             { from: S.IR, to: S.IR, label: "VGND drop", lo: 0, hi: Math.round(IR.worst[1]) + " µV", c: "ir", g: "ir", irramp: "vgnd" },
@@ -3070,12 +3108,15 @@ function start(D) {
     if (!l.layer) return l.g;
     return k === S.ANT ? "antnet" : k === S.GDS ? "gds" : l.g;
   }
-  function legendItems(k, all) {
-    return LEGEND.filter(function (l) { return l.from <= k && (all || !(l.to < k)); }).map(function (l) {
+  // early: the GDS step before its first layer goes in, when the picture still shows the cells
+  function legendItems(k, all, early) {
+    var pre = k === S.GDS && early;
+    return LEGEND.filter(function (l) { return l.from <= k && (all || !(l.to < k)) && !(pre && legendGroup(l, k) === "gds"); }).map(function (l) {
       var g = legendGroup(l, k);
-      return { l: l, dimmed: !all && (focusOf(k, g) < 1 || (k === S.GDS && g !== "gds")) };
+      return { l: l, dimmed: !all && (focusOf(k, g) < 1 || (k === S.GDS && !pre && g !== "gds")) };
     });
   }
+  function gdsEarly() { return target === S.GDS && pos < S.GDS && within(pos, S.GDS) < GDS_START; }
   // a swatch's background, for the legend and the tips: { c: colour token, hatch, ramp, irramp }
   function swatchBg(it) {
     if (it.irramp) return "linear-gradient(90deg, color-mix(in srgb, var(--" + it.irramp + ") 20%, var(--core)), var(--" + it.irramp + "), color-mix(in srgb, var(--" + it.irramp + ") 55%, var(--irend)))";
@@ -3085,7 +3126,7 @@ function start(D) {
   }
   // The legend: this step's entries first, at full strength; the rest, greyed, behind one chip
   // ("+ 22 earlier") that expands them in place. Whether it is open is remembered for the viewer.
-  var LEG_OPEN = false;
+  var LEG_OPEN = false, legendEarly = false;
   try { LEG_OPEN = localStorage.getItem("pd-legend-open") === "1"; } catch (e) {}
   function legendEntry(it) {
     var l = it.l, sw;
@@ -3108,7 +3149,8 @@ function start(D) {
   function updateLegend() {
     var el = document.getElementById("legend");
     el.classList.toggle("gds", target === S.GDS);   // the metals as outlines, as drawn
-    el.innerHTML = legendHTML(legendItems(target, false), LEG_OPEN);
+    legendEarly = gdsEarly();
+    el.innerHTML = legendHTML(legendItems(target, false, legendEarly), LEG_OPEN);
   }
   document.getElementById("legend").addEventListener("click", function (e) {
     if (!e.target.closest(".more button")) return;
@@ -3126,6 +3168,8 @@ function start(D) {
     { k: "layout", rx: /\blayouts?\b/, from: S.DIE, home: true, def: "The shapes on every layer that make up a chip or a cell. The fab makes its masks from the chip's layout." },
     { k: "flip-flop", rx: /\bflip-flops?\b/, from: S.DIE, home: true, def: "A cell that stores one bit. At each rising edge of its clock it takes the value at its data input and holds it until the next edge." },
     { k: "buffer", rx: /\bbuffers?\b/, from: S.DIE, home: true, def: "A cell whose output repeats its input. Buffers are inserted to drive long wires or many inputs, or to add delay." },
+    { k: "sky130", rx: /\bsky130\b/, from: S.DIE, home: true, def: "SkyWater's 130 nm CMOS process, whose design files (its rules, layers and standard cell libraries) are open source." },
+    { k: "die", rx: /\bdie\b/, from: S.DIE, def: "The rectangle of silicon the layout occupies, here the die area set at the start." },
     { k: "flow", rx: /\bflow\b/, from: S.DIE, home: true, def: "The chain of tools that turns a netlist into a layout, run one step after another." },
     { k: "LibreLane", rx: /\bLibreLane\b/, from: S.DIE, home: true, def: "The open-source flow used here. It runs each step's tool, most of them from OpenROAD, and passes the layout from one step to the next." },
     { k: "OpenROAD", rx: /\bOpenROAD\b/, from: S.DIE, home: true, def: "An open-source toolkit for physical design. Most steps of the flow are OpenROAD tools." },
@@ -3139,26 +3183,27 @@ function start(D) {
     { k: "orientation", rx: /\borientation\b/, from: S.FLOOR, home: true, def: "How a cell sits in its row:", grid: [["", "as drawn", "mirrored"], ["upright", "N", "FN"], ["upside down", "FS", "S"]], after: "Rows alternate N and FS." },
     { k: "routing track", rx: /\b(routing )?tracks?\b/, from: S.FLOOR, home: true, inBold: true, def: "One of the evenly spaced lines on a layer that wires follow." },
     { k: "PMOS, NMOS", rx: /\b[PN]MOS\b/, def: "The two kinds of transistor in CMOS logic. PMOS transistors pull a logic gate's output up to VPWR, and NMOS transistors pull it down to VGND." },
-    { k: "rail", rx: /\brails?\b/, from: S.FLOOR, home: true, def: "A power line along the top or bottom edge of a cell, VPWR at the top and VGND at the bottom. The cells of a row abut, so their rails join into one along the row. The power grid later lays a met1 rail over each." },
+    { k: "rail", rx: /\brails?\b/, from: S.FLOOR, home: true, def: "A power line along the top or bottom edge of a cell, VPWR at the top and VGND at the bottom. The cells of a row abut, so their rails join into one along the row. The power grid later lays a met1 rail on each." },
     { k: "n-well", rx: /\bn-wells?\b|\bwells\b/, def: "An n-doped region of the substrate where the PMOS transistors sit. It must be tied to VPWR, which the well taps do." },
     { k: "VPWR, VGND", rx: /\bVPWR\b|\bVGND\b/, inCode: true, from: S.FLOOR, def: "The supply (1.8 V) and ground nets." },
     { k: "substrate", rx: /\b(p-)?substrate\b/, def: "The silicon wafer the chip is built in, lightly p-doped. The NMOS transistors sit in it directly, and it is tied to VGND." },
     { k: "thyristor", rx: /\bthyristors?\b/, from: S.TAPS, home: true, def: "A switch made of four alternating layers of p- and n-type silicon (PNPN). Once triggered, it stays on until the current through it stops." },
-    { k: "design rules (DRC)", rx: /\bDRC\b|\bdesign[- ]rules?\b/, from: S.TAPS, home: true, def: "The fab's geometric rules on the widths, spacings and distances of shapes. DRC checks a layout against them." },
+    { k: "design rules (DRC)", rx: /\bDRC\b|\bdesign[- ]rules?\b/, from: S.TAPS, home: true, def: "The fab's geometric rules on the widths, spacings and distances of shapes. DRC (design rule checking) checks a layout against them." },
     { k: "decap cell", rx: /\bdecap cells?\b/, from: S.FILL, home: true, inBold: true, def: "A cell that holds a capacitor between VPWR and VGND, which steadies the supply when nearby cells switch." },
-    { k: "li1, met1–met5", rx: /\b(met[1-5]|li1)\b/, from: S.PDN, home: true, def: "The wiring layers above the transistors. The lowest, li1, is used inside the cells and for their pins. Above it are met1 to met5. This design is wired on met1 to met4, with met1 and met3 horizontal and met2 and met4 vertical.", fig: function () { return stackFigure(true); } },
+    { k: "li1, met1–met5", rx: /\b(met[1-5]|li1)\b|\bmetals\b|\bmetal layers?\b/, from: S.PDN, home: true, def: "The wiring layers above the transistors. The lowest, li1, is used inside the cells and for their pins. Above it are met1 to met5. This design is wired on met1 to met4, with met1 and met3 horizontal and met2 and met4 vertical.", fig: function () { return stackFigure(true); } },
     { k: "stripe", rx: /\bstripes?\b/, from: S.PDN, def: "A wide vertical met4 power line that feeds the rails. The stripes are also the design's power pins." },
     { k: "power grid", rx: /\bpower grid\b/, from: S.PDN, def: "The rails, stripes and via stacks that carry VPWR and VGND to every cell." },
     { k: "cut", rx: /\bcuts?\b/, from: S.PDN, home: true, def: "A small metal-filled hole through the insulation between two layers. A via is made of one or more cuts." },
-    { k: "via", rx: /\bvias?\b/, from: S.PDN, def: "A connection between wires on adjacent layers. It is made of one or more cuts, small metal-filled holes through the insulation between the layers." },
+    { k: "via", rx: /\bvias?\b/, from: S.PDN, home: true, def: "A connection between wires on adjacent layers. It is made of one or more cuts, small metal-filled holes through the insulation between the layers." },
     { k: "DEF", rx: /\bDEF\b/, from: S.PINS, home: true, def: "Design Exchange Format, a text format for a placed and routed layout. It lists each cell's position, the pins, and later the wires and vias." },
     { k: "global placement", rx: /\b[Gg]lobal (placement|positions?)\b/, from: S.PLACE, def: "Placement's first stage. It finds rough positions that keep connected cells close and spread them to a target density, ignoring rows and allowing overlaps." },
-    { k: "Nesterov placement", rx: /\bNesterov placement\b/, inBold: true, def: "Global placement's main phase. It is named after Nesterov's accelerated gradient method, which it uses to trade wirelength against density." },
+    { k: "Nesterov placement", rx: /\bNesterov placement\b/, from: S.PLACE, home: true, inBold: true, def: "Global placement's main phase. It is named after Nesterov's accelerated gradient method, which it uses to trade wire length against density." },
     { k: "overflow", rx: /\boverflow\b/, from: S.PLACE, home: true, inBold: true, def: "In global placement, the cell area above each bin's target density, summed over all bins, as a share of all movable cell area." },
     { k: "congestion", rx: /\b(routing )?congestion\b/, from: S.PLACE, home: true, def: "How many wires a region would need against how many fit there." },
     { k: "resizer", rx: /\bresizer\b/, from: S.REPAIR, home: true, def: "OpenROAD's tool that inserts buffers and swaps cells for stronger or weaker ones with the same function." },
     { k: "sizing", rx: /\bsizing\b/, from: S.REPAIR, home: true, inBold: true, def: "Swapping a cell for a stronger or weaker one with the same function." },
     { k: "transistor gate", rx: /\btransistor gates?\b/, from: S.REPAIR, home: true, def: "A transistor's control terminal, insulated from the silicon below it by a thin layer of oxide." },
+    { k: "transistor", rx: /\btransistors?\b(?! gates?\b)/, from: S.GDS, home: true, def: "A switch made in the silicon. A voltage on its gate opens or closes a channel between its source and drain. Every cell is built from transistors." },
     { k: "capacitance", rx: /\bcapacitance\b/, def: "How much charge a net must take on to change its voltage. The more capacitance a cell drives, the more slowly its output switches." },
     { k: "slew", rx: /\bslew\b/, def: "The time a signal takes to switch from one level to the other. A slow transition slows the cell it drives." },
     { k: "SDC", rx: /\bSDC\b/, def: "The design's timing constraints file (Synopsys Design Constraints). It sets the clock period, the input and output delays, and limits on slew, capacitance and fanout." },
@@ -3173,12 +3218,13 @@ function start(D) {
     { k: "sink", rx: /\bsinks?\b/, from: S.CTS, home: true, inBold: true, def: "A pin a clock net must reach. Here that is a flip-flop's clock input or a dummy load's input." },
     { k: "setup", rx: /\b[Ss]etup\b/, from: S.HOLD, home: true, def: "Data launched at one clock edge must reach the capturing flip-flop before the next edge, with the flip-flop's setup time to spare." },
     { k: "hold", rx: /\b[Hh]old\b/, from: S.HOLD, home: true, not: [S.FILL], def: "Data must stay stable at a flip-flop for a short time after a clock edge, so new data launched by that same edge must not arrive too soon." },
+    { k: "timing path", rx: /\b(timing )?paths?\b/, from: S.HOLD, home: true, def: "The way a signal travels from where it starts, a flip-flop or an input pin, through logic cells to where it ends, a flip-flop or an output pin. Timing analysis checks every path." },
     { k: "endpoint", rx: /\bendpoints?\b/, from: S.HOLD, home: true, def: "Where a timing path ends, at a flip-flop's data input or an output pin." },
     { k: "slack", rx: /\bslack\b/, def: "A path's margin against its timing limit. Negative slack means a violation." },
-    { k: "clock uncertainty", rx: /\b(clock )?uncertainty\b/, inBold: true, def: "A margin for clock jitter and other variation. Jitter is small random variation in when each clock edge arrives. Setup and hold checks must each leave this much slack beyond their own requirement." },
+    { k: "clock uncertainty", rx: /\b(clock )?uncertainty\b/, from: S.HOLD, home: true, inBold: true, def: "A margin for clock jitter and other variation. Jitter is small random variation in when each clock edge arrives. Setup and hold checks must each leave this much slack beyond their own requirement." },
     { k: "delay cell", rx: /\bdelay cells?\b/, from: S.HOLD, home: true, inBold: true, def: "A buffer built to be slow, inserted to delay a signal." },
     { k: "route guide", rx: /\b(route )?guides?\b/, from: S.GRT, home: true, inBold: true, def: "The g-cells and layers global routing assigns to a net. Detailed routing keeps the net's wires within those g-cells, though it may move a stretch to another layer." },
-    { k: "g-cell", rx: /\bg-cells?\b/, inBold: true, def: "A rectangle of the grid that global routing plans in. Global routing decides which g-cells a net passes through, and detailed routing decides where exactly its wires go." },
+    { k: "g-cell", rx: /\bg-cells?\b/, from: S.GRT, home: true, inBold: true, def: "A rectangle of the grid that global routing plans in. Global routing decides which g-cells a net passes through, and detailed routing decides where exactly its wires go." },
     { k: "rip-up and reroute", rx: /\brip-up and reroute\b/, from: S.GRT, home: true, def: "Removing the routes of nets that cause problems and routing them again." },
     { k: "diffusion", rx: /\bdiffusion\b/, from: S.ANT, home: true, def: "Doped silicon at the surface of the chip, such as each transistor's source and drain, and the contacts of the well taps." },
     { k: "antenna diode", rx: /\bantenna diodes?\b/, from: S.ANT, home: true, inBold: true, def: "A diode that gives charge collected during fabrication a safe path to the substrate. It is reverse-biased, so it does nothing in normal operation." },
@@ -3189,8 +3235,7 @@ function start(D) {
     { k: "derate", rx: /\bderated?\b/, from: S.STA, home: true, def: "To make a delay longer or shorter by a fixed share, whichever is worse for the check, to allow for variation across the chip." },
     { k: "IR drop", rx: /\bIR drop\b/, from: S.IR, home: true, inBold: true, def: "The voltage lost as current (I) flows through the power grid's resistance (R)." },
     { k: "mask", rx: /\bmasks?\b/, from: S.GDS, home: true, def: "A glass plate carrying the shapes of one layer. The fab shines light through it to print those shapes onto the wafer, one layer at a time." },
-    { k: "metal layers", rx: /\bmetals\b|\bmetal layers?\b/, def: "The wiring layers above the cells, met1 to met5, separated by insulation and joined by vias. This design is wired on met1 to met4.", fig: function () { return stackFigure(true); } },
-    { k: "GDS", rx: /\bGDS(II)?\b/, from: S.GDS, home: true, def: "The file format of the final layout. It holds every shape on every layer, and the fab makes the masks from it." },
+    { k: "GDS", rx: /\bGDS(II)?\b/, from: S.GDS, home: true, def: "The file format of the final layout, named after the Graphic Design System it came from. It holds every shape on every layer, and the fab makes the masks from it." },
     { k: "LVS", rx: /\bLVS\b/, from: S.GDS, home: true, def: "Layout versus schematic, the check that the layout is wired as the netlist says." },
     { k: "poly", rx: /\bpoly\b/, from: S.GDS, home: true, def: "Polysilicon, the layer that forms the transistor gates. A transistor is where poly crosses diffusion." },
     { k: "master", rx: /\bmasters?\b/, from: S.GDS, home: true, def: "The library's design of a cell. Every instance of that cell is a copy of it." }];
@@ -3237,17 +3282,27 @@ function start(D) {
   // a click or tap on a term only opens its popup (a tap also focuses it, which opens it first);
   // Esc, a click elsewhere or moving away closes it
   bodyEl.addEventListener("click", function (e) { var t = e.target.closest(".term"); if (t) showGloss(t); });
-  gloss.addEventListener("click", function (e) { var b = e.target.closest("button[data-step]"); if (b) { hideGloss(); goTo(+b.dataset.step); } });
+  // the step a link leads to: focus goes to its title, so a keyboard user carries on from there
+  gloss.addEventListener("click", function (e) { var b = e.target.closest("button[data-step]"); if (b) { hideGloss(); goTo(+b.dataset.step); document.getElementById("title").focus(); } });
   document.addEventListener("click", function (e) { if (!e.target.closest(".term, .gloss")) hideGloss(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !gloss.hidden) { var t = glossFor; hideGloss(); if (t && gloss.contains(document.activeElement)) t.focus(); e.stopPropagation(); } }, true);
-  // Tab from a term with an open popup that holds a link moves into the popup; Tab or Shift+Tab out
-  // of it returns to the term
+  // Tab from a term with an open popup that holds a link moves into the popup; Tab out of it closes
+  // the popup and goes on to whatever follows the term, Shift+Tab goes back to the term
   bodyEl.addEventListener("keydown", function (e) {
     var t = e.target.closest && e.target.closest(".term"), b = gloss.querySelector("button");
     if (e.key === "Tab" && !e.shiftKey && t && t === glossFor && !gloss.hidden && b) { e.preventDefault(); b.focus(); }
   });
+  function focusAfter(el) {
+    var all = Array.prototype.filter.call(document.querySelectorAll("a[href], button, input, [tabindex]"), function (x) {
+      return x.tabIndex >= 0 && !x.closest("[hidden], .gloss") && x.getAttribute("aria-hidden") !== "true" && x.getClientRects().length;
+    });
+    var next = all.filter(function (x) { return el.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING; })[0];
+    if (next) next.focus(); else el.blur();
+  }
   gloss.addEventListener("keydown", function (e) {
-    if (e.key === "Tab" && glossFor) { var t = glossFor; e.preventDefault(); hideGloss(); t.focus(); }
+    if (e.key !== "Tab" || !glossFor) return;
+    var t = glossFor; e.preventDefault(); hideGloss();
+    if (e.shiftKey) t.focus(); else focusAfter(t);
   });
   bodyEl.addEventListener("scroll", hideGloss);
 
@@ -3261,7 +3316,7 @@ function start(D) {
   }
   window.addEventListener("resize", fitFigureText);
   // the panel text fades out at its foot while there is more to scroll to
-  function syncMore() { var b = document.getElementById("body"); b.classList.toggle("more", b.scrollHeight - b.scrollTop - b.clientHeight > 4); }
+  function syncMore() { var b = document.getElementById("body"); b.classList.toggle("more", b.scrollHeight - b.scrollTop - b.clientHeight > 12); }
   document.getElementById("body").addEventListener("scroll", syncMore);
   window.addEventListener("resize", syncMore);
   function updatePanel() {
@@ -3272,7 +3327,7 @@ function start(D) {
     // the numbered parts that are phases of the animation: a click plays that phase
     if (PHASES[target]) Array.prototype.forEach.call(document.querySelectorAll("#body .mainstep .runin"), function (b, i) {
       b.classList.add("seek"); b.tabIndex = 0; b.setAttribute("role", "button");
-      b.setAttribute("aria-label", "Play part " + (i + 1) + " of the animation");
+      b.setAttribute("aria-label", "Play part " + (i + 1) + " of the animation"); b.title = "Play this part";
       b.addEventListener("click", function () { seekPhase(i + 1); });
       b.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); seekPhase(i + 1); } });
     });
@@ -3401,7 +3456,7 @@ function start(D) {
     showTip(lastTip[0], lastTip[1]);
   }
   var KIND = { logic: "Logic cell", ff: "Flip-flop", buf: "Buffer", tie: "Tie cell", clock: "Clock buffer", hold: "Delay cell", diode: "Antenna diode" };
-  var ADDED = { buf: "the repair step", tie: "the repair step", clock: "clock tree synthesis", hold: "hold repair", diode: "antenna repair" };
+  var ADDED = { buf: "design repair", tie: "design repair", clock: "clock tree synthesis", hold: "hold repair", diode: "antenna repair" };
   function cellTip(k) {
     var nm = NAMES[k], ty = D.types[STY[k]], kind = KIND[CLS[k]];
     if (/^input\d/.test(nm)) kind = "Input buffer";
@@ -3452,7 +3507,7 @@ function start(D) {
         for (var j = 0; j < c.loads.length; j++) {
           var l = c.loads[j];
           if (segDist(x, y, dp[0], dp[1], SX[l] + SWD[l] / 2, SY[l] + RH / 2) <= tol) {
-            add("clknet", "<b>Flyline</b> of clock net <code>" + c.name + "</code>: from " + (c.drv < 0 ? "the pin" : NAMES[c.drv]) + " to " + NAMES[l] + (c.loads.length === 1 ? "" : ", one of " + c.loads.length + " loads") + "; tree level " + (c.lv + 1) + " of " + (CLV + 1) + ", " + levelName(c.lv), "clknet");
+            add("clknet", "<b>Flyline</b> of clock net <code>" + c.name + "</code>: from " + (c.drv < 0 ? "the pin" : NAMES[c.drv]) + " to " + NAMES[l] + (c.loads.length === 1 ? "" : ", one of " + c.loads.length + " loads") + "<br>tree level " + (c.lv + 1) + " of " + (CLV + 1) + ", " + levelName(c.lv), "clknet");
             return;
           }
         }
@@ -3487,7 +3542,7 @@ function start(D) {
         P.st.forEach(function (x2, i2) {
           var r2 = P.wires[i2];
           if (!r2 || x2.t > T || !Object.keys(hitSegs).some(function (q) { return r2.segs[q]; })) return;
-          add(P.key, "<b>On the worst " + (P === PSETUP ? "setup" : "hold") + " path</b>: net <code>" + GR.nets[x2.ni] + "</code> from <code>" + x2.pin + "</code>, " + fmt(x2.t, 3) + " ns", "path");
+          add(P.key, "<b>On the worst " + (P === PSETUP ? "setup" : "hold") + " path</b>: net <code>" + GR.nets[x2.ni] + "</code> from <code>" + x2.pin + "</code>, " + x2.t.toFixed(3) + " ns", "path");
         });
       });
       hits.slice(0, 5).forEach(function (hh) { add(hh[0], hh[1], "wire"); });
@@ -3506,10 +3561,14 @@ function start(D) {
       for (var li = 1; li < GLAY.length; li++) { var cv = COV[li][gy * GNX + gx]; if (cv) parts.push(cv + " on " + GLAY[li]); }
       add("hot", "<b>G-cell (" + gx + ", " + gy + ")</b>: guides of " + COVALL[gy * GNX + gx] + " nets" + (parts.length ? "<br>" + parts.join(", ") : ""), "route");
     }
-    // the power grid
-    if (pos > S.TAPS + 0.5) {
+    // the power grid; where the step dims it and not the cells, the cells are drawn over it and
+    // hide it, so it is named only between them
+    var underCell = cellsNow && step !== S.IR && DIMC.pdn < 0.6 && (
+      cellsFocus() >= 0.6 && ORDER.some(function (c) { return SA[c] > 0.5 && x >= SX[c] && x <= SX[c] + SWD[c] && y >= SY[c] && y <= SY[c] + RH; }) ||
+      pos > S.DRT && Math.max(DIMC.fill, DIMC.decap) >= 0.6 && FILL.some(function (f) { return f.row === row && site >= f.site && site < f.site + f.w; }));
+    if (pos > S.TAPS + 0.5 && !underCell) {
       PDN.vias.forEach(function (v) { if (Math.abs(x - v[1]) <= STRW / 2 && Math.abs(y - v[2]) <= Math.max(RAILW / 2, tol)) add("via", "<b>Via stack</b>, <code>" + v[0] + "</code>: met1 rail to met4 stripe", "pdn"); });
-      PDN.stripes.forEach(function (st) { if (Math.abs(x - st[2]) <= st[5] / 2 && y >= st[3] && y <= st[4]) add(st[0] === "VPWR" ? "vpwr" : "vgnd", "<b><code>" + st[0] + "</code> stripe</b>, " + st[1] + ", " + fmt(um(st[5])) + " µm wide; a power pin of the design", "pdn"); });
+      PDN.stripes.forEach(function (st) { if (Math.abs(x - st[2]) <= st[5] / 2 && y >= st[3] && y <= st[4]) add(st[0] === "VPWR" ? "vpwr" : "vgnd", "<b><code>" + st[0] + "</code> stripe</b>, " + st[1] + ", " + fmt(um(st[5])) + " µm wide<br>a power pin of the design", "pdn"); });
       PDN.rails.forEach(function (r) { if (Math.abs(y - r[1]) <= Math.max(r[4] / 2, tol / 2) && x >= r[2] && x <= r[3]) add(r[0] === "VPWR" ? "vpwr" : "vgnd", "<b><code>" + r[0] + "</code> follow-pin rail</b>, met1, " + fmt(um(r[4])) + " µm wide", "pdn"); });
     }
     // placement bins
@@ -3527,7 +3586,7 @@ function start(D) {
       }
       chits.slice(0, 3).forEach(function (c3) {
         if (step === S.STA && ONPATH[c3]) ONPATH[c3].forEach(function (P) {
-          var xs = P.st.filter(function (x) { return x.ci === c3; }).map(function (x) { return "<code>" + x.pin.split("/")[1] + "</code> " + fmt(x.t, 3) + " ns"; });
+          var xs = P.st.filter(function (x) { return x.ci === c3; }).map(function (x) { return "<code>" + x.pin.split("/")[1] + "</code> " + x.t.toFixed(3) + " ns"; });
           add(P.key, "<b>On the worst " + (P === PSETUP ? "setup" : "hold") + " path</b>: " + xs.join(", "), "path");
         });
         add(CLS[c3], cellTip(c3), cellGroup(c3));
@@ -3547,8 +3606,8 @@ function start(D) {
       if (Math.abs(y - yb) <= 0.05 * RH) add(vp ? "vpwr" : "vgnd", "<b><code>" + (vp ? "VPWR" : "VGND") + "</code> rail</b>, shared by ROW_" + (kb - 1) + " and ROW_" + kb);
     }
     // the row, or the margin, or the die
-    if (step >= S.FLOOR && inCore) add(D.rows[row] ? "row-flip" : "row", "<b>ROW_" + row + "</b>, " + (D.rows[row] ? "FS: <code>VPWR</code> along the bottom" : "N: <code>VPWR</code> along the top") + "; site " + site + " of " + D.sitesPerRow, "rows");
-    else if (step >= S.FLOOR) add("die", "<b>Core margin</b>: die area outside the core; no standard cells");
+    if (step >= S.FLOOR && inCore) add(D.rows[row] ? "row-flip" : "row", "<b>ROW_" + row + "</b>, " + (D.rows[row] ? "FS: <code>VPWR</code> along the bottom" : "N: <code>VPWR</code> along the top") + "<br>site " + site + " of " + D.sitesPerRow, "rows");
+    else if (step >= S.FLOOR) add("die", "<b>Core margin</b>: die area outside the core<br>no standard cells");
     else add("die", "<b>Die area</b>: " + fmt(um(DIE[2] - DIE[0])) + " × " + fmt(um(DIE[3] - DIE[1])) + " µm");
     placeTip(items, px, py);
   }
