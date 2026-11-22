@@ -2311,6 +2311,7 @@ function start(D) {
     exLabel(ROUTE_EX[k], k, wires);
   }
   var rowMid = Math.floor(NROWS / 2), siteMid = Math.floor(D.sitesPerRow * 0.45);
+  var siteRow = D.rows[rowMid] ? rowMid - 1 : rowMid;   // the Floorplan's example site: in an N (upright) row near the middle
   var GCELL_PICK = [2, GNY - 4];   // the g-cell named on the routing step: upper left, clear of the examples
   // The floorplan's close-up: the example site and the rows above and below it,
   // magnified in a circle beside it. It shows what the die is too small to: the sites, the rails on
@@ -2345,7 +2346,7 @@ function start(D) {
     ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.clip();
     // world to close-up
     var X = function (x) { return cx + (x - wxc) * mag; }, Y = function (yw) { return cy - (yw - wyc) * mag; };
-    var r0 = rowMid - 1;   // the rows shown: r0 to r0 + 2, the example row in the middle
+    var r0 = siteRow - 1;   // the rows shown: r0 to r0 + 2, the example row in the middle
     var rowY = function (r) { return CORE[1] + r * RH; };
     for (var r = r0 - 1; r <= r0 + 3; r++) { ctx.fillStyle = D.rows[r] ? C["row-flip"] : C.row; ctx.fillRect(cx - R, Y(rowY(r + 1)), 2 * R, h); }
     // the sites
@@ -2357,7 +2358,7 @@ function start(D) {
     var railName = function (k) { return !D.rows[k - 1] ? "VPWR" : "VGND"; };   // N rows have VPWR along the top
     for (var k2 = r0; k2 <= r0 + 3; k2++) { ctx.fillStyle = railName(k2) === "VPWR" ? C.vpwr : C.vgnd; ctx.fillRect(cx - R, Y(rowY(k2)) - 0.05 * h, 2 * R, 0.1 * h); }
     // the example site outlined over the rails: it runs from rail centre to rail centre
-    ctx.strokeStyle = C.pick; ctx.lineWidth = 2; ctx.strokeRect(X(CORE[0] + siteMid * SW), Y(rowY(rowMid + 1)), SW * mag, h);
+    ctx.strokeStyle = C.pick; ctx.lineWidth = 2; ctx.strokeRect(X(CORE[0] + siteMid * SW), Y(rowY(siteRow + 1)), SW * mag, h);
     // each row's orientation at mid-row, on the left; or on the right when the site's callout has no
     // room right of the site and must go left of it
     ctx.font = "500 11px " + C.font; ctx.textAlign = "left"; ctx.textBaseline = "middle";
@@ -2396,7 +2397,7 @@ function start(D) {
       // The core outlined, an example row near the top named inside itself, the example
       // site in the middle row and its close-up, then the callouts
       ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5; ctx.beginPath(); rect(CORE[0], CORE[1], CORE[2], CORE[3]); ctx.stroke();
-      var yr = CORE[1] + (NROWS - 3) * RH, y0 = CORE[1] + rowMid * RH, xs = CORE[0] + siteMid * SW;
+      var yr = CORE[1] + (NROWS - 3) * RH, y0 = CORE[1] + siteRow * RH, xs = CORE[0] + siteMid * SW;
       ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
       ctx.beginPath(); rect(CORE[0], yr, CORE[2], yr + RH); ctx.stroke();
       var fsz = Math.min(11, Math.floor(RH * cam.s * 0.72));
