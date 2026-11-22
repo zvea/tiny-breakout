@@ -165,8 +165,7 @@ aside { grid-area: text; }
   background: var(--veil); padding: 3px 6px; border-radius: 2px;
 }
 .scale i { display: block; height: 6px; border: 1.5px solid var(--muted); border-top: 0; margin-bottom: 2px; }
-.hint { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
-.hint kbd, .body kbd { font: inherit; border: 1px solid var(--rule); border-radius: 2px; padding: 0 3px; }
+.body kbd { font: inherit; border: 1px solid var(--rule); border-radius: 2px; padding: 0 3px; }
 .readout {
   pointer-events: auto; flex: 1; min-width: 0; max-width: 680px; margin-left: auto; display: flex; align-items: center; gap: 10px;
   padding: 5px 10px 5px 5px; background: var(--bg); border: 1px solid var(--rule); border-radius: 2px; font-size: 12px;
@@ -195,6 +194,19 @@ aside { grid-area: text; }
   padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px));
 }
 .brand { flex: none; }
+.tools { flex: none; display: flex; gap: 8px; }
+#help { font-size: 15px; font-weight: 600; }
+/* the keyboard shortcuts, over everything */
+.help { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.4); padding: 16px; }
+.help[hidden] { display: none; }
+.helpcard { position: relative; max-width: 460px; width: 100%; box-sizing: border-box; background: var(--bg); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 18px 22px 16px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25); font-size: 14px; line-height: 1.45; }
+.helpcard h2 { margin: 0 0 10px; font-size: 17px; }
+.helpcard h3 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.helpcard table { border-collapse: collapse; width: 100%; }
+.helpcard td { padding: 4px 0; vertical-align: top; }
+.helpcard td:first-child { white-space: nowrap; padding-right: 14px; }
+.helpcard kbd { font: inherit; font-size: 12.5px; border: 1px solid var(--rule); border-radius: 3px; padding: 0 5px; background: var(--bar); }
+.helpclose { position: absolute; top: 10px; right: 10px; font-size: 18px; }
 .brand p { margin: 0; color: var(--muted); font-size: 12px; }
 /* the steps: a stepper, numbered circles on a line with each step's name below; the steps before
    the current one shaded, the current one filled */
@@ -296,7 +308,6 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
   aside { border-right: 0; border-top: 1px solid var(--rule); overflow: visible; padding-bottom: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .legend { flex-wrap: nowrap; overflow-x: auto; right: 10px; pointer-events: auto; scrollbar-width: none; }
   .legend li.dimmed { display: none; }
-  .hint { display: none; }
   .foot { flex-wrap: wrap; }
   .readout { flex-basis: 100%; max-width: none; margin-left: 0; }
   .readout input { width: 90px; }
@@ -331,8 +342,31 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
     <nav class="steps" aria-label="Steps">
       <div class="track" id="track"></div>
     </nav>
-    <button type="button" class="iconbtn" id="theme" aria-label="Switch theme"></button>
+    <div class="tools">
+      <button type="button" class="iconbtn" id="theme" aria-label="Switch theme"></button>
+      <button type="button" class="iconbtn" id="help" aria-label="Keyboard shortcuts (?)" title="Keyboard shortcuts (?)" aria-haspopup="dialog">?</button>
+    </div>
   </header>
+  <div class="help" id="helpbox" role="dialog" aria-modal="true" aria-labelledby="helptitle" hidden>
+    <div class="helpcard">
+      <button type="button" class="iconbtn helpclose" id="helpclose" aria-label="Close">&times;</button>
+      <h2 id="helptitle">Keyboard shortcuts</h2>
+      <table>
+        <tr><td><kbd>&rarr;</kbd> or <kbd>Page Down</kbd></td><td>Play the step's animation, or go to the next step once it has played. While it plays, skip to its end.</td></tr>
+        <tr><td><kbd>&larr;</kbd> or <kbd>Page Up</kbd></td><td>Previous step</td></tr>
+        <tr><td><kbd>+</kbd> <kbd>&minus;</kbd></td><td>Zoom in, zoom out</td></tr>
+        <tr><td><kbd>0</kbd></td><td>Show the whole die</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Close a popup or this panel</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Show this panel</td></tr>
+      </table>
+      <h3>With the mouse</h3>
+      <table>
+        <tr><td>Scroll</td><td>Zoom</td></tr>
+        <tr><td>Drag</td><td>Move the view</td></tr>
+        <tr><td>Hover</td><td>Name what is under the pointer, or show a term's definition</td></tr>
+      </table>
+    </div>
+  </div>
   <main class="stage">
     <div class="view" id="view" tabindex="0" role="group" aria-label="The die: scroll or + and - to zoom, drag to move, arrow keys to step">
       <canvas id="canvas" role="img" aria-label="The die"></canvas>
@@ -344,8 +378,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
       </div>
       <ul class="legend" id="legend" aria-label="Legend"></ul>
       <div class="foot" id="foot">
-        <div class="scale"><i id="scalebar"></i><span id="scaletext"></span>
-          <p class="hint">Scroll to zoom, drag to move, <kbd>&larr;</kbd> <kbd>&rarr;</kbd> to step/play</p></div>
+        <div class="scale"><i id="scalebar"></i><span id="scaletext"></span></div>
         <div class="readout" id="readout" hidden>
           <button type="button" class="iconbtn" id="play" aria-label="Play"></button>
           <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Progress through this step">
@@ -3034,6 +3067,22 @@ function start(D) {
   }
   document.getElementById("prev").addEventListener("click", function () { goTo(target - 1); });
   document.getElementById("next").addEventListener("click", function () { goTo(target + 1); });
+  // the keyboard shortcuts panel: the ? button or key opens it; Esc, its close button or a click
+  // outside it closes it, and focus goes back where it was
+  var helpbox = document.getElementById("helpbox"), helpFrom = null;
+  function showHelp() { helpFrom = document.activeElement; helpbox.hidden = false; document.getElementById("helpclose").focus(); }
+  function hideHelp() { helpbox.hidden = true; if (helpFrom && helpFrom.focus) helpFrom.focus(); }
+  document.getElementById("help").addEventListener("click", showHelp);
+  document.getElementById("helpclose").addEventListener("click", hideHelp);
+  helpbox.addEventListener("click", function (e) { if (e.target === helpbox) hideHelp(); });
+  document.addEventListener("keydown", function (e) {
+    if (!helpbox.hidden) {
+      if (e.key === "Escape" || e.key === "?") { hideHelp(); e.preventDefault(); }
+      else if (e.key === "Tab") { e.preventDefault(); document.getElementById("helpclose").focus(); }
+      e.stopPropagation(); return;
+    }
+    if (e.key === "?" && !(e.target.closest && e.target.closest("textarea, input, select"))) { showHelp(); e.preventDefault(); e.stopPropagation(); }
+  }, true);
   document.addEventListener("keydown", function (e) {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.target.closest && e.target.closest("textarea, input, select")) return;
