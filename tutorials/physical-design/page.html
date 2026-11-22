@@ -1241,11 +1241,13 @@ function start(D) {
     note: "First the clk net's guides from the pin to the root buffer, and the wires the check estimates from them. Then the diode, and the cells that lose their mirroring flipping back." };
   STEPS[S.DRT] = { short: "Detail", title: "Detailed routing", play: 14000,
     body:
-      "<p><b>Detailed routing</b> draws the actual wires, as metal shapes on each layer's routing tracks joined by vias. It follows each net's route guides and obeys a simplified set of width and spacing rules that it can check quickly. A guide's layer is only a preference, and the router may move a stretch to another layer. Net " + ROUTE_EX[0].name + ", for example, runs " + fmt(ROUTE_EX[0].offlayer, 1) + " µm on a different layer from the one planned.</p>" +
-      "<p>The result is " + n(DR.wirelength) + " µm of wire (" + ["met1", "met2", "met3", "met4"].map(function (l) { return l + " " + n(DR.length[l]); }).join(", ") + ") and " + n(DR.nvias) + " vias. The first pass left " + n(DR.iters[0]) + " design-rule violations, and " + (DR.iters.length - 1) + " more passes brought them to " + DR.iters[DR.iters.length - 1] + ". It took " + runtimeText(DR.runtime) + ", the slowest step of the flow.</p>" +
-      "<h3>How it works</h3>" +
-      "<p>TritonRoute first works out how to reach each pin and assigns wires to tracks. It then divides the die into small regions and routes each one's nets with a maze search, many regions in parallel. Each later pass rips up and reroutes only where violations remain, raising the cost of the shapes that cause them.</p>",
-    note: "First come three example nets, with their wires drawn over their guides as antenna repair re-made them. Seen from above, the wires stay inside the guides. Then comes all the wiring, layer by layer. Vias show when you zoom in." };
+      "<p><b>Detailed routing</b> turns each net's route guides into actual wires, metal shapes on the layers' routing tracks joined by vias. It checks its work against a simplified set of width and spacing rules that it can test quickly. A guide's layer is only a preference. Net " + ROUTE_EX[0].name + ", for example, runs " + fmt(ROUTE_EX[0].offlayer, 1) + " µm on a layer other than the one planned.</p>" +
+      "<p>The router works in three stages:</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Pin access</b> works out how a wire can reach each pin of each cell.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Track assignment</b> puts each stretch of a net's route on a track.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"3\">3</span>A <b>maze search</b> then routes the nets region by region, many regions in parallel. Each later pass rips up and reroutes only where the rules are still broken, and makes the shapes that break them more costly.</p>" +
+      "<p>The result is " + (DR.wirelength / 1000).toFixed(1) + " mm of wire and " + n(DR.nvias) + " vias. The first pass left " + n(DR.iters[0]) + " places that broke the rules, and " + (DR.iters.length - 1) + " more passes cleared them all. The step took " + runtimeText(DR.runtime) + ", the longest in the flow.</p>",
+    note: "First, three example nets, their wires drawn over their guides. Seen from above, the wires stay inside the guides. Then all the wiring, layer by layer. Vias show when you zoom in." };
   STEPS[S.FILL] = { short: "Fill", title: "Fill insertion", play: 4000,
     body:
       "<p>Every empty site now gets a cell, " + n(FILL.length) + " in all. <b>Fill cells</b> (" + Object.keys(FILLT).filter(function (t) { return /^fill/.test(t); }).sort().map(function (t) { return "<code>" + t + "</code> × " + FILLT[t]; }).join(", ") + ") hold no transistors. They continue the wells, implants and power rails across the gaps, so every row is unbroken. Where there is room, <b>decap cells</b> (<code>decap_3</code> × " + (FILLT.decap_3 || 0) + ") go in instead.</p>" +
@@ -1276,9 +1278,10 @@ function start(D) {
       "<p>Two checks remain. DRC checks the GDS against Magic's full sky130 rule deck, which covers far more rules than the router knows. For LVS, Magic extracts a netlist from the layout, and Netgen compares it with the flow's final netlist, which holds every cell added since synthesis. Magic reads the layout from the DEF here, with each standard cell as a black box, so LVS checks the wiring between cells. The cells' insides come from the library unchanged. Both checks are clean.</p>",
     note: "The view zooms in to show transistors, then back out to the whole die. Zoom in again to explore. Metals are drawn translucent, so the layers beneath show through. The cells' shapes come from their GDS, and the routing and vias from the routed DEF and the via definitions, which is the geometry stream-out merges." };
   function u16len(b64) { return Math.floor(b64.length * 3 / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0); }
+  // a run time to the minute (seconds only when under a minute)
   function runtimeText(t) {
-    var p = t.split(":"), h = +p[0], m = +p[1], s = Math.round(parseFloat(p[2]));
-    return (h ? h + " h " : "") + (m ? m + " min " : "") + s + " s";
+    var p = t.split(":"), secs = 3600 * p[0] + 60 * p[1] + parseFloat(p[2]), mins = Math.round(secs / 60);
+    return secs < 60 ? Math.round(secs) + " s" : mins >= 60 ? Math.floor(mins / 60) + " h " + (mins % 60) + " min" : mins + " min";
   }
 
   // ---- canvas and view -------------------------------------------------------------------
@@ -2714,7 +2717,7 @@ function start(D) {
     }
     if (k === S.DRT) {
       if (u < WALL0) { var e = ROUTE_EX[Math.min(ROUTE_EX.length - 1, Math.max(0, Math.floor((u - WEX0) / WEXSLOT)))]; return "<b>Net " + e.name + "</b>: its wires and guides"; }
-      if (u >= WDONE) return "<b>Routed</b>: " + n(DR.wirelength) + " µm, " + n(DR.nvias) + " vias";
+      if (u >= WDONE) return "<b>Routed</b>: " + (DR.wirelength / 1000).toFixed(1) + " mm of wire, " + n(DR.nvias) + " vias";
       var cl = 1;
       for (var ll = 1; ll < DR.layers.length; ll++) if (wireLayerAt(u, ll) > 0) cl = ll;
       return "<b>" + DR.layers[cl] + "</b>: " + n(DR.length[DR.layers[cl]]) + " µm";
@@ -2925,7 +2928,7 @@ function start(D) {
     { k: "rip-up and reroute", rx: /\brip-up and reroute\b/, from: S.GRT, home: true, def: "Removing the routes of nets that cause problems and routing them again." },
     { k: "diffusion", rx: /\bdiffusion\b/, from: S.ANT, home: true, def: "Doped silicon at the surface of the chip, such as each transistor's source and drain, and the contacts of the well taps." },
     { k: "antenna diode", rx: /\bantenna diodes?\b/, from: S.ANT, home: true, inBold: true, def: "A diode that gives charge collected during fabrication a safe path to the substrate. It is reverse-biased, so it does nothing in normal operation." },
-    { k: "maze search", rx: /\bmaze search\b/, from: S.DRT, home: true, def: "A shortest-path search through a grid. Here the grid is the routing tracks." },
+    { k: "maze search", rx: /\bmaze search\b/, from: S.DRT, home: true, inBold: true, def: "A shortest-path search through a grid. Here the grid is the routing tracks." },
     { k: "implant", rx: /\bimplants?\b/, from: S.TAPS, home: true, def: "A doped layer that makes the silicon n-type or p-type, which sets each transistor's type." },
     { k: "parasitics", rx: /\bparasitics\b/, from: S.STA, home: true, def: "The resistance and capacitance of the wires, which slow signals down." },
     { k: "corner", rx: /\bcorners?\b/, from: S.STA, home: true, def: "One set of conditions for timing analysis. It combines how fast the fab made the transistors (the process), the supply voltage, the temperature, and how large the wires' parasitics are." },
