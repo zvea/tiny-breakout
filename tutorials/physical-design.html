@@ -2533,7 +2533,7 @@ function start(D) {
       if (nxt.rewind && g.f > 0.05) return "<b>Congestion check</b>: inflate crowded cells, rewind";
       if (f.ip !== undefined) return f.ip === 0 ? "<b>Start</b>: every instance at the core centre" : "<b>Initial placement</b>, iteration " + f.ip + " of " + nIP;
       var pass = f.rewind || f.rounds ? "Nesterov placement</b>, again" : "Nesterov placement</b>";
-      return "<b>" + pass + " · overflow " + f.overflow.toFixed(2) + " · wirelength " + n(f.hpwl) + " µm";
+      return "<b>" + pass + " · overflow " + f.overflow.toFixed(2) + " · wirelength " + (f.hpwl / 1000).toFixed(1) + " mm";
     }
     if (k === S.REPAIR) {
       if (u >= 0.6) return "<b>Resizing</b> " + M.rsz.resized + " instances";
