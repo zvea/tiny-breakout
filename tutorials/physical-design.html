@@ -1417,7 +1417,10 @@ function start(D) {
       "<p>The layers build up from the substrate: the n-well, diffusion, poly, contacts and li1 inside the cells, then the metals and the vias between them. Each kind of standard cell is stored once, as a <b>master</b>, and placed by reference. The design uses " + n(GD.masters.length) + " masters for its " + n(u16len(GD.insts) / 6) + " instances, the " + n(D.netlistCells) + " from synthesis and every cell the flow added.</p>" +
       "<p>Zoomed in far enough, the transistors become visible. A transistor forms wherever a poly line crosses diffusion. The poly is its gate, and the diffusion on either side are its <b>source</b> and <b>drain</b>. A voltage on the gate opens or closes a channel between them.</p>" +
       mosfetFigure() +
-      "<p>Two checks remain. <b>Design rule checking</b> (DRC) checks the GDS against the full sky130 rule set, which covers far more rules than the router knows. For <b>LVS</b>, a netlist is extracted from the layout and compared with the flow's final netlist, which holds every cell added since synthesis. Each standard cell is treated as a black box here, so LVS checks the wiring between cells, and the cells' insides come from the library unchanged. Both checks are clean.</p>",
+      "<p>Two checks remain:</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Design rule checking</b> (DRC) checks the GDS against the full sky130 rule set, which covers far more rules than the router knows.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Layout versus schematic</b> (LVS) extracts a netlist from the layout and compares it with the flow's final netlist, which holds every cell added since synthesis. The cells' insides come unchanged from the library, so LVS treats each standard cell as a black box and checks only the wiring between cells.</p>" +
+      "<p>Both checks are clean.</p>",
     note: "After the animation, zoom in anywhere to see the transistors. Metals are drawn translucent, so the layers beneath show through." };
   function u16len(b64) { return Math.floor(b64.length * 3 / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0); }
   // a run time to the minute (seconds only when under a minute)
