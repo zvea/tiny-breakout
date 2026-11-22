@@ -529,10 +529,19 @@ function start(D) {
   var ROOT = CLOCK.filter(function (c) { return c.lv === 0; })[0];
   // drawn leaves first, so the levels nearer the root lie on top
   var CLOCK_DRAW = CLOCK.slice().sort(function (a, b) { return b.lv - a.lv; });
-  function levelName(L) { return L === 0 ? "pin → root" : L === CLV ? "leaves → flip-flops" : L === CLV - 1 ? "branches → leaves" : "root → branches"; }
+  function levelName(L) { return L === 0 ? "pin → root buffer" : L === CLV ? "leaf buffers → flip-flops" : L === CLV - 1 ? "branch buffers → leaf buffers" : "root buffer → branch buffers"; }
   var NBRANCH = CLOCK.filter(function (c) { return c.lv === 1; }).reduce(function (a, c) { return a + c.loads.length; }, 0);
-  // in the clock step, net level L grows over [lvStart(L), lvStart(L) + 0.22] of its first part
-  function lvStart(L) { return 0.04 + 0.74 * L / (CLV + 1); }
+  // In the clock step, net level L grows over [lvStart(L), lvStart(L) + 0.22] of its first part,
+  // bottom-up as the tree is built: the leaf buffers with their flip-flops (clustering), then the
+  // levels above them up to the pin
+  function lvStart(L) { return 0.04 + 0.74 * (CLV - L) / (CLV + 1); }
+  var DRVNET = {};   // the clock net each clock buffer drives
+  CLOCK.forEach(function (c, j) { if (c.drv >= 0) DRVNET[c.drv] = j; });
+  // PROTOTYPE: while the clock step builds a level, everything not part of it is dimmed: the
+  // level's nets, and the cells that drive or load them, keep their colour
+  var STAGE_MEM = [];
+  for (var sl = 0; sl <= CLV; sl++) STAGE_MEM.push(new Uint8Array(NU));
+  CLOCK.forEach(function (c) { if (c.drv >= 0) STAGE_MEM[c.lv][c.drv] = 1; c.loads.forEach(function (l) { STAGE_MEM[c.lv][l] = 1; }); });
 
   // drawing order: logic, flip-flops, then the cells added after synthesis on top
   var RANK = { logic: 0, ff: 1, tie: 2, buf: 3, clock: 4, hold: 5, diode: 6 }, ORDER = [];
@@ -587,9 +596,9 @@ function start(D) {
       }
     }
   }
-  var CTS_SPLIT = 0.55, HOLD_SPLIT = 0.45, ANT_SPLIT = 0.6;   // each step's share for adding cells, then legalising
+  var CTS_SPLIT = 0.72, HOLD_SPLIT = 0.45, ANT_SPLIT = 0.6;   // each step's share for adding cells, then legalising
   function popRepair(i) { return 0.2 + 0.45 * hash01(i); }
-  function popClock(i) { var j = FEED[i]; return j === undefined ? 0.5 : lvStart(CLOCK[j].lv) + 0.2; }
+  function popClock(i) { var d = DRVNET[i], j = FEED[i]; return d !== undefined ? lvStart(CLOCK[d].lv) : j === undefined ? 0.5 : lvStart(CLOCK[j].lv) - 0.22; }
   function popHold(i) { return 0.08 + 0.62 * hash01(i); }
   function putAll(Sg) { for (var i = 0; i < NU; i++) if (has(Sg, i)) put(Sg, i); }
   function cellState(p) {
@@ -1199,14 +1208,14 @@ function start(D) {
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Legalisation</b> puts each cell on a row, aligned to a site, overlapping no other. The taps and endcaps are fixed and do not move. A cell that lands in an FS row is flipped top to bottom, so its power rails line up with the row's. The moves are small, because global placement has already spread the cells out, but they still lengthen the estimated wire length by " + Math.round(100 * (M.dpl.hpwl[1] / M.dpl.hpwl[0] - 1)) + "%.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Mirroring</b> then flips some cells left to right. A flip moves a cell's pins to its other side, so it is kept only where it shortens the cell's nets. In all, the flips shorten the estimated wire length by " + fmt(100 * (1 - M.dpl.hpwl[2] / M.dpl.hpwl[1]), 0) + "%.</p>",
     note: "All cells slide at once to their legal sites, some flipping vertically to suit their row. Then the mirrored cells flip horizontally." };
-  STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", play: 8000,
+  STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", play: 15000,
     body:
       "<p>So far the clock has been one net, <code>clk</code>, from its pin to all " + M.cts.sinks + " flip-flops. As a real wire it would be far too heavily loaded, and the clock edge would reach near and far flip-flops at different times. That difference is called <b>skew</b>. It shifts the window in which a signal sent from one flip-flop must arrive at another. Too much skew makes signals arrive too late or too early.</p>" +
       "<p><b>Clock tree synthesis</b> replaces the single <code>clk</code> net with a tree of <b>clock buffers</b>. Each buffer drives only a small load. Every route from the pin to a flip-flop passes through the same number of buffers, so the clock edge reaches all the flip-flops at nearly the same time. The tree is built in two stages:</p>" +
-      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Clustering</b> groups flip-flops that sit close together and gives each group its own <b>leaf buffer</b>.</p>" +
-      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span>An <b>H-tree</b> joins the leaf buffers to a <b>root buffer</b>, which the pin drives. The tree's trunk splits the area in half, each half splits again, and so on, which makes every branch from the root about equally long. <b>Dummy loads</b>, buffers that drive nothing, even out the load on the branches.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Clustering</b> splits the flip-flops into groups of nearby ones, so that each group's load capacitance stays within what one clock buffer may drive. The tool tries several limits on group size and span, and the best result here came from groups of at most " + M.cts.maxsinks + " flip-flops. Each group gets its own <b>leaf buffer</b>, placed near its centre. Where a buffer's load is light, a <b>dummy load</b> goes beside it, mostly beside leaf buffers. A dummy load is a clock buffer or inverter that drives nothing. It evens out the loads, so that every route delays the clock by about the same amount.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Branch buffers</b> then join the leaf buffers to the <b>root buffer</b>, which the pin drives. Each branch buffer drives the leaf buffers in its part of the die, and the root drives the branch buffers.</p>" +
       "<p>Then legalisation makes room for the new buffers.</p>",
-    note: "<b>Flylines</b> join each clock buffer to the cells it drives, level by level from the pin, thinner at each level. They show what connects to what. Routing draws the real wires later. A dot marks each <b>sink</b>." };
+    note: "<b>Flylines</b> join each clock buffer to the cells it drives, built up from the flip-flops to the pin, thicker at each level up. They show what connects to what. Routing draws the real wires later. A dot marks each <b>sink</b>." };
   STEPS[S.HOLD] = { short: "Hold", title: "Hold repair", play: 6000,
     body:
       "<p>Now that the clock tree exists, <b>timing analysis</b> can follow the clock through its buffers to each flip-flop, instead of assuming it arrives everywhere at once. Wire delays are still estimates. At each flip-flop it makes two checks:</p>" +
@@ -1414,20 +1423,25 @@ function start(D) {
   // which may overlap others until legalisation) is never under them; ORDER within each
   function drawCells() {
     ctx.lineWidth = 1;
+    var cw = ctsW();
     for (var pass = 0; pass < 2; pass++) for (var oi = 0; oi < NU; oi++) {
       var k = ORDER[oi];
       if (SA[k] <= 0.01) continue;
       var d = DIMC[cellGroup(k)];
+      if (cw && (CLS[k] === "ff" || CLS[k] === "clock")) d = Math.min(d, ctsCap(cw, function (l) { return STAGE_MEM[l][k]; }));
       if ((d >= 0.6) !== (pass === 1)) continue;
-      var w = SWD[k] * SXX[k], h = RH * SYY[k], x0 = SX[k] + (SWD[k] - w) / 2, y0 = SY[k] + (RH - h) / 2;
-      if (!inView(x0, y0, x0 + w, y0 + h)) continue;
-      ctx.globalAlpha = SA[k]; ctx.fillStyle = dimCol(C[CLS[k]], d);
-      ctx.beginPath(); rect(x0, y0, x0 + w, y0 + h); ctx.fill();
-      // a border in a darker shade of the cell's own colour, so overlapping cells keep their
-      // shapes; dimmed with the cell, so context keeps it as faint as its fill
-      if (w * cam.s >= 4 && h * cam.s >= 4) { ctx.strokeStyle = dimCol(shade(C[CLS[k]], 0.7), d); ctx.stroke(); }
+      cellBox(k, d);
     }
     ctx.globalAlpha = 1;
+  }
+  function cellBox(k, d) {
+    var w = SWD[k] * SXX[k], h = RH * SYY[k], x0 = SX[k] + (SWD[k] - w) / 2, y0 = SY[k] + (RH - h) / 2;
+    if (!inView(x0, y0, x0 + w, y0 + h)) return;
+    ctx.globalAlpha = SA[k]; ctx.fillStyle = dimCol(C[CLS[k]], d);
+    ctx.beginPath(); rect(x0, y0, x0 + w, y0 + h); ctx.fill();
+    // a border in a darker shade of the cell's own colour, so overlapping cells keep their
+    // shapes; dimmed with the cell, so context keeps it as faint as its fill
+    if (w * cam.s >= 4 && h * cam.s >= 4) { ctx.strokeStyle = dimCol(shade(C[CLS[k]], 0.7), d); ctx.stroke(); }
   }
 
   // Placement bin density, for the tooltips on the placement step. This is the page's own
@@ -1909,6 +1923,26 @@ function start(D) {
     if (c.drv < 0) return [(CLKPIN.x0 + CLKPIN.x1) / 2, CLKPIN.y0];
     return SA[c.drv] > 0 ? [SX[c.drv] + SWD[c.drv] / 2, SY[c.drv] + RH / 2] : null;
   }
+  // How much each level is the one being built, from 0 to 1: rising as it starts, falling as the
+  // next level up starts (the last as the building ends). ctsW() is null outside the building.
+  var CTS_END = lvStart(0) + 0.22;
+  function ctsW() {
+    if (!(pos > S.LEGAL && pos < S.CTS)) return null;
+    var t = within(pos, S.CTS) / CTS_SPLIT, w = [];
+    if (t >= CTS_END + 0.08) return null;
+    for (var l = 0; l <= CLV; l++) {
+      var a = lvStart(l), b = l > 0 ? lvStart(l - 1) : CTS_END;
+      w.push(ease(clamp01((t - a) / 0.05)) * ease(clamp01((b + 0.06 - t) / 0.06)));
+    }
+    w.all = ease(clamp01((CTS_END + 0.08 - t) / 0.08));   // the dimming as a whole fades out at the end
+    return w;
+  }
+  // the dimming for something in levels mem (a list of levels), as a brightness to cap DIMC at
+  function ctsCap(w, inLevel) {
+    var m = 0;
+    for (var l = 0; l <= CLV; l++) if (inLevel(l)) m = Math.max(m, w[l]);
+    return 1 - w.all * (1 - DIM) * (1 - m);
+  }
   function drawClockNets() {
     // only on their own step: they fade as the next begins, with the change of focus
     var out = focusFade(S.HOLD);
@@ -1916,30 +1950,32 @@ function start(D) {
     var d = pos > S.CTS ? clamp01((S.CTS + out - pos) / out) : 1;
     var t = within(pos, S.CTS) < CTS_SPLIT ? within(pos, S.CTS) / CTS_SPLIT : 2;
     if (d <= 0.01) return;
-    ctx.strokeStyle = dimCol(C.clknet, DIMC.clknet);
+    var cw = ctsW();
     CLOCK_DRAW.forEach(function (c) {
       var g = pos >= S.CTS ? 1 : ease(clamp01((t - lvStart(c.lv)) / 0.22));
       var dp = g > 0 ? clockDriver(c) : null;
       if (!dp) return;
+      ctx.strokeStyle = dimCol(C.clknet, cw ? Math.min(DIMC.clknet, ctsCap(cw, function (l) { return l === c.lv; })) : DIMC.clknet);
       // thicker the nearer the root, so the trunk stands out from the many short leaf nets
       ctx.lineWidth = [1.4, 1.8, 2.4, 3][Math.min(3, CLV - c.lv)];
       ctx.globalAlpha = d * 0.9;
       ctx.beginPath();
+      // from each load (a child) towards the driver (the parent), which grows in as they reach it
       c.loads.forEach(function (l) {
         var lx = SX[l] + SWD[l] / 2, ly = SY[l] + RH / 2;
-        ctx.moveTo(sx(dp[0]), sy(dp[1])); ctx.lineTo(sx(dp[0] + (lx - dp[0]) * g), sy(dp[1] + (ly - dp[1]) * g));
+        ctx.moveTo(sx(lx), sy(ly)); ctx.lineTo(sx(lx + (dp[0] - lx) * g), sy(ly + (dp[1] - ly) * g));
       });
       ctx.stroke();
     });
     // a dot where a line ends at a sink, a flip-flop or a dummy load, as the line arrives, so a
     // line ending there is told from one passing over it; sized to the rows on screen, so on a
     // small screen the dots do not bury the flip-flops
-    ctx.fillStyle = dimCol(C.clkpin, DIMC.clknet);
+    ctx.fillStyle = dimCol(C.clkpin, cw ? Math.min(DIMC.clknet, ctsCap(cw, function (l) { return l === CLV; })) : DIMC.clknet);
     var dr = Math.max(1, Math.min(2.5, 0.15 * RH * cam.s));
     CLOCK_DRAW.forEach(function (c) {
       var g = pos >= S.CTS ? 1 : ease(clamp01((t - lvStart(c.lv)) / 0.22));
-      if (g < 0.95) return;
-      ctx.globalAlpha = d * clamp01((g - 0.95) / 0.05);
+      if (g <= 0) return;
+      ctx.globalAlpha = d * clamp01(g / 0.05);
       ctx.beginPath();
       c.loads.forEach(function (l) {
         if (CLS[l] !== "ff" && !(CLS[l] === "clock" && !DRIVES[l])) return;
@@ -1948,6 +1984,12 @@ function start(D) {
       });
       ctx.fill();
     });
+    // while the tree is built, the clock cells again over the flylines, so no dimmed line crosses them
+    // (the dimmed ones first, so a dimmed dummy load never covers a buffer of the stage)
+    if (cw) for (var pc = 0; pc < 2; pc++) for (var kc = 0; kc < NU; kc++) if (CLS[kc] === "clock" && SA[kc] > 0.01) {
+      var dc = Math.min(DIMC[cellGroup(kc)], ctsCap(cw, function (l) { return STAGE_MEM[l][kc]; }));
+      if ((dc > 0.6) === (pc === 1)) cellBox(kc, dc);
+    }
     ctx.globalAlpha = 1;
   }
 
@@ -2300,12 +2342,53 @@ function start(D) {
     // the clk pin, from the start of the clock step: where the tree will grow from. Above the
     // die, in the margin between it and the legend.
     if (pos > S.LEGAL && pos < S.CTS + 0.06) {
-      ctx.globalAlpha = pos > S.CTS ? only(S.CTS, 0) : clamp01((pos - S.LEGAL) / 0.04);
+      var cwp = ctsW();
+      ctx.globalAlpha = pos > S.CTS ? only(S.CTS, 0) : cwp ? cwp[0] * cwp.all + (1 - cwp.all) : 1;
       var pinY = sy(CLKPIN.y1), band = pinY - legendH - 8;
       label("clk pin", sx((CLKPIN.x0 + CLKPIN.x1) / 2), pinY, { dx: -40, dy: -Math.max(24, Math.min(36, band / 2 + 10)), align: "right", fixed: true });
     }
-    if ((a = only(S.CTS, 0.95)) > 0.01) {
-      ctx.globalAlpha = a;
+    // PROTOTYPE: the groups the tree is built from, lightly outlined: while clustering, each leaf
+    // buffer with its flip-flops; while the branch buffers are added, each branch buffer with its
+    // leaf buffers, how the tree split the die. The branch groups come
+    // out roughly as quarters; the outlines show the split as the tool made it.
+    if (pos > S.LEGAL && pos < S.CTS) {
+      var tc = within(pos, S.CTS) / CTS_SPLIT;
+      var hull = function (P) {
+        P.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+        var cr = function (o, a, b) { return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]); }, lo = [], up = [];
+        P.forEach(function (p) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); });
+        P.slice().reverse().forEach(function (p) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); });
+        return lo.slice(0, -1).concat(up.slice(0, -1));
+      };
+      // every net of level L: its driver and its loads, outlined
+      var outline = function (L, ag) {
+        if (ag <= 0.01) return;
+        CLOCK.forEach(function (c) {
+          if (c.lv !== L || c.drv < 0 || SA[c.drv] <= 0) return;
+          var H = hull([c.drv].concat(c.loads).map(function (q) { return [sx(SX[q] + SWD[q] / 2), sy(SY[q] + RH / 2)]; }));
+          var mx = 0, my = 0; H.forEach(function (p) { mx += p[0]; my += p[1]; }); mx /= H.length; my /= H.length;
+          // pushed out from the middle, so the cells at the corners sit inside the outline
+          H = H.map(function (p) { var dx = p[0] - mx, dy = p[1] - my, Lh = Math.hypot(dx, dy) || 1; return [p[0] + dx / Lh * 9, p[1] + dy / Lh * 9]; });
+          if (H.length < 3) return;
+          ctx.save(); ctx.lineJoin = "round";
+          ctx.beginPath(); H.forEach(function (p, k) { if (k) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); }); ctx.closePath();
+          ctx.globalAlpha = ag * 0.07; ctx.fillStyle = C.clock; ctx.fill();
+          ctx.globalAlpha = ag * 0.5; ctx.strokeStyle = C.clknet; ctx.lineWidth = 1.2; ctx.setLineDash([5, 4]); ctx.stroke();
+          ctx.restore();
+        });
+      };
+      // each level's outlines come and go with its stage, as its callouts do
+      var cwo = ctsW();
+      if (cwo) { outline(CLV, cwo[CLV] * cwo.all); outline(CLV - 1, cwo[CLV - 1] * cwo.all); }
+      ctx.globalAlpha = 1;
+    }
+    a = only(S.CTS, 0.95);
+    var cwl = ctsW();
+    if (a > 0.01 || cwl) {
+      // PROTOTYPE: while the tree is built, each callout shows with its stage (the level its cell is
+      // added in); at the end of the step, all of them
+      var stageA = function (lv) { return cwl ? Math.max(a, cwl[lv] * cwl.all) : a; };
+      var here = function (i) { return [sx(SX[i] + SWD[i] / 2), sy(SY[i] + RH / 2)]; };
       var leaf = -1, dummy = -1;
       // PROTOTYPE: the cell of a kind nearest a chosen spot on the die (in core fractions)
       var nearest = function (ok, fx, fy) {
@@ -2332,9 +2415,15 @@ function start(D) {
         return sc;
       };
       var far = ringCands([36, 56, 80, 110, 140]);
-      if (ROOT && ROOT.loads.length) { var qr = centre(K.cts, ROOT.loads[0]); label("root buffer", qr[0], qr[1], { dx: 14, dy: -30, more: ringCands([24, 36, 56]), score: cover, nearW: 12 }); }
-      if (leaf >= 0) { var ql = centre(K.cts, leaf); label("leaf buffer", ql[0], ql[1], { dx: -18, dy: 30, align: "right", more: far, score: cover }); }
-      if (dummy >= 0) { var qd = centre(K.cts, dummy); label("dummy load", qd[0], qd[1], { dx: 14, dy: 20, more: ringCands([24, 36, 56]), score: cover, nearW: 12 }); }
+      if (ROOT && ROOT.loads.length && SA[ROOT.loads[0]] > 0 && (ctx.globalAlpha = stageA(1)) > 0.01) { var qr = here(ROOT.loads[0]); label("root buffer", qr[0], qr[1], { dx: 14, dy: -30, more: ringCands([24, 36, 56]), score: cover, nearW: 12 }); }
+      // a branch buffer: of the four, the one with the least around it
+      var branch = -1, bestB = Infinity;
+      CLOCK.forEach(function (c) { if (c.lv === 1) c.loads.forEach(function (bq) {
+        var bx0 = sx(SX[bq] + SWD[bq] / 2), by0 = sy(SY[bq] + RH / 2), nb = cover([bx0 - 50, by0 - 40, bx0 + 50, by0 + 40]);
+        if (nb < bestB) { bestB = nb; branch = bq; } }); });
+      if (branch >= 0 && SA[branch] > 0 && (ctx.globalAlpha = stageA(CLV - 1)) > 0.01) { var qb = here(branch); label("branch buffer", qb[0], qb[1], { dx: 14, dy: -30, more: ringCands([24, 36, 56]), score: cover, nearW: 12 }); }
+      if (leaf >= 0 && SA[leaf] > 0 && (ctx.globalAlpha = stageA(CLV)) > 0.01) { var ql = here(leaf); label("leaf buffer", ql[0], ql[1], { dx: -18, dy: 30, align: "right", more: far, score: cover }); }
+      if (dummy >= 0 && SA[dummy] > 0 && (ctx.globalAlpha = stageA(CLV)) > 0.01) { var qd = here(dummy); label("dummy load", qd[0], qd[1], { dx: 14, dy: 20, more: ringCands([24, 36, 56]), score: cover, nearW: 12 }); }
     }
     if ((a = only(S.HOLD, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
@@ -2602,9 +2691,10 @@ function start(D) {
     if (k === S.LEGAL) return u < 0.72 ? "<b>Legalising</b>" : "<b>Mirroring</b> " + n(M.dpl.mirrored) + " cells";
     if (k === S.CTS) {
       if (u >= CTS_SPLIT) return "<b>Legalising</b> around the clock cells";
-      var t = u / CTS_SPLIT, L = 0;
-      for (var l = 0; l <= CLV; l++) if (t >= lvStart(l)) L = l;
-      return "<b>Tree level " + (L + 1) + " of " + (CLV + 1) + "</b>: " + levelName(L);
+      var t = u / CTS_SPLIT, L = CLV;
+      if (t >= CTS_END) return "<b>Clock tree</b> complete: " + M.cts.buffers + " clock buffers";
+      for (var l = CLV; l >= 0; l--) if (t >= lvStart(l)) L = l;
+      return L === CLV ? "<b>Clustering</b>: leaf buffers and their flip-flops" : L === 0 ? "<b>Pin</b>: pin → root buffer" : L === 1 ? "<b>Root</b>: root buffer → branch buffers" : "<b>Branches</b>: branch buffers → leaf buffers";
     }
     if (k === S.HOLD) {
       if (u >= HOLD_SPLIT) return "<b>Legalising</b>";
@@ -2822,7 +2912,6 @@ function start(D) {
     { k: "timing analysis", rx: /\b[Tt]iming analysis\b/, from: S.HOLD, home: true, inBold: true, def: "Working out when each signal reaches each flip-flop, and checking it against the clock period." },
     { k: "clock tree", rx: /\bclock tree\b/, from: S.CTS, def: "The buffers, and the nets between them, that carry the clock from its pin to every flip-flop with nearly equal delays." },
     { k: "launching, capturing", rx: /\b(launching|capturing) flip-flops?\b/, from: S.HOLD, home: true, def: "On a timing path, the launching flip-flop sends the data at one clock edge, and the capturing flip-flop receives it at the next." },
-    { k: "H-tree", rx: /\bH-trees?\b/, from: S.CTS, home: true, inBold: true, def: "A tree shaped like a repeated letter H. Its trunk splits into two branches, each branch splits into two again, and so on, so every path from the root to the end of a branch is about the same length." },
     { k: "skew", rx: /\bskew\b/, from: S.CTS, def: "The difference in clock arrival time between two flip-flops." },
     { k: "sink", rx: /\bsinks?\b/, from: S.CTS, home: true, inBold: true, def: "A pin a clock net must reach. Here that is a flip-flop's clock input or a dummy load's input." },
     { k: "setup", rx: /\b[Ss]etup\b/, from: S.HOLD, home: true, def: "Data launched at one clock edge must reach the capturing flip-flop before the next edge, with the flip-flop's setup time to spare." },
