@@ -228,8 +228,6 @@ aside {
 }
 h1 { font-size: 17px; font-weight: 700; margin: 0; color: var(--focus); }
 h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text-wrap: balance; }
-.tool { margin: 0; font-size: 12px; color: var(--muted); }
-.tool code { font-family: var(--mono); font-size: 11.5px; }
 .body { font-size: 15px; line-height: 1.55; }
 .body p { margin: 0 0 10px; }
 .body ul { margin: 0 0 10px; padding-left: 18px; }
@@ -357,7 +355,6 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
   <aside>
     <section aria-live="polite">
       <h2 id="title"></h2>
-      <p class="tool" id="tool"></p>
     </section>
     <div class="nav">
       <button type="button" id="prev"><span aria-hidden="true">&larr; </span>Back</button>
@@ -1150,26 +1147,26 @@ function start(D) {
     return '<figure class="stack"><svg viewBox="0 0 384 ' + H + '" role="img" aria-label="Side view of the sky130 layer stack: substrate and transistors at the bottom, then li1 and met1 to met5. A met1 rail is joined by a via stack through met2 and met3 to a met4 stripe. Met5 is outlined.">' + o.join("") + '</svg><figcaption>The sky130 layer stack, side view, heights to scale</figcaption></figure>';
   }
   var STEPS = [];
-  STEPS[S.DIE] = { short: "Die", title: "The die area", tool: "",
+  STEPS[S.DIE] = { short: "Die", title: "The die area",
     body:
       "<p>Turning SystemVerilog code (the <b>RTL</b>) into a chip layout takes two main steps:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"Step 1\">1</span><b>Synthesis</b> maps the RTL to a gate-level <b>netlist</b>, which lists <b>instances</b> of <b>standard cells</b> and the <b>nets</b> that connect their pins, but gives no positions. In this tutorial the cells come from <code>sky130_fd_sc_hd</code>, SkyWater's 130 nm high-density library, which has logic gates, flip-flops, multiplexers, adders and buffers.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"Step 2\">2</span><b>Physical design</b>, or place and route (PnR), then decides where every instance and every wire goes. Here LibreLane does it, mostly with OpenROAD's tools.</p>" +
       "<p>This tutorial assumes that synthesis has already been done, and follows physical design from the empty die to the finished layout. Our design's <b>die area</b> is " + fmt(um(DIE[2])) + " × " + fmt(um(DIE[3])) + " µm.</p>",
     note: "This is one run of the flow, made in November 2026 from <a href=\"https://github.com/zvea/tiny-breakout/tree/8e82a8f\">commit 8e82a8f</a> with LibreLane 3.0.14 and sky130." };
-  STEPS[S.FLOOR] = { short: "Floorplan", title: "Floorplan", tool: "OpenROAD <code>ifp</code>: <code>initialize_floorplan</code>",
+  STEPS[S.FLOOR] = { short: "Floorplan", title: "Floorplan",
     body:
       "<p>The <b>core area</b> is the die less a <b>core margin</b> (" + fmt(um(CORE[0])) + " µm left and right, " + fmt(um(CORE[1])) + " µm top and bottom). Standard cells may be placed only inside the core. <b>Utilisation</b> is the usual measure of how full a design is. Our design has " + n(D.netlistCells) + " cells. They fill " + fmt(100 * MOVABLE_UM2 / CORE_UM2, 0) + "% of this core.</p>" +
       "<p>The core is divided into " + NROWS + " <b>placement rows</b>, each " + D.sitesPerRow + " <b>sites</b> long. A site is " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm. Every standard cell is one row high and a whole number of sites wide, so a legal placement gives each instance a row, a site and an orientation.</p>" +
       "<p>Rows alternate orientation: <b>N</b> (north), then <b>FS</b> (flipped south), in which cells sit upside down. Every cell has its power rail (<code class=vpwr>VPWR</code>) along the top and its ground rail (<code class=vgnd>VGND</code>) along the bottom, so flipping every other row lets neighbouring rows share a rail.</p>" +
       "<p>The floorplan also sets out each metal layer's <b>routing tracks</b>, the evenly spaced lines that wires will later follow. They are not shown here.</p>" };
-  STEPS[S.TAPS] = { short: "Taps", title: "Tap and endcap insertion", tool: "OpenROAD <code>tapcell</code>",
+  STEPS[S.TAPS] = { short: "Taps", title: "Tap and endcap insertion",
     body:
       "<p>Two kinds of cell with no logic function go in before any logic:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Well taps</b> tie the n-well to <code>VPWR</code> and the p-substrate to <code>VGND</code>. The library's cells have no well or substrate contacts of their own. Far from a tap, neighbouring PMOS and NMOS transistors can act as an unintended thyristor which, once triggered, shorts <code>VPWR</code> to <code>VGND</code>. This is <b>latch-up</b>. The design rules cap the distance from any transistor to a tap.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Endcaps</b> sit at both ends of every row. In many cell libraries the last cell in a row cannot meet the design rules alone, because its n-well and implants must continue past its edge, and the endcap gives them somewhere to end. An endcap also keeps the transistors at a row's end away from the edge, where fabrication makes shapes less evenly than in the middle of a row.</p>" +
       "<p>Taps and endcaps are marked <code>FIXED</code>, so placement may not move them and has to place the logic cells around them.</p>" };
-  STEPS[S.PDN] = { short: "Power", title: "Power distribution network", tool: "OpenROAD <code>pdngen</code>",
+  STEPS[S.PDN] = { short: "Power", title: "Power distribution network",
     body:
       "<p>Above the transistors, wiring is built in stacked layers: local interconnect li1, then the metal layers met1 to met5.</p>" +
       stackFigure() +
@@ -1177,18 +1174,18 @@ function start(D) {
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Follow-pin rails</b> on met1, along every row boundary. They lie exactly over the cells' own rails and touch them directly, so the cells need no routing to reach power.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Stripes</b> on met4, vertical, in pairs of <code class=vpwr>VPWR</code> and <code class=vgnd>VGND</code>. They are also the design's power pins, where the chip's own power grid, on met5, connects to it.</p>" +
       "<p>Where a stripe crosses a rail of its own net, a <b>via stack</b> joins them, from met1 through met2 and met3 to met4, each via an array of cuts. Met2 and met3 carry no power anywhere else, which leaves them free for signal routing.</p>" };
-  STEPS[S.PINS] = { short: "Pins", title: "Pins", tool: "LibreLane <code>ApplyDEFTemplate</code>",
+  STEPS[S.PINS] = { short: "Pins", title: "Pins",
     body:
       "<p>A design's <b>pins</b> are where its signals enter and leave. Here their positions are fixed in advance, so that the wiring of the chip around the design can reach them. All " + PINS.length + " signal pins sit on met4 along the top edge. They carry the clock, a reset, an enable, and 8-bit buses of inputs, outputs and bidirectional IOs. This design uses all but " + unusedList.length + " of them. The unused pins are still there, with nothing connected.</p>" +
       "<p>The step copies the pin shapes from a template DEF file. Without a fixed pin-out, a pin placer would put each pin near the cells it connects to.</p>" };
-  STEPS[S.PLACE] = { short: "Place", title: "Global placement", tool: "OpenROAD <code>gpl</code> (RePlAce)", play: PLACE_MS,
+  STEPS[S.PLACE] = { short: "Place", title: "Global placement", play: PLACE_MS,
     body:
       "<p><b>Global placement</b> gives each of the " + n(NC) + " instances a position that keeps connected cells close while spreading them evenly over the core. Positions are continuous, so cells may overlap and sit between rows until legalisation. It works in two phases:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Initial placement</b> starts every instance at the core centre and minimises the sum of the squared lengths of the connections, which is quick to solve. With the pins along the top edge as its only anchors, it pulls the netlist into a heap under them.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Nesterov placement</b> then treats cells as charges in an electrostatic field, which pushes them out of dense regions, while a wirelength model pulls connected cells together. Density is measured over a grid of <b>bins</b>, and a <b>target density</b> of " + fmt(TARGET) + " lets cells cover at most " + fmt(100 * TARGET, 0) + "% of each bin. Progress is measured by <b>overflow</b>, and the placer stops when it falls below 0.1.</p>" +
       "<p>The run is <b>routability-driven</b>. Near 0.3 overflow it estimates routing congestion and inflates the cells in congested regions. It then rewinds to a snapshot taken while the cells were still crowded, and redoes the spreading with the inflated cells so that they end up further apart. It did this " + LASTF.rounds + " times, then kept the least congested round for the final pass.</p>",
     note: "The animation shows the first descent, one rewind and the final pass." };
-  STEPS[S.REPAIR] = { short: "Repair", title: "Repair design", tool: "OpenROAD <code>rsz</code>: <code>buffer_ports</code>, <code>repair_design</code>, <code>repair_tie_fanout</code>", play: 5000,
+  STEPS[S.REPAIR] = { short: "Repair", title: "Repair design", play: 5000,
     body:
       "<p>With every cell placed, each net's wire length can be estimated, and with it the net's capacitance and the slew at its pins. The resizer checks these against the design's limits (from the SDC: " + fmt(M.sdc.slew) + " ns slew, " + fmt(M.sdc.cap) + " pF load capacitance, fanout " + M.sdc.fanout + ") and the library's pin limits, and repairs the violations. Timing optimisation comes later.</p>" +
       "<p><b>Input buffers</b> (" + M.rsz.inbuf + "): each input pin in use (" + M.inputs.map(function (x) { return "<code>" + x + "</code>"; }).join(", ").replace(/<code>ui_in\[0\]<\/code>.*<code>ui_in\[6\]<\/code>/, "<code>ui_in[6:0]</code>") + ") now drives one small buffer, so the pin sees a single small load and the buffer drives the logic inside. Each buffer starts at its pin, on the die's top edge, so it lies mostly outside the die until legalisation.</p>" +
@@ -1197,7 +1194,7 @@ function start(D) {
       "<h3>How it works</h3>" +
       "<p>Each net's length comes from a Steiner tree over its pins. Its resistance and capacitance are that length times the values per µm, averaged over met1 to met4, since no wire has a layer yet. <code>repair_design</code> aims " + M.sdc.slewpct + "% inside the slew and capacitance limits. Where a net misses that target, or exceeds the fanout limit, the tool inserts buffers or swaps in a stronger cell.</p>",
     note: "New cells pop in where the resizer put them, overlapping others until legalisation. The resized cells grow." };
-  STEPS[S.LEGAL] = { short: "Legalise", title: "Detailed placement", tool: "OpenROAD <code>dpl</code>: <code>detailed_placement</code>, <code>optimize_mirroring</code>", play: 6500,
+  STEPS[S.LEGAL] = { short: "Legalise", title: "Detailed placement", play: 6500,
     body:
       "<p>Detailed placement, or <b>legalisation</b>, moves every instance from its global position to a legal one, on a row and aligned to a site. No two cells may overlap. The taps and endcaps are fixed and do not move. Each moved cell takes its row's orientation, flipping top to bottom when it lands in a row of the other orientation, so its power rails line up with the row's. The moves are small (in a straight line, " + fmt(M.dpl.disp[3]) + " µm on average, " + fmt(M.dpl.disp[1]) + " µm at most) but they lengthen the nets' estimated wiring: HPWL rises " + Math.round(100 * (M.dpl.hpwl[1] / M.dpl.hpwl[0] - 1)) + "%, from " + n(Math.round(M.dpl.hpwl[0])) + " to " + n(Math.round(M.dpl.hpwl[1])) + " µm.</p>" +
       "<p>In LibreLane this legalisation already happens at the end of the repair step, so the Detailed placement step itself finds nothing left to move. The moves shown here are that legalisation.</p>" +
@@ -1205,7 +1202,7 @@ function start(D) {
       "<h3>How it works</h3>" +
       "<p><code>dpl</code> searches outward from each cell's global position for the nearest free run of sites. Global placement has already spread the cells to the target density, so a free spot is never far.</p>",
     note: "All cells slide at once to their legal sites, some flipping to suit their row. Then the mirrored cells flip." };
-  STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", tool: "OpenROAD <code>cts</code> (TritonCTS): <code>clock_tree_synthesis</code>", play: 8000,
+  STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", play: 8000,
     body:
       "<p>Until now timing analysis treated <code>clk</code> as ideal, arriving at all " + M.cts.sinks + " flip-flops at the same instant. As a real wire it would be far too heavily loaded, and the clock edge would reach near and far flip-flops at different times. That difference is called <b>skew</b>. If the capturing flip-flop gets the edge earlier than the launching one, a path has less time to meet setup. If it gets the edge later, hold is harder to meet.</p>" +
       "<p><b>Clock tree synthesis</b> replaces the single <code>clk</code> net with a tree of " + M.cts.buffers + " clock buffers (<code>clkbuf_4</code>): the root buffer, " + NBRANCH + " branch buffers and " + M.cts.clusters + " leaf buffers, so that every flip-flop is " + (M.cts.mindepth === M.cts.depth ? "exactly " + M.cts.depth : M.cts.mindepth + " to " + M.cts.depth) + " buffers from the pin.</p>" +
@@ -1213,7 +1210,7 @@ function start(D) {
       "<p>TritonCTS first <b>clusters</b> the sinks: " + M.cts.sinks + " flip-flops into " + M.cts.clusters + " groups of at most " + M.cts.maxsinks + " close together, each driven by one leaf buffer. It then builds an <b>H-tree</b> over the clusters. The trunk splits the area in half, each half splits again, and so on, which makes every branch from the root about equally long. " + M.cts.dummies + " <b>dummy loads</b> even out the load on the branches. The nets at the top of the tree, " + M.cts.ndr.map(function (x) { return "<code>" + x + "</code>"; }).join(" and ") + ", get a non-default rule with twice the usual spacing, which reduces coupling.</p>" +
       "<p>The buffers go where the tree wants them. Then legalisation makes room, moving " + M.cts.disp[2] + " cells " + fmt(M.cts.disp[3], 1) + " µm on average.</p>",
     note: "<b>Flylines</b> join each clock buffer to the cells it drives, level by level from the pin, thinner at each level down to the flip-flops. They show what connects to what. Routing draws the wires later. A dot marks each sink." };
-  STEPS[S.HOLD] = { short: "Hold", title: "Hold repair", tool: "OpenROAD <code>rsz</code>: <code>repair_timing -hold</code>", play: 6000,
+  STEPS[S.HOLD] = { short: "Hold", title: "Hold repair", play: 6000,
     body:
       "<p>Timing analysis makes two checks on every path into a flip-flop, setup and hold. Now that the clock tree exists, it follows the clock through its buffers instead of assuming the clock arrives everywhere at once. Hold depends on exactly when the clock reaches each flip-flop, so it can only now be checked meaningfully, even though wire delays are still estimates.</p>" +
       "<p>A <b>hold violation</b> is a path so fast that new data reaches a flip-flop before it has finished capturing the old. A clock that reaches the capturing flip-flop late makes that worse.</p>" +
@@ -1221,7 +1218,7 @@ function start(D) {
       "<h3>How it works</h3>" +
       "<p><code>repair_timing</code> starts with the worst endpoint, inserting a delay cell into each violating path and checking each insertion against setup on the same paths, so that the added delay breaks no setup check. Then legalisation makes room, moving " + M.hold.disp[2] + " cells " + fmt(M.hold.disp[3], 1) + " µm on average, and the mirroring is optimised again.</p>",
     note: "Delay cells pop in where the resizer put them. Then legalisation makes room." };
-  STEPS[S.GRT] = { short: "Route", title: "Global routing", tool: "OpenROAD <code>grt</code> (FastRoute)", play: 13000,
+  STEPS[S.GRT] = { short: "Route", title: "Global routing", play: 13000,
     body:
       "<p><b>Global routing</b> plans every net's route before any wire is drawn. It lays a grid of <b>g-cells</b> over the die: " + GNX + " × " + GNY + " squares of " + fmt(um(GG)) + " µm, the last column and row a little wider. For each of the " + n(GR.routed) + " nets it picks the g-cells its wires will pass through, and a layer in each. These are the net's <b>route guides</b>.</p>" +
       "<p>Routing uses met1 to met4. met1 and met3 run horizontally and met2 and met4 vertically, so wires on neighbouring layers cross at right angles and join through vias. li1 appears only where a pin is reached.</p>" +
@@ -1230,7 +1227,7 @@ function start(D) {
       "<h3>How it works</h3>" +
       "<p>FastRoute routes each net in two dimensions as a tree through g-cells, rips up and reroutes the nets through over-full edges until none remain, and then assigns each stretch a layer.</p>",
     note: "First the guides of " + ROUTE_EX.length + " example nets, one at a time, then every net as a count per g-cell." };
-  STEPS[S.ANT] = { short: "Antenna", title: "Antenna repair", tool: "OpenROAD <code>grt</code>: <code>repair_antennas</code>", play: 6500,
+  STEPS[S.ANT] = { short: "Antenna", title: "Antenna repair", play: 6500,
     body:
       "<p>During fabrication the chip is built up layer by layer, and plasma etching charges every exposed wire. A wire that connects only to transistor gates has nowhere to discharge, and a long one can collect enough charge to damage the thin gate oxide. This is the <b>antenna effect</b>. In sky130 the rule limits the area of a wire's sidewalls (perimeter × thickness) on each layer relative to the gate area it connects to.</p>" +
       "<p>The check after global routing found one violation, on net <code>" + AM.net + "</code> at input " + AM.pin.split("/")[1] + " of the root clock buffer <code>" + AM.pin.split("/")[0] + "</code>. On " + AM.layer + " its sidewall area is " + fmt(AM.partial) + " times the gate area it connects to, against a limit of " + fmt(AM.required, 0) + " (" + Math.round(100 * (AM.pr - 1)) + "% over). The clock pin's long route ends at the root buffer's input, on transistor gates alone. Nothing connects it to diffusion, through which the charge could leak away.</p>" +
@@ -1238,21 +1235,21 @@ function start(D) {
       "<h3>How it works</h3>" +
       "<p><code>repair_antennas</code> estimates each net's metal from its global route and adds diodes, or moves wiring to a higher layer, until every ratio passes. After placing the diode, <code>repair_antennas</code> legalises the whole placement again, which puts almost every cell back in its row's orientation. LibreLane 3.0 does not mirror them again afterwards, so " + n(AM.flipped) + " cells lose their mirroring here, at some cost in wirelength. Because cells moved and flipped, the guides of " + n(AM.rerouted) + " nets are re-made, and detailed routing follows those.</p>",
     note: "First the clk net's guides from the pin to the root buffer, and the wires the check estimates from them. Then the diode, and the cells that lose their mirroring flipping back." };
-  STEPS[S.DRT] = { short: "Detail", title: "Detailed routing", tool: "OpenROAD <code>drt</code> (TritonRoute)", play: 14000,
+  STEPS[S.DRT] = { short: "Detail", title: "Detailed routing", play: 14000,
     body:
       "<p><b>Detailed routing</b> draws the actual wires, as metal shapes on each layer's routing tracks joined by vias. It follows each net's route guides and obeys a simplified set of width and spacing rules that it can check quickly. A guide's layer is only a preference, and the router may move a stretch to another layer. Net " + ROUTE_EX[0].name + ", for example, runs " + fmt(ROUTE_EX[0].offlayer, 1) + " µm on a different layer from the one planned.</p>" +
       "<p>The result is " + n(DR.wirelength) + " µm of wire (" + ["met1", "met2", "met3", "met4"].map(function (l) { return l + " " + n(DR.length[l]); }).join(", ") + ") and " + n(DR.nvias) + " vias. The first pass left " + n(DR.iters[0]) + " design-rule violations, and " + (DR.iters.length - 1) + " more passes brought them to " + DR.iters[DR.iters.length - 1] + ". It took " + runtimeText(DR.runtime) + ", the slowest step of the flow.</p>" +
       "<h3>How it works</h3>" +
       "<p>TritonRoute first works out how to reach each pin and assigns wires to tracks. It then divides the die into small regions and routes each one's nets with a maze search, many regions in parallel. Each later pass rips up and reroutes only where violations remain, raising the cost of the shapes that cause them.</p>",
     note: "First come three example nets, with their wires drawn over their guides as antenna repair re-made them. Seen from above, the wires stay inside the guides. Then comes all the wiring, layer by layer. Vias show when you zoom in." };
-  STEPS[S.FILL] = { short: "Fill", title: "Fill insertion", tool: "OpenROAD <code>dpl</code>: <code>filler_placement</code>", play: 4000,
+  STEPS[S.FILL] = { short: "Fill", title: "Fill insertion", play: 4000,
     body:
       "<p>Every empty site now gets a cell, " + n(FILL.length) + " in all. <b>Fill cells</b> (" + Object.keys(FILLT).filter(function (t) { return /^fill/.test(t); }).sort().map(function (t) { return "<code>" + t + "</code> × " + FILLT[t]; }).join(", ") + ") hold no transistors. They continue the wells, implants and power rails across the gaps, so every row is unbroken. Where there is room, <b>decap cells</b> (<code>decap_3</code> × " + (FILLT.decap_3 || 0) + ") go in instead.</p>" +
       "<p>That completes the layout. The flow then extracts the parasitics, checks timing again on the routed design, and writes the GDS for the final DRC and LVS checks.</p>" +
       "<h3>How it works</h3>" +
       "<p><code>filler_placement</code> walks each row and fills each gap from the cells it is given, largest first.</p>",
     note: "Fill cells are hatched, decap cells solid." };
-  STEPS[S.STA] = { short: "Timing", title: "Signoff timing", tool: "OpenROAD <code>rcx</code> (OpenRCX), <code>sta</code> (OpenSTA)", play: 9000,
+  STEPS[S.STA] = { short: "Timing", title: "Signoff timing", play: 9000,
     body:
       "<p><b>Parasitic extraction</b> works out each wire's resistance and capacitance from its geometry. <b>Static timing analysis</b> then uses them to check every path against the clock in " + CORNERS.length + " corners. These are slow, typical and fast combinations of process, voltage and temperature, each with minimum, nominal and maximum parasitics. No corner violates setup or hold.</p>" +
       "<p><b>Setup</b> is tightest in the slow corner with maximum parasitics (" + cornerName("max_ss_100C_1v60") + "). The worst flip-flop to flip-flop path runs from <code>" + PSETUP.q.start + "</code> through " + PSETUP.between + " cells to <code>" + PSETUP.q.end + "</code>. The next clock edge comes at " + fmt(PSETUP.q.period) + " ns and reaches the capturing flip-flop " + fmt(PSETUP.q.required - PSETUP.q.period - PSETUP.q.uncertainty - PSETUP.q.libtime - PSETUP.q.crpr) + " ns later through the clock tree. With " + fmt(-PSETUP.q.uncertainty) + " ns of uncertainty and " + fmt(-PSETUP.q.libtime) + " ns of setup time taken off, and " + fmt(PSETUP.q.crpr, 3) + " ns of clock reconvergence pessimism removal (CRPR) added back, the data is required by " + fmt(PSETUP.q.required) + " ns. It arrives at " + fmt(PSETUP.t1) + " ns, so the slack is " + fmt(PSETUP.q.slack) + " ns. Paths from input pins and to output pins have less room, because the SDC assumes a fifth of the period is spent outside the design. The worst of them has " + fmt(ST.worst.slack) + " ns of slack, from <code>" + ST.worst.start + "</code>.</p>" +
@@ -1260,14 +1257,14 @@ function start(D) {
       "<h3>How it works</h3>" +
       "<p>OpenSTA needs no test inputs. It propagates the latest and earliest arrival times through every cell and net, from the library's delay tables and each wire's extracted RC. Every delay is derated by " + fmt(ST.derate, 0) + "% to allow for variation across the chip. Where the launching and capturing flip-flops share part of the clock tree, this counts the shared part as late for one and early for the other, which the same wires and buffers cannot be. CRPR gives that difference back. Up to " + slewMax("ss") + " pins exceed the " + fmt(M.sdc.slew) + " ns slew limit in the slow corners, and " + slewMax("tt") + " in the typical. LibreLane lists them as warnings, which do not stop the flow.</p>",
     note: "Each path's signal travels at the arrival times the analysis computed." };
-  STEPS[S.IR] = { short: "IR drop", title: "IR drop analysis", tool: "OpenROAD <code>psm</code> (PDNSim)", play: 7000,
+  STEPS[S.IR] = { short: "IR drop", title: "IR drop analysis", play: 7000,
     body:
       "<p>The power grid has resistance, so the supply sags on its way to the cells. A cell far from where power enters sees a little less than 1.8 V on <code>VPWR</code>, and a little more than 0 V on <code>VGND</code>. Too much <b>IR drop</b> slows cells down and can break timing.</p>" +
       "<p>This design draws an estimated " + fmt(IR.power * 1000, 2) + " mW (typical corner, with an assumed rate of signal switching), so the drop is tiny. At worst it is " + fmt(IR.worst[0], 1) + " µV on <code>VPWR</code> and " + fmt(IR.worst[1], 1) + " µV on <code>VGND</code>, about " + fmt(IR.worst[0] / 18000, 4) + "% of the supply, and " + fmt(IR.average[0], 0) + " µV on average. It is largest at the far ends of the rails, beyond the outermost met4 stripes, and smallest beside the stripes, where power enters the rails.</p>" +
       "<h3>How it works</h3>" +
       "<p>PDNSim models every rail, stripe and via of a power net as a resistor network. It places a current source at each cell, according to its estimated power, and a voltage source at each met4 stripe, where power enters the design. Then it solves for the voltage at every node.</p>",
     note: "The drop is shown in colour along every rail, first on the VPWR rails, then on the VGND rails between them." };
-  STEPS[S.GDS] = { short: "GDS", title: "GDS stream-out", tool: "Magic", play: GDS_MS,
+  STEPS[S.GDS] = { short: "GDS", title: "GDS stream-out", play: GDS_MS,
     body:
       "<p>Finally the layout is <b>streamed out</b> to a GDS file, from which the fab makes the masks. Until now the tools knew each cell only by its outline, its pins and the areas wiring must avoid, and this page drew it as a box. Stream-out puts in each cell's full layout from the library and adds the routing, vias and power grid. Magic writes the GDS.</p>" +
       "<p>The layers build up from the substrate: the n-well, diffusion, poly, contacts and li1 inside the cells, then the metals and the vias between them. Each standard cell's layout is stored once and placed by reference, " + n(GD.masters.length) + " masters for " + n(u16len(GD.insts) / 6) + " instances, with the routing (" + n(GD.topcount.li1) + " li1 shapes, " + n(GD.topcount.met1 + GD.topcount.met2 + GD.topcount.met3 + GD.topcount.met4) + " metal shapes and " + n(GD.topcount.mcon + GD.topcount.via + GD.topcount.via2 + GD.topcount.via3) + " via cuts) as shapes of the top cell. The " + n(u16len(GD.insts) / 6) + " instances are the " + n(D.netlistCells) + " from synthesis and every cell the flow added.</p>" +
@@ -2848,7 +2845,6 @@ function start(D) {
   function updatePanel() {
     var st = STEPS[target];
     document.getElementById("title").textContent = st.title;
-    document.getElementById("tool").innerHTML = st.tool || "";
     document.getElementById("body").innerHTML = st.body + (st.note ? '<p class="note">' + st.note + "</p>" : "");
     markTerms(document.getElementById("body"), target);
     document.getElementById("prev").disabled = target === 0;
