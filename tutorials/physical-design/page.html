@@ -636,23 +636,27 @@ function start(D) {
     SX[i] = Sg.xy[2 * i]; SY[i] = Sg.xy[2 * i + 1]; STY[i] = Sg.ty[i]; SWD[i] = WT[Sg.ty[i]];
     SFX[i] = flipX(Sg.or[i]); SFY[i] = flipY(Sg.or[i]); SA[i] = 1;
   }
-  // A to B by adding and removing cells: the new ones pop in, each from its time popAt(i),
-  // removed ones fade, resized ones change width.
-  function popIn(A, B, t, popAt) {
+  // A to B by adding and removing cells: the new ones pop in, each from its time popAt(i), and
+  // removed ones fade, resized ones change width; o times these where a step needs its own
+  // (dur: how long a cell takes to pop in; size: when cells resize; fade, fadeDur: when and how
+  // fast removed ones fade)
+  function popIn(A, B, t, popAt, o) {
+    o = o || {};
+    var dur = o.dur || 0.22, s0 = o.size ? o.size[0] : 0.6, s1 = o.size ? o.size[1] : 0.9, f0 = o.fade || 0, fd = o.fadeDur || 0.25;
     for (var i = 0; i < NU; i++) {
       var a = has(A, i), b = has(B, i);
       if (a && b) {
         put(B, i);
         if (A.ty[i] !== B.ty[i]) {
-          var w = ease(clamp01((t - 0.6) / 0.3));
+          var w = ease(clamp01((t - s0) / (s1 - s0)));
           SWD[i] = WT[A.ty[i]] + (WT[B.ty[i]] - WT[A.ty[i]]) * w;
           if (w < 0.5) STY[i] = A.ty[i];
         }
       } else if (a) {
-        put(A, i); SA[i] = 1 - ease(clamp01((t - 0.05 * hash01(i)) / 0.25));
+        put(A, i); SA[i] = 1 - ease(clamp01((t - f0 - 0.05 * hash01(i)) / fd));
       } else if (b) {
         put(B, i);
-        var tp = clamp01((t - popAt(i)) / 0.22);
+        var tp = clamp01((t - popAt(i)) / dur);
         SA[i] = tp > 0 ? 1 : 0; SXX[i] = SYY[i] = ease(tp);
       }
     }
@@ -681,7 +685,15 @@ function start(D) {
   // when cell i turns over in the mirroring (t through the step), as legalise() times it
   function mirrorAt(i) { return 0.74 + 0.1 * hash01(i + 7) + 0.08; }
   var CTS_SPLIT = 0.72, HOLD_SPLIT = 0.45, ANT_SPLIT = 0.6;   // each step's share for adding cells, then legalising
-  function popRepair(i) { return 0.2 + 0.45 * hash01(i); }
+  // Design repair in its three parts, in the order the resizer runs them: the input buffers;
+  // buffering, then sizing; the tie cells, the old ones fading as the new ones appear
+  var REP = [0.03, 0.3, 0.66, 0.97], REP_SIZE = [0.54, 0.63], REP_OPT = { dur: 0.08, size: REP_SIZE, fade: 0.67, fadeDur: 0.08 };
+  function repairPart(i) { return /^input\d/.test(NAMES[i]) ? 1 : CLS[i] === "tie" ? 3 : 2; }
+  function popRepair(i) {
+    var p = repairPart(i), a = p === 3 ? 0.73 : REP[p - 1], b = p === 2 ? 0.5 : REP[p] - 0.1;
+    return a + (b - a) * hash01(i);
+  }
+  function repairAt(u) { return u >= 1 ? 0 : u < REP[1] ? 1 : u < REP[2] ? 2 : 3; }
   function popClock(i) { var d = DRVNET[i], j = FEED[i]; return d !== undefined ? lvStart(CLOCK[d].lv) : j === undefined ? 0.5 : lvStart(CLOCK[j].lv) - 0.22; }
   function popHold(i) { return 0.08 + 0.62 * hash01(i); }
   function putAll(Sg) { for (var i = 0; i < NU; i++) if (has(Sg, i)) put(Sg, i); }
@@ -697,7 +709,7 @@ function start(D) {
         SX[i] = a[2 * i] + (b[2 * i] - a[2 * i]) * f; SY[i] = a[2 * i + 1] + (b[2 * i + 1] - a[2 * i + 1]) * f;
         STY[i] = NL.type[i]; SWD[i] = WT[STY[i]]; SFX[i] = SFY[i] = 0; SA[i] = aIn;
       }
-    } else if (p <= S.REPAIR) popIn(K.G, K.rszB, within(p, S.REPAIR), popRepair);
+    } else if (p <= S.REPAIR) popIn(K.G, K.rszB, within(p, S.REPAIR), popRepair, REP_OPT);
     else if (p <= S.LEGAL) legalise(K.rszB, K.dpl, within(p, S.LEGAL));
     else if (p <= S.CTS) {
       var u = within(p, S.CTS);
@@ -1330,7 +1342,7 @@ function start(D) {
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Initial placement</b> starts every instance at the core centre and minimises the sum of the squared lengths of the connections, which is quick to solve. With the pins along the top edge as its only anchors, it pulls the netlist into a heap under them.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Nesterov placement</b> then treats cells as charges in an electrostatic field, which pushes them out of dense regions, while a wire length model pulls connected cells together. Density is measured over a grid of <b>bins</b>, and a <b>target density</b> of " + fmt(TARGET) + " lets cells cover at most " + fmt(100 * TARGET, 0) + "% of each bin. Progress is measured by <b>overflow</b>, and the placer stops when it falls below 0.1.</p>" +
       "<p>The run is <b>routability-driven</b>. Near 0.3 overflow it estimates routing congestion and inflates the cells in congested regions. It then rewinds to a snapshot taken while the cells were still crowded, and redoes the spreading with the inflated cells so that they end up further apart. It did this " + LASTF.rounds + " times, then kept the least congested round for the final pass.</p>" };
-  STEPS[S.REPAIR] = { short: "Repair", title: "Design repair", play: 5000,
+  STEPS[S.REPAIR] = { short: "Repair", title: "Design repair", play: 7500,
     body:
       "<p>With every cell placed, each net's wire length can be estimated from a Steiner tree over its pins, and with it the net's capacitance and the slew at its pins. The resizer checks these against the design's limits, set in the SDC, and the library's pin limits, and repairs the violations in three ways:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Input buffers</b> go in between each input pin and the logic it feeds. The pin then drives only its buffer, a single small load. The clock pin gets none, because clock tree synthesis deals with it later. Each buffer starts at its pin, on the die's top edge, so it lies mostly outside the die until legalisation.</p>" +
@@ -1350,7 +1362,7 @@ function start(D) {
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Clustering</b> splits the flip-flops into groups of nearby ones, so that each group's load capacitance stays within what one clock buffer may drive. The tool tries several limits on group size and span, and the best result here came from groups of at most " + M.cts.maxsinks + " flip-flops. Each group gets its own <b>leaf buffer</b>, placed near its centre. Where a buffer's load is light, a <b>dummy load</b> goes beside it, mostly beside leaf buffers. A dummy load is a clock buffer or inverter that drives nothing. It evens out the loads, so that every route delays the clock by about the same amount.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Branch buffers</b> then join the leaf buffers to the <b>root buffer</b>, which the pin drives. Each branch buffer drives the leaf buffers in its part of the die, and the root drives the branch buffers.</p>" +
       "<p>Then legalisation makes room for the new buffers.</p>",
-    note: "<b>Flylines</b> join each clock buffer to the cells it drives, built up from the flip-flops to the pin, thicker at each level up. Routing draws the real wires later. A dot marks each <b>sink</b>." };
+    note: "<b>Flylines</b> join each clock buffer to the cells it drives, built up from the flip-flops to the pin, thicker at each level up. The real wires come later, at routing. A dot marks each <b>sink</b>." };
   STEPS[S.HOLD] = { short: "Hold", title: "Hold repair", play: 6000,
     body:
       "<p>Now that the clock tree exists, <b>timing analysis</b> can follow the clock through its buffers to each flip-flop, instead of assuming it arrives everywhere at once. Wire delays are still estimates. At each flip-flop it makes two checks:</p>" +
@@ -1362,7 +1374,7 @@ function start(D) {
       "<p><b>Global routing</b> plans every net's route before any wire is drawn. Routing uses met1 to met4: met1 and met3 run horizontally, and met2 and met4 vertically, so wires on neighbouring layers cross at right angles and join through vias.</p>" +
       "<p>The router lays a grid of <b>g-cells</b> over the die. For each net it first finds a tree through the g-cells, in two dimensions, and then gives each stretch of the tree a layer. The g-cells and layers a net is given are its <b>route guides</b>.</p>" +
       "<p>Wires pass from one g-cell to the next across their shared edge, and each edge can take only as many wires as it has routing tracks, less those the power grid blocks and a " + fmt(GR.adjust, 0) + "% reserve. Where too many nets would cross an edge, the router detours some through quieter g-cells. Its first pass left some edges over capacity. After " + GR.extra + " rounds of rip-up and reroute, none were left.</p>" +
-      "<p>The last picture counts, for every g-cell, the nets with a guide in it. The stronger the colour, the busier the g-cell. The router itself works with the wires across each edge, so the picture shows where routing is dense, not exactly where it is tight.</p>" };
+      "<p>The last picture shades each g-cell by the number of nets with a guide in it. The router itself works with the wires across each edge, so the picture shows where routing is dense, not exactly where it is tight.</p>" };
   STEPS[S.ANT] = { short: "Antenna", title: "Antenna repair", play: 6500,
     body:
       "<p>During fabrication the chip is built up layer by layer, and plasma etching charges every exposed wire. While a layer is etched, a wire on it may reach transistor gates but not yet any diffusion, which only higher layers will connect. With nowhere to discharge, a long wire can damage the thin gate oxide. This is the <b>antenna effect</b>. The sky130 <b>antenna rule</b> limits, on each layer, the area of a wire's sidewalls (perimeter × thickness) relative to the gate area it reaches.</p>" +
@@ -2469,10 +2481,12 @@ function start(D) {
       var v0 = nearest(vias, yAt(0.78), function (q) { return q.x === sP[2]; });
       if (v0) label("via stack", sx(v0.x), sy(v0.y), { dx: -18, dy: 22, align: "right" });
     }
-    if ((a = only(S.REPAIR, 0.95)) > 0.01) {
-      ctx.globalAlpha = a;
-      var kin = -1, kbuf = -1, ktie = CLS.indexOf("tie"), krs = -1;
+    if (pos > S.PLACE && pos <= S.REPAIR + 0.06) {
+      // each callout from when its part has put its cell in, until the next step starts
+      var ur = within(pos, S.REPAIR), from = function (t0) { return pos > S.REPAIR ? only(S.REPAIR, 0) : clamp01((ur - t0) / 0.04); };
+      var kin = -1, kbuf = -1, ktie = -1, krs = -1;
       for (var i = NC; i < NU; i++) {
+        if (ktie < 0 && CLS[i] === "tie" && has(K.rszB, i)) ktie = i;
         if (kin < 0 && /^input\d/.test(NAMES[i])) kin = i;
         if (kbuf < 0 && CLS[i] === "buf" && !/^input\d/.test(NAMES[i]) && has(K.rszB, i) && K.rszB.xy[2 * i + 1] < (CORE[1] + CORE[3]) / 2) kbuf = i;
       }
@@ -2485,10 +2499,11 @@ function start(D) {
       }
       var clear = { avoid: function (bx) { return hot.some(function (r) { return bx[0] < r[2] && r[0] < bx[2] && bx[1] < r[3] && r[1] < bx[3]; }); }, more: ringCands() };
       var opt = function (o) { for (var k in clear) o[k] = clear[k]; return o; };
-      if (kin >= 0) { var q1 = centre(K.rszB, kin); label("input buffer", q1[0], q1[1], opt({ dx: 18, dy: 26 })); }
-      if (kbuf >= 0) { var q2 = centre(K.rszB, kbuf); label("buffer", q2[0], q2[1], opt({ dx: 18, dy: -36 })); }
-      if (ktie >= 0) { var q3 = centre(K.rszB, ktie); label("tie cell", q3[0], q3[1], opt({ dx: -18, dy: -36, align: "right" })); }
-      if (krs >= 0) { var q4 = centre(K.rszB, krs); label("resized to a stronger cell", q4[0], q4[1], opt({ dx: -18, dy: 30, align: "right" })); }
+      var say = function (k, text, t0, o) { if (k < 0 || (ctx.globalAlpha = from(t0)) <= 0.01) return; var q = centre(K.rszB, k); label(text, q[0], q[1], opt(o)); };
+      say(kin, "input buffer", popRepair(kin) + 0.06, { dx: 18, dy: 26 });
+      say(kbuf, "buffer", popRepair(kbuf) + 0.06, { dx: 18, dy: -36 });
+      say(krs, "resized to a stronger cell", REP_SIZE[1], { dx: -18, dy: 30, align: "right" });
+      say(ktie, "tie cell", popRepair(ktie) + 0.06, { dx: -18, dy: -36, align: "right" });
     }
     // the clk pin, from the start of the clock step: where the tree will grow from. Above the
     // die, in the margin between it and the legend.
@@ -2887,10 +2902,11 @@ function start(D) {
       return "<b>" + pass + " · overflow " + f.overflow.toFixed(2) + " · wire length " + (f.hpwl / 1000).toFixed(1) + " mm";
     }
     if (k === S.REPAIR) {
-      if (u >= 0.6) return "<b>Resizing</b> " + M.rsz.resized + " instances";
-      var cntR = 0, totR = 0;
-      for (var r = NC; r < NU; r++) if (has(K.rszB, r)) { totR++; if (u >= popRepair(r)) cntR++; }
-      return "<b>New cells</b>: " + cntR + " of " + totR;
+      // the part playing, in the panel's words, and how far through it
+      var part = u >= 1 ? 3 : repairAt(u), cntR = 0, totR = 0;
+      if (part === 2 && u >= REP_SIZE[0]) return "<b>Sizing</b>: " + M.rsz.resized + " cells resized";
+      for (var r = NC; r < NU; r++) if (has(K.rszB, r) && repairPart(r) === part) { totR++; if (u >= popRepair(r)) cntR++; }
+      return part === 1 ? "<b>Input buffers</b>: " + cntR + " of " + totR : part === 2 ? "<b>Buffering</b>: " + cntR + " of " + totR + " buffers" : "<b>Tie cells</b>: " + cntR + " of " + totR + " replaced";
     }
     if (k === S.LEGAL) {
       if (u < 0.72) return "<b>Legalising</b>: every cell slides to a legal site";
@@ -2961,6 +2977,7 @@ function start(D) {
   // shows at u (0 to 1 through the step); 0 for none, such as the very end
   var PHASES = {};
   PHASES[S.PLACE] = function (u) { if (u >= 1) return 0; var g = gplAt(u), f = GF[g.f > 0.5 ? Math.min(g.i + 1, GF.length - 1) : g.i]; return f.ip !== undefined ? 1 : 2; };
+  PHASES[S.REPAIR] = repairAt;
   PHASES[S.LEGAL] = function (u) { return u >= 1 ? 0 : u < 0.72 ? 1 : 2; };
   PHASES[S.CTS] = function (u) { var t = u / CTS_SPLIT; return t < lvStart(CLV - 1) ? 1 : t < CTS_END ? 2 : 0; };
   PHASES[S.STA] = function (u) { return u >= 1 || u < STA_SET0 ? 0 : u < STA_HOLD0 ? 1 : 2; };
@@ -3183,7 +3200,7 @@ function start(D) {
     { k: "thyristor", rx: /\bthyristors?\b/, from: S.TAPS, home: true, def: "A switch made of four alternating layers of p- and n-type silicon (PNPN). Once triggered, it stays on until the current through it stops." },
     { k: "design rules (DRC)", rx: /\bDRC\b|\bdesign[- ]rules?\b/, from: S.TAPS, home: true, def: "The fab's geometric rules on the widths, spacings and distances of shapes. DRC (design rule checking) checks a layout against them." },
     { k: "decap cell", rx: /\bdecap cells?\b/, from: S.FILL, home: true, inBold: true, def: "A cell that holds a capacitor between VPWR and VGND, which steadies the supply when nearby cells switch." },
-    { k: "li1, met1–met5", rx: /\b(met[1-5]|li1)\b|\bmetals\b|\bmetal layers?\b/, from: S.PDN, home: true, def: "The wiring layers above the transistors. The lowest, li1, is used inside the cells and for their pins. Above it are met1 to met5. This design is wired on met1 to met4, with met1 and met3 horizontal and met2 and met4 vertical.", fig: function () { return stackFigure(true); } },
+    { k: "li1, met1–met5", rx: /\b(met[1-5]|li1)\b|\bmetals\b|\bmetal layers?\b/, each: true, from: S.PDN, home: true, def: "The wiring layers above the transistors. The lowest, li1, is used inside the cells and for their pins. Above it are met1 to met5. This design is wired on met1 to met4, with met1 and met3 horizontal and met2 and met4 vertical.", fig: function () { return stackFigure(true); } },
     { k: "stripe", rx: /\bstripes?\b/, from: S.PDN, def: "A wide vertical met4 power line that feeds the rails. The stripes are also the design's power pins." },
     { k: "power grid", rx: /\bpower grid\b/, from: S.PDN, def: "The rails, stripes and via stacks that carry VPWR and VGND to every cell." },
     { k: "cut", rx: /\bcuts?\b/, from: S.PDN, home: true, def: "A small metal-filled hole through the insulation between two layers. A via is made of one or more cuts." },
@@ -3206,6 +3223,7 @@ function start(D) {
     { k: "mirroring", rx: /\bmirror(ing|ed|s)?\b/, from: S.LEGAL, def: "Flipping a cell left to right, N to FN or FS to S, where that shortens its nets." },
     { k: "timing analysis", rx: /\b[Tt]iming analysis\b/, from: S.HOLD, home: true, inBold: true, def: "Working out when each signal reaches each flip-flop, and checking it against the clock period." },
     { k: "clock tree", rx: /\bclock tree\b/, from: S.CTS, def: "The buffers, and the nets between them, that carry the clock from its pin to every flip-flop with nearly equal delays." },
+    { k: "flyline", rx: /\bflylines?\b/i, from: S.CTS, home: true, inBold: true, def: "A straight line from a driver to a pin it feeds. It shows a connection that has no wire yet." },
     { k: "launching, capturing", rx: /\b(launching|capturing) flip-flops?\b/, from: S.HOLD, home: true, def: "On a timing path, the launching flip-flop sends the data at a clock edge, and the capturing flip-flop receives it. Setup is checked against the next edge, hold against the same one." },
     { k: "skew", rx: /\bskew\b/, from: S.CTS, def: "The difference in clock arrival time between two flip-flops." },
     { k: "sink", rx: /\bsinks?\b/, from: S.CTS, home: true, inBold: true, def: "A pin a clock net must reach. Here that is a flip-flop's clock input or a dummy load's input." },
@@ -3237,16 +3255,21 @@ function start(D) {
       if ((g.from === k && !g.home) || (g.not || []).indexOf(k) >= 0) return;   // home: marked on its own step too
       var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), node;
       var left = (g.again || []).indexOf(k) >= 0 ? 2 : 1;   // again: the steps where a second use is marked too
+      // each: the first use of each different word the entry covers (met1, met2, ...), not only the first of all
+      var seen = {}, rx = new RegExp(g.rx.source, g.rx.flags + "g");
       while ((node = walker.nextNode())) {
         var el = node.parentNode;
         if (el.closest("h3, .term, figure") || (!g.inCode && el.closest("code")) || (!g.inBold && el.closest("b"))) continue;
-        var m = g.rx.exec(node.nodeValue);
+        var m;
+        rx.lastIndex = 0;
+        while ((m = rx.exec(node.nodeValue)) && g.each && seen[m[0].toLowerCase()]) {}
         if (!m) continue;
+        seen[m[0].toLowerCase()] = 1;
         var after = node.splitText(m.index), rest = after.splitText(m[0].length), span = document.createElement("span");
         span.className = "term"; span.tabIndex = 0; span.dataset.g = gi; span.textContent = after.nodeValue;
         span.setAttribute("aria-describedby", "gloss");
         after.parentNode.replaceChild(span, after);
-        if (--left === 0) return;   // the first use only, unless again
+        if (!g.each && --left === 0) return;   // the first use only, unless again or each
         walker.currentNode = span;
       }
     });
