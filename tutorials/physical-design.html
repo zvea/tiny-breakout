@@ -22,8 +22,8 @@
 </script>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-/* One screen: the die on the left (canvas, zoom and pan, the legend above it, the play bar and
-   scale below it, the steps along its top), the current step's explanation on the right.
+/* One screen: the current step's explanation on the left, the die on the right (canvas, zoom and
+   pan, the legend above it, the play bar and scale below it, the steps along its top).
    Each colour keeps its meaning from step to step; whatever is not the current step's subject
    is greyed out. Laptop and tablet first; on a phone the panels stack. */
 :root {
@@ -113,7 +113,10 @@ html, body { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 13px; line-height: 1.45; }
 button { font: inherit; color: inherit; }
 
-.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 440px; }
+.app { height: 100%; display: grid; grid-template-columns: 440px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "top top" "text stage"; }
+.top { grid-area: top; }
+.stage { grid-area: stage; }
+aside { grid-area: text; }
 .stage { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--stage); }
 .view { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; }
 .view.dragging { cursor: grabbing; }
@@ -184,12 +187,17 @@ button { font: inherit; color: inherit; }
 .tip .sw { flex: none; width: 10px; height: 10px; margin-top: 3px; border: 1px solid var(--swatch-edge); border-radius: 1px; }
 .tip code { font-family: var(--mono); font-size: 11.5px; }
 
-/* the steps, along the top of the die: a stepper, numbered circles on a line with each step's
-   name below; the steps before the current one shaded, the current one filled */
-.steps {
-  display: flex; align-items: center; gap: 8px; padding-block: calc(8px + env(safe-area-inset-top, 0px)) 6px; border-bottom: 1px solid var(--rule); background: var(--bg);
-  padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: 12px;
+/* the header across the top: the title, the steps, the theme switch */
+.top {
+  display: flex; align-items: center; gap: 20px; border-bottom: 1px solid var(--rule); background: var(--bg);
+  padding-block: calc(8px + env(safe-area-inset-top, 0px)) 6px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px));
 }
+.brand { flex: none; }
+.brand p { margin: 0; color: var(--muted); font-size: 12px; }
+/* the steps: a stepper, numbered circles on a line with each step's name below; the steps before
+   the current one shaded, the current one filled */
+.steps { flex: 1; min-width: 0; display: flex; }
 .track { flex: 1; min-width: 0; display: flex; position: relative; }
 .track::before { content: ""; position: absolute; left: 3%; right: 3%; top: 10px; height: 2px; background: var(--rule); }
 .seg {
@@ -213,14 +221,12 @@ button { font: inherit; color: inherit; }
 
 /* the explanation */
 aside {
-  min-width: 0; min-height: 0; overflow-y: auto; border-left: 1px solid var(--rule);
+  min-width: 0; min-height: 0; overflow-y: auto; border-right: 1px solid var(--rule);
   padding-block: calc(14px + env(safe-area-inset-top, 0px)) 16px;
-  padding-left: 20px; padding-right: max(20px, env(safe-area-inset-right, 0px));
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: 20px;
   display: flex; flex-direction: column; gap: 12px;
 }
-.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-h1 { font-size: 15px; font-weight: 600; margin: 0; }
-.head p { margin: 0; color: var(--muted); font-size: 12px; }
+h1 { font-size: 17px; font-weight: 700; margin: 0; color: var(--focus); }
 h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text-wrap: balance; }
 .tool { margin: 0; font-size: 12px; color: var(--muted); }
 .tool code { font-family: var(--mono); font-size: 11.5px; }
@@ -281,9 +287,12 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
 }
 /* phones: the panels stack; keep it usable rather than polished */
 @media (max-width: 760px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: 62vh auto; height: auto; }
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 62vh auto; grid-template-areas: "top" "stage" "text"; height: auto; }
+  .top { flex-wrap: wrap; gap: 8px 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); }
+  .brand { flex: 1; }
+  .steps { order: 3; flex-basis: 100%; }
   .view { touch-action: pan-y; }
-  aside { border-left: 0; border-top: 1px solid var(--rule); overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  aside { border-right: 0; border-top: 1px solid var(--rule); overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .legend { flex-wrap: nowrap; overflow-x: auto; right: 10px; pointer-events: auto; scrollbar-width: none; }
   .legend li.dimmed { display: none; }
   .hint { display: none; }
@@ -313,10 +322,17 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
 </head>
 <body>
 <div class="app">
-  <main class="stage">
+  <header class="top">
+    <div class="brand">
+      <h1>Tiny Breakout physical design</h1>
+      <p>From an empty die to the finished GDS</p>
+    </div>
     <nav class="steps" aria-label="Steps">
       <div class="track" id="track"></div>
     </nav>
+    <button type="button" class="iconbtn" id="theme" aria-label="Switch theme"></button>
+  </header>
+  <main class="stage">
     <div class="view" id="view" tabindex="0" role="group" aria-label="The die: scroll or + and - to zoom, drag to move, arrow keys to step">
       <canvas id="canvas" role="img" aria-label="The die"></canvas>
       <div class="loading" id="loading">Loading the layout…</div>
@@ -339,13 +355,6 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
     </div>
   </main>
   <aside>
-    <div class="head">
-      <div>
-        <h1>Tiny Breakout physical design</h1>
-        <p>From an empty die to the finished GDS</p>
-      </div>
-      <button type="button" class="iconbtn" id="theme" aria-label="Switch theme"></button>
-    </div>
     <section aria-live="polite">
       <h2 id="title"></h2>
       <p class="tool" id="tool"></p>
