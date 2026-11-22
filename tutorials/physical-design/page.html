@@ -1202,9 +1202,13 @@ function start(D) {
   }
   var DIMC = {};
   ["rows", "fixed", "pdn", "pins", "logic", "ff", "buf", "tie", "clock", "hold", "changed", "clknet", "route", "hot", "diode", "antnet", "wire", "decap", "fill", "path", "ir", "gds"].forEach(function (g) { DIMC[g] = 1; });
+  // Whether the step before is still fading out: only while a step that animates on arrival
+  // (no Play) comes in. A step that plays waits at its start already showing its own focus, so
+  // Play goes straight on from there.
+  function carried() { return !!anim && !STEPS[target].play; }
   function updateDims() {
-    // while a step sits still (waiting to play, paused, scrubbed) it shows its own focus
-    var settled = !anim && pos > target - 1;
+    // while a step sits still (waiting to play, paused, scrubbed), or plays, it shows its own focus
+    var settled = !carried() && pos > target - 1;
     for (var g in DIMC) DIMC[g] = settled ? focusOf(target, g) : dimAt(pos, g);
   }
   // What is not the step's subject is dimmed by colour, not by transparency: drawn opaque, its
@@ -1672,11 +1676,11 @@ function start(D) {
   function routeT() { return within(pos, S.GRT); }
   // the routing step's layer stays over the cells while it fades out as the next step begins, so
   // its crowding map goes as a whole rather than lingering in the gaps between them
-  function routeOver() { return pos > S.GRT && pos < S.GRT + 0.3 && (anim || target === S.GRT) ? 1 : DIMC.route; }
+  function routeOver() { return pos > S.GRT && pos < S.GRT + 0.3 && (carried() || target === S.GRT) ? 1 : DIMC.route; }
   function drawGuides() {
     if (pos <= S.HOLD) return;
     // (the map fades as the next step plays; a step waiting at its start shows none of it)
-    var t = routeT(), gone = pos > S.GRT ? (anim || target === S.GRT ? clamp01(1 - (pos - S.GRT) / 0.3) : 0) : 1, d = DIMC.route * gone, i;
+    var t = routeT(), gone = pos > S.GRT ? (carried() || target === S.GRT ? clamp01(1 - (pos - S.GRT) / 0.3) : 0) : 1, d = DIMC.route * gone, i;
     if (gone <= 0) return;
     // crowding: a veil over the die, then each g-cell as a tile, pale to deep with the number
     // of nets that have guides in it (the count is in the tooltip)
@@ -1862,7 +1866,7 @@ function start(D) {
     // only on their own step: they fade as the next begins, with the change of focus
     var out = focusFade(S.IR);
     if (pos <= S.FILL || pos >= S.STA + out) return;
-    if (pos > S.STA && !anim && target !== S.STA) return;   // the next step waiting at its start
+    if (pos > S.STA && !carried() && target !== S.STA) return;   // the next step: gone at once
     var u = within(pos, S.STA), d = DIMC.path * (pos > S.STA ? clamp01((S.STA + out - pos) / out) : 1);
     if (d <= 0.01) return;
     // the paths' cells first, then their wires over them, as the metal lies over the cells
@@ -2288,7 +2292,7 @@ function start(D) {
     });
     return out;
   }
-  function only(k, s) { return pos > k ? (anim || target === k ? clamp01(1 - (pos - k) / 0.06) : 0) : ease(appear(pos, k, s)); }
+  function only(k, s) { return pos > k ? (carried() || target === k ? clamp01(1 - (pos - k) / 0.06) : 0) : ease(appear(pos, k, s)); }
   function centre(Sg, i) { return [sx(Sg.xy[2 * i] + WT[Sg.ty[i]] / 2), sy(Sg.xy[2 * i + 1] + RH / 2)]; }
   function pick(kind, row, frac) {
     var best = null, want = frac * D.sitesPerRow;
@@ -3036,7 +3040,7 @@ function start(D) {
   }
   function togglePlay() {
     if (anim) { stopAnim(); syncReadout(); draw(); return; }
-    if (pos >= target) pos = target - 1;
+    if (pos >= target) pos = stepStart(target);   // a replay starts where the step waits to be played
     goTo(target, { replay: true });
   }
   playBtn.addEventListener("click", togglePlay);
