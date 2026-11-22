@@ -2534,6 +2534,37 @@ function start(D) {
       if (leaf >= 0 && SA[leaf] > 0 && (ctx.globalAlpha = stageA(CLV)) > 0.01) { var ql = here(leaf); label("leaf buffer", ql[0], ql[1], { dx: -18, dy: 30, align: "right", more: far, score: cover }); }
       if (dummy >= 0 && SA[dummy] > 0 && (ctx.globalAlpha = stageA(CLV)) > 0.01) { var qd = here(dummy); label("dummy load", qd[0], qd[1], { dx: 14, dy: 20, more: ringCands([24, 36, 56]), score: cover, nearW: 12 }); }
     }
+    // a decap cell and a fill cell, once the filling is done: the widest fill cell near the upper
+    // middle, so it is easy to see, and a decap cell in the lower half
+    if ((a = only(S.FILL, 0.95)) > 0.01) {
+      ctx.globalAlpha = a;
+      // PROTOTYPE: of each kind, a cell of the widest size that stands alone (no other filler touching
+      // it in its row), in the quietest part of the die (fewest fillers around it); its callout goes
+      // where it covers the fewest fillers
+      var boxes = FILL.map(function (f) { return [sx(CORE[0] + f.site * SW) - 1, sy(CORE[1] + (f.row + 1) * RH) - 1, sx(CORE[0] + (f.site + f.w) * SW) + 1, sy(CORE[1] + f.row * RH) + 1]; });
+      var cover = function (bx) {
+        var sc = 0;
+        boxes.forEach(function (r) { var ox = Math.min(bx[2], r[2]) - Math.max(bx[0], r[0]), oy = Math.min(bx[3], r[3]) - Math.max(bx[1], r[1]); if (ox > 0 && oy > 0) sc += ox * oy; });
+        return sc;
+      };
+      var quietest = function (kind) {
+        var wmax = Math.max.apply(null, FILL.filter(function (f) { return f.kind === kind; }).map(function (f) { return f.w; }));
+        var touches = function (f) { return FILL.some(function (g) { return g !== f && g.row === f.row && g.site <= f.site + f.w && g.site + g.w >= f.site; }); };
+        var best = null, bs = Infinity;
+        FILL.forEach(function (f) {
+          if (f.kind !== kind || f.w !== wmax || touches(f)) return;
+          var x = sx(CORE[0] + (f.site + f.w / 2) * SW), y = sy(CORE[1] + (f.row + 0.5) * RH);
+          if (x < 60 || x > W - 60 || y < legendH + 60 || y > H - footH - 60) return;
+          var sc = cover([x - 70, y - 50, x + 70, y + 50]);
+          if (sc < bs) { bs = sc; best = [x, y]; }
+        });
+        return best;
+      };
+      var far = ringCands([24, 36, 56, 80]);
+      var qf = quietest("fill"), qd = quietest("decap");
+      if (qf) label("fill cell", qf[0], qf[1], { dx: 18, dy: -34, more: far, score: cover, nearW: 4 });
+      if (qd) label("decap cell", qd[0], qd[1], { dx: -18, dy: 30, align: "right", more: far, score: cover, nearW: 4 });
+    }
     if ((a = only(S.HOLD, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
       var kh = CLS.indexOf("hold");
