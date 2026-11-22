@@ -146,6 +146,16 @@ aside { grid-area: text; }
   background: var(--veil); border-radius: 2px;
 }
 .legend:empty { display: none; }
+.playprompt {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5;
+  display: inline-flex; align-items: center; gap: 10px; padding: 12px 20px; font: 600 16px var(--font);
+  color: var(--bg); background: var(--ink); border: 0; border-radius: 28px; cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+}
+.playprompt[hidden] { display: none; }
+.playprompt svg { width: 18px; height: 18px; }
+.playprompt kbd { font: inherit; font-size: 12px; font-weight: 500; border: 1px solid color-mix(in srgb, var(--bg) 50%, transparent); border-radius: 3px; padding: 0 5px; }
+.playprompt:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .legend .more button { pointer-events: auto; font: inherit; color: var(--muted); background: none; border: 1px solid var(--rule); border-radius: 10px; padding: 0 8px; cursor: pointer; }
 .legend .more button:hover { color: var(--ink); border-color: var(--muted); }
 .legend i.ramp { width: 70px; }
@@ -276,6 +286,14 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
 .body a { color: inherit; text-underline-offset: 2px; }
 /* what the picture shows, as opposed to what the tool does */
 .body .note { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13.5px; }
+.body .note.lead { margin: 0 0 12px; padding: 0 0 8px; border-top: 0; border-bottom: 1px solid var(--rule); }
+/* the numbered part the animation is showing, and the badges that play a part */
+.body .mainstep { transition: background-color 0.3s; border-radius: 4px; }
+.body .mainstep.playing { background: color-mix(in srgb, var(--focus) 9%, transparent); }
+.body .mainstep.playing .runin { background: var(--focus); }
+.body .runin.seek { cursor: pointer; }
+.body .runin.seek:hover { background: var(--focus); }
+.body .runin.seek:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .nav { display: flex; gap: 8px; }
 .nav button {
   flex: 1; min-width: 0; height: 32px; border: 1px solid var(--rule); border-radius: 2px; background: var(--bg); cursor: pointer; color: var(--ink);
@@ -309,6 +327,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
   h2 { font-size: 16px; margin-bottom: 2px; }
   .body h3 { margin: 9px 0 2px; }
   .body .note { margin-top: 6px; padding-top: 6px; }
+  .body .note.lead { margin: 0 0 8px; padding: 0 0 6px; }
 }
 /* phones: the panels stack; keep it usable rather than polished */
 @media (max-width: 760px) {
@@ -398,6 +417,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
           <span class="what" id="what"></span>
         </div>
       </div>
+      <button type="button" class="playprompt" id="playprompt" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7.5-4.5z" fill="currentColor"/></svg>Play the animation <kbd>→</kbd></button>
       <div class="tip" id="tip" hidden></div>
     </div>
   </main>
@@ -2671,9 +2691,10 @@ function start(D) {
     if (k !== target) { hideTip(); hideGloss(); }
     target = k; updatePanel(); setHash(k);
     if (toGDS && reduce) setTimeout(gdsCloseUp, 0);
-    if (reduce && !(opts && opts.replay)) {
-      // no motion unasked: a step that plays waits at its start for the play button
-      pos = STEPS[k].play && k > from ? k - 1 + (k === S.PLACE ? FADE : 0.001) : k;
+    if ((reduce || STEPS[k].play) && !(opts && opts.replay)) {
+      // a step that plays waits at its start for Play or → (and, with reduced motion, nothing
+      // moves unasked)
+      pos = STEPS[k].play && k > from ? stepStart(k) : k;
       draw(); syncReadout(); return;
     }
     // A step is shown from its start (the end of the one before) playing to its end, however it
@@ -2838,13 +2859,45 @@ function start(D) {
     }
     return "";
   }
+  // The numbered parts of a step that are phases of its animation, and which one the animation
+  // shows at u (0 to 1 through the step); 0 for none, such as the very end
+  var PHASES = {};
+  PHASES[S.PLACE] = function (u) { if (u >= 1) return 0; var g = gplAt(u), f = GF[g.f > 0.5 ? Math.min(g.i + 1, GF.length - 1) : g.i]; return f.ip !== undefined ? 1 : 2; };
+  PHASES[S.LEGAL] = function (u) { return u >= 1 ? 0 : u < 0.72 ? 1 : 2; };
+  PHASES[S.CTS] = function (u) { var t = u / CTS_SPLIT; return t < lvStart(CLV - 1) ? 1 : t < CTS_END ? 2 : 0; };
+  PHASES[S.STA] = function (u) { return u >= 1 || u < STA_SET0 ? 0 : u < STA_HOLD0 ? 1 : 2; };
+  var shownPhase = -1;
+  function syncPhase(u) {
+    var ph = PHASES[target] && u !== null ? PHASES[target](u) : 0;
+    if (ph === shownPhase) return;
+    shownPhase = ph;
+    Array.prototype.forEach.call(document.querySelectorAll("#body .mainstep"), function (p, i) { p.classList.toggle("playing", i + 1 === ph); });
+  }
+  // play a step's animation from the start of its numbered part n
+  function seekPhase(n) {
+    var f = PHASES[target]; if (!f) return;
+    for (var u = 0; u < 1; u += 0.002) if (f(u) === n) break;
+    stopAnim(); pos = target - 1 + Math.max(u, 0.0005);
+    goTo(target, { replay: true });
+  }
+  // the play prompt over the picture: a step that plays, waiting at its start
+  var prompt = document.getElementById("playprompt");
+  prompt.addEventListener("click", function () { togglePlay(); });
+  // where a step that plays waits before it is played (placement's fade-in already done)
+  function stepStart(k) { return k - 1 + (k === S.PLACE ? FADE : 0.001); }
+  function syncPrompt() {
+    var st = STEPS[target];
+    prompt.hidden = !(st.play && !anim && pos <= stepStart(target) + 1e-6);
+  }
   function syncReadout() {
+    syncPrompt();
     syncNav();
     var st = STEPS[target], show = !!st.play && pos > target - 1 - 1e-9 && pos <= target + 1e-9;
     if (!show && readout.contains(document.activeElement)) view.focus();
     readout.hidden = !show;
-    if (!show) return;
+    if (!show) { syncPhase(null); return; }
     var u = clamp01(pos - (target - 1)), text = readoutText(target, u);
+    syncPhase(u);
     scrub.value = Math.round(u * 1000);
     scrub.setAttribute("aria-valuetext", plain(text));
     // the icon only when it changes: replaced every frame while playing, the one a click
@@ -3104,7 +3157,16 @@ function start(D) {
   function updatePanel() {
     var st = STEPS[target];
     document.getElementById("title").textContent = st.title;
-    document.getElementById("body").innerHTML = st.body + (st.note ? '<p class="note">' + st.note + "</p>" : "");
+    var note = st.note ? '<p class="note' + (target === S.DIE ? "" : " lead") + '">' + st.note + "</p>" : "";
+    document.getElementById("body").innerHTML = target === S.DIE ? st.body + note : note + st.body;
+    // the numbered parts that are phases of the animation: a click plays that phase
+    if (PHASES[target]) Array.prototype.forEach.call(document.querySelectorAll("#body .mainstep .runin"), function (b, i) {
+      b.classList.add("seek"); b.tabIndex = 0; b.setAttribute("role", "button");
+      b.setAttribute("aria-label", "Play part " + (i + 1) + " of the animation");
+      b.addEventListener("click", function () { seekPhase(i + 1); });
+      b.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); seekPhase(i + 1); } });
+    });
+    shownPhase = -1;
     markTerms(document.getElementById("body"), target);
     // unavailable at the ends, but still focusable, so a keyboard user's focus stays put
     document.getElementById("prev").setAttribute("aria-disabled", target === 0 ? "true" : "false");
