@@ -253,6 +253,9 @@ h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text
 .gloss figure { margin: 6px 0 2px; }
 .gloss.wide { max-width: 390px; }
 figure.stack svg { display: block; width: 100%; height: auto; font: 500 11px var(--font); }
+/* in a glossary popup the figure is drawn narrower and so scaled up more: smaller text keeps it
+   at about the popup's own size */
+.gloss figure.stack svg { font-size: 9.5px; }
 figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted); }
 /* PROTOTYPE: the power nets in the colours the pictures draw them in (on the steps that use it) */
 .body code.vpwr { color: var(--vpwr); font-weight: 600; }
@@ -271,7 +274,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
 .nav button svg { width: 13px; height: 13px; flex: none; }
 .nav button:hover:not(:disabled) { border-color: var(--muted); }
 .nav button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.nav button:disabled { color: var(--muted); opacity: 0.5; cursor: default; }
+.nav button:disabled, .nav button[aria-disabled="true"] { color: var(--muted); opacity: 0.5; cursor: default; }
 
 /* short screens: a little tighter, so the panel still fits */
 @media (max-height: 820px) and (min-width: 761px) {
@@ -391,7 +394,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
   <aside>
     <div class="nav">
       <button type="button" id="prev"><span aria-hidden="true">&larr; </span>Back</button>
-      <button type="button" id="navplay" disabled></button>
+      <button type="button" id="navplay" aria-disabled="true"></button>
       <button type="button" id="next">Next<span aria-hidden="true"> &rarr;</span></button>
     </div>
     <section aria-live="polite">
@@ -1174,9 +1177,11 @@ function start(D) {
   var FIXED_UM2 = fixed.reduce(function (a, c) { return a + c.w; }, 0) * um(SW) * um(RH);
   var MOVABLE_UM2 = M.gpl.area - FIXED_UM2;
   // PROTOTYPE. The sky130 layer stack, side view, heights to scale (bottom and thickness in µm,
-  // from the PDK's Magic tech file): the PDN's rail, via stack and stripe in colour, a few signal
-  // wires faint, and met5, which this design does not use, outlined.
-  function stackFigure() {
+  // from the PDK's Magic tech file): the PDN's rail, via stack and stripe, a few signal wires on
+  // each layer, and met5, which this design does not use, outlined.
+  // layersOnly: just the layers, named on the left, with no labels for what the shapes are (for the
+  // glossary, where labels such as "power rail" would read as what a layer is for)
+  function stackFigure(layersOnly) {
     var Z = { diff: [0.2062, 0.12], poly: [0.3262, 0.18], li1: [0.9361, 0.10], v0: [1.0361, 0.34], met1: [1.3761, 0.36], v1: [1.7361, 0.27],
               met2: [2.0061, 0.36], v2: [2.3661, 0.42], met3: [2.7861, 0.845], v3: [3.6311, 0.39], met4: [4.0211, 0.845], met5: [5.3711, 1.26] };
     var X0 = 70, X1 = 300, top = 6.75, bot = -0.9, H = 200, k = (H - 14) / (top - bot);
@@ -1186,10 +1191,11 @@ function start(D) {
     var mid = function (l) { return (y(Z[l][0]) + y(Z[l][0] + Z[l][1])) / 2; };
     o.push('<rect x="' + X0 + '" y="' + y(Z.diff[0]).toFixed(1) + '" width="' + (X1 - X0) + '" height="' + (y(bot) - y(Z.diff[0])).toFixed(1) + '" fill="var(--die)"/>');
     [[70, 104], [124, 158], [226, 262]].forEach(function (d) { box(d[0], d[1], "diff", "var(--diff)"); box(d[0] + 13, d[0] + 21, "poly", "var(--poly)"); });
-    [[66, 92], [110, 150], [236, 270]].forEach(function (d) { box(d[0], d[1], "li1", "var(--li1)", ' opacity="0.5"'); });
-    [[64, 84], [104, 128]].forEach(function (d) { box(d[0], d[1], "met1", "var(--met1)", ' opacity="0.45"'); });
-    [[82, 102], [128, 146]].forEach(function (d) { box(d[0], d[1], "met2", "var(--met2)", ' opacity="0.45"'); });
-    [[70, 96], [120, 144]].forEach(function (d) { box(d[0], d[1], "met3", "var(--met3)", ' opacity="0.45"'); });
+    [[66, 92], [110, 150], [236, 270]].forEach(function (d) { box(d[0], d[1], "li1", "var(--li1)"); });
+    [[64, 84], [104, 128]].forEach(function (d) { box(d[0], d[1], "met1", "var(--met1)"); });
+    [[82, 102], [128, 146]].forEach(function (d) { box(d[0], d[1], "met2", "var(--met2)"); });
+    [[70, 96], [120, 144]].forEach(function (d) { box(d[0], d[1], "met3", "var(--met3)"); });
+    [[84, 116]].forEach(function (d) { box(d[0], d[1], "met4", "var(--met4)"); });   // signals use met4 too
     // the PDN: a met1 rail, the via stack over it, and the met4 stripe
     box(158, 242, "met1", "var(--met1)"); box(180, 220, "met2", "var(--met2)"); box(178, 222, "met3", "var(--met3)"); box(166, 234, "met4", "var(--met4)");
     ["v1", "v2", "v3"].forEach(function (v) { [186, 197, 208].forEach(function (x) { box(x, x + 6, v, "var(--cut)"); }); });
@@ -1198,14 +1204,16 @@ function start(D) {
     ["met5", "met4", "met3", "met2", "met1", "li1"].forEach(function (l) { t(X0 - 6, mid(l), "end", l); });
     t(X0 - 6, (y(Z.diff[0]) + y(Z.poly[0] + Z.poly[1])) / 2 + 1, "end", "poly, diff");
     t(X0 - 6, (y(Z.diff[0]) + y(bot)) / 2, "end", "substrate", "var(--muted)");
+    if (!layersOnly) {
     t(X1 + 6, mid("met5"), "start", "chip's grid", "var(--muted)");
-    t(X1 + 6, mid("met4"), "start", "stripe");
+    t(X1 + 6, mid("met4"), "start", "power stripe");
     var bx = 264, b0 = y(Z.met1[0] + Z.met1[1]), b1 = y(Z.met4[0]), bm = (b0 + b1) / 2;
     o.push('<path d="M' + (bx - 4) + " " + b0.toFixed(1) + "H" + bx + "V" + b1.toFixed(1) + "H" + (bx - 4) + "M" + bx + " " + bm.toFixed(1) + "H" + (X1 + 2) + '" fill="none" stroke="var(--ink)"/>');
     t(X1 + 6, bm, "start", "via stack");
-    t(X1 + 6, mid("met1"), "start", "rail");
+    t(X1 + 6, mid("met1"), "start", "power rail");
     t(X1 + 6, (y(Z.diff[0]) + y(Z.poly[0] + Z.poly[1])) / 2 + 1, "start", "transistors", "var(--muted)");
-    return '<figure class="stack"><svg viewBox="0 0 384 ' + H + '" role="img" aria-label="Side view of the sky130 layer stack: substrate and transistors at the bottom, then li1 and met1 to met5. A met1 rail is joined by a via stack through met2 and met3 to a met4 stripe. Met5 is outlined.">' + o.join("") + '</svg><figcaption>The sky130 layer stack, side view, heights to scale</figcaption></figure>';
+    }
+    return '<figure class="stack"><svg viewBox="0 0 ' + (layersOnly ? X1 + 10 : 384) + " " + H + '" role="img" aria-label="Side view of the sky130 layer stack: substrate and transistors at the bottom, then li1 and met1 to met5. A met1 rail is joined by a via stack through met2 and met3 to a met4 stripe. Met5 is outlined.">' + o.join("") + '</svg><figcaption>The sky130 layer stack, side view, heights to scale</figcaption></figure>';
   }
   // PROTOTYPE. An NMOS transistor as sky130 builds it, from above and in section, not to scale, in
   // the page's layer colours: diffusion crossed by a poly gate, contacts up to li1 on either side.
@@ -1235,13 +1243,12 @@ function start(D) {
   var STEPS = [];
   STEPS[S.DIE] = { short: "Start", title: "Welcome",
     body:
-      "<p>This tutorial shows, step by step, how a real hardware design becomes the layout a chip is made from. The design is <a href=\"https://github.com/zvea/tiny-breakout\">Tiny Breakout</a>, a complete VGA brick-breaker game written in SystemVerilog.</p>" +
+      "<p>This tutorial shows, step by step, how a real hardware design becomes the layout a chip is made from. The design is <a href=\"https://github.com/zvea/tiny-breakout\">Tiny Breakout</a>, a complete VGA brick-breaker game written in SystemVerilog. Move from step to step with <b>Next</b> at the top, or the <kbd>→</kbd> key.</p>" +
       "<p>Turning SystemVerilog code (the <b>RTL</b>) into a chip layout takes two main steps:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"Step 1\">1</span><b>Synthesis</b> maps the RTL to a gate-level <b>netlist</b>, which lists <b>instances</b> of <b>standard cells</b> and the <b>nets</b> that connect their pins, but gives no positions. In this tutorial the cells come from <code>sky130_fd_sc_hd</code>, SkyWater's 130 nm high-density library, which has logic gates, flip-flops, multiplexers, adders and buffers.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"Step 2\">2</span><b>Physical design</b>, or place and route (PnR), then decides where every instance and every wire goes, and adds cells such as buffers and the clock tree. Here LibreLane does it, mostly with OpenROAD's tools.</p>" +
       "<p>The tutorial assumes that synthesis has already been done, and follows physical design all the way to the finished layout.</p>" +
-      "<p>We start with an empty <b>die area</b>, the " + fmt(um(DIE[2])) + " × " + fmt(um(DIE[3])) + " µm rectangle the design must fit in. The design is a block inside a larger chip, which fixes this size, its pins and how power reaches it.</p>" +
-      "<p>To continue, tap <b>Next</b> at the top, or press <kbd>→</kbd> on a keyboard.</p>",
+      "<p>We start with an empty <b>die area</b>, the " + fmt(um(DIE[2])) + " × " + fmt(um(DIE[3])) + " µm rectangle the design must fit in. The design is a block inside a larger chip, which fixes this size, its pins and how power reaches it.</p>",
     note: "This is one run of the flow, made in November 2026 from <a href=\"https://github.com/zvea/tiny-breakout/tree/8e82a8f\">commit 8e82a8f</a> with LibreLane 3.0.14 and sky130." };
   STEPS[S.FLOOR] = { short: "Floorplan", title: "Floorplan",
     body:
@@ -2636,6 +2643,15 @@ function start(D) {
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function stepDur(k) { return (STEPS[k] && STEPS[k].play) || 1500; }
   function stopAnim() { if (anim) { cancelAnimationFrame(anim); anim = null; } }
+  // the step in the URL (#clock, #ir-drop), so a reload or a link lands on it
+  function stepSlug(k) { return STEPS[k].short.toLowerCase().replace(/\s+/g, "-"); }
+  function setHash(k) { try { history.replaceState(null, "", "#" + stepSlug(k)); } catch (e) {} }
+  function stepFromHash() {
+    var h = decodeURIComponent(location.hash.slice(1)).toLowerCase();
+    for (var k = 0; k < STEPS.length; k++) if (stepSlug(k) === h) return k;
+    return -1;
+  }
+  window.addEventListener("hashchange", function () { var k = stepFromHash(); if (k >= 0 && k !== target) goTo(k); });
   function goTo(k, opts) {
     k = Math.max(0, Math.min(STEPS.length - 1, k));
     stopAnim();
@@ -2643,7 +2659,7 @@ function start(D) {
     var toGDS = k === S.GDS && target !== S.GDS;
     if (target === S.GDS && k !== S.GDS && Math.abs(cam.s - fitS) > 1e-9) fit(600);   // back out of the close-up
     if (k !== target) { hideTip(); hideGloss(); }
-    target = k; updatePanel();
+    target = k; updatePanel(); setHash(k);
     if (toGDS && reduce) setTimeout(gdsCloseUp, 0);
     if (reduce && !(opts && opts.replay)) {
       // no motion unasked: a step that plays waits at its start for the play button
@@ -2739,11 +2755,11 @@ function start(D) {
   }
   function syncNav() {
     var st = STEPS[target], state = st.play ? playState() : "Play";
-    navPlay.disabled = !st.play;
+    navPlay.setAttribute("aria-disabled", st.play ? "false" : "true");   // focusable even when there is nothing to play
     if (navPlay.getAttribute("data-state") !== state) { navPlay.setAttribute("data-state", state); navPlay.innerHTML = PLAYICON[state] + "<span>" + state + "</span>"; }
     navPlay.title = st.play ? state + " this step's animation (→ plays too)" : "Nothing to play on this step";
   }
-  navPlay.addEventListener("click", togglePlay);
+  navPlay.addEventListener("click", function () { if (STEPS[target].play) togglePlay(); });
   function readoutText(k, u) {
     if (k === S.PLACE) {
       var g = gplAt(u), cur = GF[g.i], nxt = GF[Math.min(g.i + 1, GF.length - 1)], f = g.f > 0.5 ? nxt : cur;
@@ -2833,6 +2849,11 @@ function start(D) {
     goTo(target, { replay: true });
   }
   playBtn.addEventListener("click", togglePlay);
+  scrub.addEventListener("keydown", function (e) {
+    var d = { ArrowRight: 20, ArrowUp: 20, ArrowLeft: -20, ArrowDown: -20, PageUp: 100, PageDown: -100 }[e.key], v = +scrub.value;
+    if (e.key === "Home") v = 0; else if (e.key === "End") v = 1000; else if (d) v = Math.max(0, Math.min(1000, v + d)); else return;
+    e.preventDefault(); scrub.value = v; scrub.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   scrub.addEventListener("input", function () {
     stopAnim(); pos = target - 1 + scrub.value / 1000;
     if (target === S.GDS) {
@@ -2960,7 +2981,7 @@ function start(D) {
     { k: "thyristor", rx: /\bthyristors?\b/, from: S.TAPS, home: true, def: "A switch made of four alternating layers of p- and n-type silicon (PNPN). Once triggered, it stays on until the current through it stops." },
     { k: "design rules (DRC)", rx: /\bDRC\b|\bdesign[- ]rules?\b/, from: S.TAPS, home: true, def: "The fab's geometric rules on the widths, spacings and distances of shapes. DRC checks a layout against them." },
     { k: "decap cell", rx: /\bdecap cells?\b/, from: S.FILL, home: true, inBold: true, def: "A cell that holds a capacitor between VPWR and VGND, which steadies the supply when nearby cells switch." },
-    { k: "li1, met1–met5", rx: /\b(met[1-5]|li1)\b/, from: S.PDN, home: true, def: "The wiring layers above the transistors. The lowest, li1, is used inside the cells and for their pins. Above it are met1 to met5. This design is wired on met1 to met4, with met1 and met3 horizontal and met2 and met4 vertical.", fig: stackFigure },
+    { k: "li1, met1–met5", rx: /\b(met[1-5]|li1)\b/, from: S.PDN, home: true, def: "The wiring layers above the transistors. The lowest, li1, is used inside the cells and for their pins. Above it are met1 to met5. This design is wired on met1 to met4, with met1 and met3 horizontal and met2 and met4 vertical.", fig: function () { return stackFigure(true); } },
     { k: "stripe", rx: /\bstripes?\b/, from: S.PDN, def: "A wide vertical met4 power line that feeds the rails. The stripes are also the design's power pins." },
     { k: "power grid", rx: /\bpower grid\b/, from: S.PDN, def: "The rails, stripes and via stacks that carry VPWR and VGND to every cell." },
     { k: "cut", rx: /\bcuts?\b/, from: S.PDN, home: true, def: "A small metal-filled hole through the insulation between two layers. A via is made of one or more cuts." },
@@ -3003,7 +3024,7 @@ function start(D) {
     { k: "derate", rx: /\bderated?\b/, from: S.STA, home: true, def: "To make a delay longer or shorter by a fixed share, whichever is worse for the check, to allow for variation across the chip." },
     { k: "IR drop", rx: /\bIR drop\b/, from: S.IR, home: true, inBold: true, def: "The voltage lost as current (I) flows through the power grid's resistance (R)." },
     { k: "mask", rx: /\bmasks?\b/, from: S.GDS, home: true, def: "A glass plate carrying the shapes of one layer. The fab shines light through it to print those shapes onto the wafer, one layer at a time." },
-    { k: "metal layers", rx: /\bmetals\b|\bmetal layers?\b/, def: "The wiring layers above the cells, met1 to met5, separated by insulation and joined by vias. This design is wired on met1 to met4.", fig: stackFigure },
+    { k: "metal layers", rx: /\bmetals\b|\bmetal layers?\b/, def: "The wiring layers above the cells, met1 to met5, separated by insulation and joined by vias. This design is wired on met1 to met4.", fig: function () { return stackFigure(true); } },
     { k: "GDS", rx: /\bGDS(II)?\b/, from: S.GDS, home: true, def: "The file format of the final layout. It holds every shape on every layer, and the fab makes the masks from it." },
     { k: "LVS", rx: /\bLVS\b/, from: S.GDS, home: true, def: "Layout versus schematic, the check that the layout is wired as the netlist says." },
     { k: "poly", rx: /\bpoly\b/, from: S.GDS, home: true, def: "Polysilicon, the layer that forms the transistor gates. A transistor is where poly crosses diffusion." },
@@ -3040,12 +3061,17 @@ function start(D) {
   function hideGloss() { gloss.hidden = true; glossFor = null; }
   var bodyEl = document.getElementById("body"), glossTimer = null;
   bodyEl.addEventListener("mouseover", function (e) { var t = e.target.closest(".term"); if (t) { clearTimeout(glossTimer); showGloss(t); } });
-  bodyEl.addEventListener("mouseout", function (e) { if (e.target.closest(".term")) glossTimer = setTimeout(function () { if (!gloss.matches(":hover")) hideGloss(); }, 200); });
-  gloss.addEventListener("mouseleave", function () { glossTimer = setTimeout(hideGloss, 200); });
+  // a touch or pen has no hover to leave: only a mouse moving off a term closes its popup
+  var lastPointer = "mouse";
+  document.addEventListener("pointerdown", function (e) { lastPointer = e.pointerType; }, true);
+  bodyEl.addEventListener("mouseout", function (e) { if (lastPointer === "mouse" && e.target.closest(".term")) glossTimer = setTimeout(function () { if (!gloss.matches(":hover")) hideGloss(); }, 200); });
+  gloss.addEventListener("mouseleave", function () { if (lastPointer === "mouse") glossTimer = setTimeout(hideGloss, 200); });
   gloss.addEventListener("mouseenter", function () { clearTimeout(glossTimer); });
   bodyEl.addEventListener("focusin", function (e) { var t = e.target.closest(".term"); if (t) showGloss(t); });
   bodyEl.addEventListener("focusout", function () { glossTimer = setTimeout(function () { if (!gloss.contains(document.activeElement)) hideGloss(); }, 200); });
-  bodyEl.addEventListener("click", function (e) { var t = e.target.closest(".term"); if (t) { if (glossFor === t && !gloss.hidden) hideGloss(); else showGloss(t); } });
+  // a click or tap on a term only opens its popup (a tap also focuses it, which opens it first);
+  // Esc, a click elsewhere or moving away closes it
+  bodyEl.addEventListener("click", function (e) { var t = e.target.closest(".term"); if (t) showGloss(t); });
   gloss.addEventListener("click", function (e) { var b = e.target.closest("button[data-step]"); if (b) { hideGloss(); goTo(+b.dataset.step); } });
   document.addEventListener("click", function (e) { if (!e.target.closest(".term, .gloss")) hideGloss(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !gloss.hidden) { hideGloss(); e.stopPropagation(); } }, true);
@@ -3056,8 +3082,9 @@ function start(D) {
     document.getElementById("title").textContent = st.title;
     document.getElementById("body").innerHTML = st.body + (st.note ? '<p class="note">' + st.note + "</p>" : "");
     markTerms(document.getElementById("body"), target);
-    document.getElementById("prev").disabled = target === 0;
-    document.getElementById("next").disabled = target >= STEPS.length - 1;
+    // unavailable at the ends, but still focusable, so a keyboard user's focus stays put
+    document.getElementById("prev").setAttribute("aria-disabled", target === 0 ? "true" : "false");
+    document.getElementById("next").setAttribute("aria-disabled", target >= STEPS.length - 1 ? "true" : "false");
     Array.prototype.forEach.call(track.children, function (b, i) {
       b.classList.toggle("now", i === target); b.classList.toggle("done", i < target);
       if (i === target) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current");
@@ -3065,8 +3092,8 @@ function start(D) {
     updateLegend();
     canvas.setAttribute("aria-label", "The die at step " + (target + 1) + ", " + st.title.toLowerCase() + ". " + plain(st.note || ""));
   }
-  document.getElementById("prev").addEventListener("click", function () { goTo(target - 1); });
-  document.getElementById("next").addEventListener("click", function () { goTo(target + 1); });
+  document.getElementById("prev").addEventListener("click", function () { if (target > 0) goTo(target - 1); });
+  document.getElementById("next").addEventListener("click", function () { if (target < STEPS.length - 1) goTo(target + 1); });
   // the keyboard shortcuts panel: the ? button or key opens it; Esc, its close button or a click
   // outside it closes it, and focus goes back where it was
   var helpbox = document.getElementById("helpbox"), helpFrom = null;
@@ -3353,6 +3380,9 @@ function start(D) {
 
   document.addEventListener("themechange", function () { readColours(); draw(); });
   readColours();
+  // a step named in the URL opens at its end, as left by its animation
+  var fromHash = stepFromHash();
+  if (fromHash > 0) { target = pos = fromHash; }
   updatePanel();
   new ResizeObserver(resize).observe(view);
   resize();
