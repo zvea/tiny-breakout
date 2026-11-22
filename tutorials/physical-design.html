@@ -1174,6 +1174,31 @@ function start(D) {
     t(X1 + 6, (y(Z.diff[0]) + y(Z.poly[0] + Z.poly[1])) / 2 + 1, "start", "transistors", "var(--muted)");
     return '<figure class="stack"><svg viewBox="0 0 384 ' + H + '" role="img" aria-label="Side view of the sky130 layer stack: substrate and transistors at the bottom, then li1 and met1 to met5. A met1 rail is joined by a via stack through met2 and met3 to a met4 stripe. Met5 is outlined.">' + o.join("") + '</svg><figcaption>The sky130 layer stack, side view, heights to scale</figcaption></figure>';
   }
+  // PROTOTYPE. An NMOS transistor as sky130 builds it, from above and in section, not to scale, in
+  // the page's layer colours: diffusion crossed by a poly gate, contacts up to li1 on either side.
+  function mosfetFigure() {
+    var o = [], t = function (x, y, a, txt, c) { o.push('<text x="' + x + '" y="' + y + '" text-anchor="' + a + '" fill="' + (c || "var(--ink)") + '">' + txt + "</text>"); };
+    var r = function (x, y, w, h, f, extra) { o.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + f + '"' + (extra || "") + "/>"); };
+    // from above: a strip of diffusion, the poly gate across it, a contact on each side
+    t(85, 14, "middle", "from above", "var(--muted)");
+    r(20, 62, 130, 46, "var(--diff)");
+    r(76, 34, 18, 102, "var(--poly)");
+    r(37, 79, 12, 12, "var(--cut)"); r(121, 79, 12, 12, "var(--cut)");
+    t(43, 126, "middle", "source"); t(127, 126, "middle", "drain"); t(85, 28, "middle", "gate (poly)");
+    t(20, 56, "start", "diffusion", "var(--muted)");
+    // in section, through the middle: substrate, the doped source and drain, the oxide and gate, the contacts and li1
+    t(290, 14, "middle", "in section", "var(--muted)");
+    r(200, 104, 180, 44, "var(--die)");
+    r(210, 104, 62, 14, "var(--diff)"); r(308, 104, 62, 14, "var(--diff)");
+    r(272, 100, 36, 4, "var(--muted)");
+    r(272, 82, 36, 18, "var(--poly)");
+    r(235, 70, 10, 34, "var(--cut)"); r(335, 70, 10, 34, "var(--cut)");
+    r(226, 62, 28, 8, "var(--li1)"); r(326, 62, 28, 8, "var(--li1)");
+    t(240, 56, "middle", "source"); t(340, 56, "middle", "drain"); t(290, 76, "middle", "gate");
+    t(290, 132, "middle", "channel", "var(--muted)"); o.push('<path d="M290 124 V108" stroke="var(--muted)" fill="none"/>');
+    t(375, 144, "end", "substrate", "var(--muted)");
+    return '<figure class="stack"><svg viewBox="0 0 390 152" role="img" aria-label="An NMOS transistor from above and in section: a strip of diffusion crossed by a poly gate, with a contact on each side; in section, the source and drain doped into the substrate either side of the channel, under the gate and its thin oxide.">' + o.join("") + '</svg><figcaption>An NMOS transistor in sky130, from above and in section, not to scale</figcaption></figure>';
+  }
   var STEPS = [];
   STEPS[S.DIE] = { short: "Start", title: "Welcome",
     body:
@@ -1292,11 +1317,12 @@ function start(D) {
     note: "The drop is shown in colour along every rail." };
   STEPS[S.GDS] = { short: "GDS", title: "GDS stream-out", play: GDS_MS,
     body:
-      "<p>Finally the layout is <b>streamed out</b> to a GDS file, from which the fab makes the masks. Until now the tools knew each cell only by its outline, its pins and the areas wiring must avoid, and this page drew it as a box. Stream-out puts in each cell's full layout from the library and adds the routing, vias and power grid. Magic writes the GDS.</p>" +
-      "<p>The layers build up from the substrate: the n-well, diffusion, poly, contacts and li1 inside the cells, then the metals and the vias between them. Each standard cell's layout is stored once and placed by reference, " + n(GD.masters.length) + " masters for " + n(u16len(GD.insts) / 6) + " instances, with the routing (" + n(GD.topcount.li1) + " li1 shapes, " + n(GD.topcount.met1 + GD.topcount.met2 + GD.topcount.met3 + GD.topcount.met4) + " metal shapes and " + n(GD.topcount.mcon + GD.topcount.via + GD.topcount.via2 + GD.topcount.via3) + " via cuts) as shapes of the top cell. The " + n(u16len(GD.insts) / 6) + " instances are the " + n(D.netlistCells) + " from synthesis and every cell the flow added.</p>" +
-      "<h3>How it works</h3>" +
-      "<p>Two checks remain. DRC checks the GDS against Magic's full sky130 rule deck, which covers far more rules than the router knows. For LVS, Magic extracts a netlist from the layout, and Netgen compares it with the flow's final netlist, which holds every cell added since synthesis. Magic reads the layout from the DEF here, with each standard cell as a black box, so LVS checks the wiring between cells. The cells' insides come from the library unchanged. Both checks are clean.</p>",
-    note: "The view zooms in to show transistors, then back out to the whole die. Zoom in again to explore. Metals are drawn translucent, so the layers beneath show through. The cells' shapes come from their GDS, and the routing and vias from the routed DEF and the via definitions, which is the geometry stream-out merges." };
+      "<p>Finally the layout is <b>streamed out</b> to a GDS file, from which the fab makes the masks. Until now the tools knew each cell only by its outline, its pins and the areas wiring must avoid, and the pictures so far have drawn it as a box. Stream-out puts in each cell's full layout from the library and adds the routing and the power grid.</p>" +
+      "<p>The layers build up from the substrate: the n-well, diffusion, poly, contacts and li1 inside the cells, then the metals and the vias between them. Each kind of standard cell is stored once, as a <b>master</b>, and placed by reference. The design uses " + n(GD.masters.length) + " masters for its " + n(u16len(GD.insts) / 6) + " instances, the " + n(D.netlistCells) + " from synthesis and every cell the flow added.</p>" +
+      "<p>Zoomed in far enough, the transistors become visible. A <b>transistor</b> forms wherever a poly line crosses diffusion. The poly is its <b>gate</b>, and the diffusion on either side are its <b>source</b> and <b>drain</b>. A voltage on the gate opens or closes a channel between them.</p>" +
+      mosfetFigure() +
+      "<p>Two checks remain. <b>DRC</b> checks the GDS against the full sky130 rule deck, which covers far more rules than the router knows. For <b>LVS</b>, a netlist is extracted from the layout and compared with the flow's final netlist, which holds every cell added since synthesis. Each standard cell is treated as a black box here, so LVS checks the wiring between cells, and the cells' insides come from the library unchanged. Both checks are clean.</p>",
+    note: "The view zooms in to show transistors, then back out to the whole die. Zoom in again to explore. Metals are drawn translucent, so the layers beneath show through." };
   function u16len(b64) { return Math.floor(b64.length * 3 / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0); }
   // a run time to the minute (seconds only when under a minute)
   function runtimeText(t) {
@@ -2943,6 +2969,8 @@ function start(D) {
     { k: "corner", rx: /\bcorners?\b/, from: S.STA, home: true, def: "One set of conditions for timing analysis. It combines how fast the fab made the transistors (the process), the supply voltage, the temperature, and how large the wires' parasitics are." },
     { k: "derate", rx: /\bderated?\b/, from: S.STA, home: true, def: "To make a delay longer or shorter by a fixed share, whichever is worse for the check, to allow for variation across the chip." },
     { k: "IR drop", rx: /\bIR drop\b/, from: S.IR, home: true, inBold: true, def: "The voltage lost as current (I) flows through the power grid's resistance (R)." },
+    { k: "mask", rx: /\bmasks?\b/, from: S.GDS, home: true, def: "A glass plate carrying the shapes of one layer. The fab shines light through it to print those shapes onto the wafer, one layer at a time." },
+    { k: "metal layers", rx: /\bmetals\b|\bmetal layers?\b/, def: "The wiring layers above the cells, met1 to met5, separated by insulation and joined by vias. This design is wired on met1 to met4.", fig: stackFigure },
     { k: "GDS", rx: /\bGDS(II)?\b/, from: S.GDS, home: true, def: "The file format of the final layout. It holds every shape on every layer, and the fab makes the masks from it." },
     { k: "LVS", rx: /\bLVS\b/, from: S.GDS, home: true, def: "Layout versus schematic, the check that the layout is wired as the netlist says." },
     { k: "poly", rx: /\bpoly\b/, from: S.GDS, home: true, def: "Polysilicon, the layer that forms the transistor gates. A transistor is where poly crosses diffusion." },
