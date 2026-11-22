@@ -353,14 +353,14 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
     </div>
   </main>
   <aside>
-    <section aria-live="polite">
-      <h2 id="title"></h2>
-    </section>
     <div class="nav">
       <button type="button" id="prev"><span aria-hidden="true">&larr; </span>Back</button>
       <button type="button" id="navplay" disabled></button>
       <button type="button" id="next">Next<span aria-hidden="true"> &rarr;</span></button>
     </div>
+    <section aria-live="polite">
+      <h2 id="title"></h2>
+    </section>
     <div class="body" id="body"></div>
   </aside>
   <div class="gloss" id="gloss" role="tooltip" hidden></div>
@@ -1145,23 +1145,6 @@ function start(D) {
     t(X1 + 6, mid("met1"), "start", "rail");
     t(X1 + 6, (y(Z.diff[0]) + y(Z.poly[0] + Z.poly[1])) / 2 + 1, "start", "transistors", "var(--muted)");
     return '<figure class="stack"><svg viewBox="0 0 384 ' + H + '" role="img" aria-label="Side view of the sky130 layer stack: substrate and transistors at the bottom, then li1 and met1 to met5. A met1 rail is joined by a via stack through met2 and met3 to a met4 stripe. Met5 is outlined.">' + o.join("") + '</svg><figcaption>The sky130 layer stack, side view, heights to scale</figcaption></figure>';
-  }
-  // PROTOTYPE. An H-tree, for its glossary entry: from the root at the centre, each level splits
-  // in two at right angles, half as long as the level above, thinner at each level as on the die;
-  // a dot at each end, where a leaf buffer would go.
-  function hTreeFigure() {
-    var o = [], ends = [];
-    (function grow(x, y, len, horiz, lv) {
-      if (lv === 4) { ends.push([x, y]); return; }
-      var dx = horiz ? len : 0, dy = horiz ? 0 : len;
-      o.push('<path d="M' + (x - dx) + " " + (y - dy) + "L" + (x + dx) + " " + (y + dy) + '" stroke="var(--clknet)" stroke-width="' + [3, 2.4, 1.8, 1.4][lv] + '" stroke-linecap="round"/>');
-      grow(x - dx, y - dy, horiz ? len * 0.62 : len, !horiz, lv + 1);
-      grow(x + dx, y + dy, horiz ? len * 0.62 : len, !horiz, lv + 1);
-    })(130, 70, 64, true, 0);
-    ends.forEach(function (e) { o.push('<circle cx="' + e[0] + '" cy="' + e[1] + '" r="2.6" fill="var(--clkpin)"/>'); });
-    o.push('<rect x="125" y="65" width="10" height="10" fill="var(--clock)"/>');
-    o.push('<text x="130" y="92" text-anchor="middle" fill="var(--ink)" font-size="11">root</text>');
-    return '<figure class="stack"><svg viewBox="0 0 260 140" role="img" aria-label="An H-tree: from a root at the centre, each branch splits in two at right angles, so every path from the root to an end has the same length.">' + o.join("") + '</svg><figcaption>Every path from the root to an end has the same length</figcaption></figure>';
   }
   var STEPS = [];
   STEPS[S.DIE] = { short: "Die", title: "The die area",
@@ -2840,7 +2823,7 @@ function start(D) {
     { k: "timing analysis", rx: /\b[Tt]iming analysis\b/, from: S.HOLD, home: true, def: "Working out when each signal reaches each flip-flop, and checking it against the clock period." },
     { k: "clock tree", rx: /\bclock tree\b/, from: S.CTS, def: "The buffers, and the nets between them, that carry the clock from its pin to every flip-flop with nearly equal delays." },
     { k: "launching, capturing", rx: /\b(launching|capturing) flip-flops?\b/, from: S.HOLD, home: true, def: "On a timing path, the launching flip-flop sends the data at one clock edge, and the capturing flip-flop receives it at the next." },
-    { k: "H-tree", rx: /\bH-trees?\b/, from: S.CTS, home: true, inBold: true, def: "A tree shaped like a repeated letter H. Its trunk splits into two branches, each branch splits into two again, and so on, so every path from the root to the end of a branch is about the same length.", fig: hTreeFigure },
+    { k: "H-tree", rx: /\bH-trees?\b/, from: S.CTS, home: true, inBold: true, def: "A tree shaped like a repeated letter H. Its trunk splits into two branches, each branch splits into two again, and so on, so every path from the root to the end of a branch is about the same length." },
     { k: "sink", rx: /\bsinks?\b/, from: S.CTS, home: true, inBold: true, def: "A pin a clock net must reach. Here that is a flip-flop's clock input or a dummy load's input." },
     { k: "setup", rx: /\b[Ss]etup\b/, from: S.HOLD, home: true, def: "Data launched at one clock edge must reach the capturing flip-flop before the next edge, with the flip-flop's setup time to spare." },
     { k: "hold", rx: /\b[Hh]old\b/, from: S.HOLD, home: true, not: [S.FILL], def: "Data must stay stable at a flip-flop for a short time after a clock edge, so new data launched by that same edge must not arrive too soon." },
