@@ -113,7 +113,7 @@ button { font: inherit; color: inherit; }
 .app { height: 100%; display: grid; grid-template-columns: clamp(340px, 31vw, 440px) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "top top" "text stage"; }
 .top { grid-area: top; }
 .stage { grid-area: stage; }
-aside { grid-area: text; }
+.panel { grid-area: text; }
 .stage { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--stage); }
 .view { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; }
 .view.dragging { cursor: grabbing; }
@@ -250,7 +250,7 @@ aside { grid-area: text; }
 
 /* the explanation */
 /* the buttons and the title stay put; only the text below them scrolls */
-aside {
+.panel {
   min-width: 0; min-height: 0; overflow: hidden; border-right: 1px solid var(--rule);
   padding-block: 14px 0;
   padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: 20px;
@@ -304,7 +304,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
 /* short screens: a little tighter, so the panel still fits */
 @media (max-height: 820px) and (min-width: 761px) {
   body { font-size: 12.5px; line-height: 1.4; }
-  aside { gap: 9px; padding-block: 10px 10px; }
+  .panel { gap: 9px; padding-block: 10px 10px; }
   h2 { font-size: 17px; }
 }
 /* laptops below 1400 px: the step names a little smaller, so none is clipped */
@@ -320,7 +320,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
 /* very short screens (1280 x 720 and less): tighter still */
 @media (max-height: 740px) and (min-width: 761px) {
   body { font-size: 12px; line-height: 1.36; }
-  aside { gap: 7px; padding-block: 8px 8px; }
+  .panel { gap: 7px; padding-block: 8px 8px; }
   h2 { font-size: 16px; margin-bottom: 2px; }
   .body h3 { margin: 9px 0 2px; }
   .body .note { margin-top: 6px; padding-top: 6px; }
@@ -334,7 +334,7 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
   .steps { order: 3; flex-basis: 100%; }
   .view { touch-action: pan-y; }
   .body { overflow: visible; }
-  aside { border-right: 0; border-top: 1px solid var(--rule); overflow: visible; padding-bottom: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .panel { border-right: 0; border-top: 1px solid var(--rule); overflow: visible; padding-bottom: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .legend { flex-wrap: nowrap; overflow-x: auto; right: 10px; pointer-events: auto; scrollbar-width: none; }
   .legend li.dimmed { display: none; }
   .foot { flex-wrap: wrap; }
@@ -396,7 +396,18 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
       </table>
     </div>
   </div>
-  <main class="stage">
+  <main class="panel" id="panel">
+    <div class="nav">
+      <button type="button" id="prev"><span aria-hidden="true">&larr; </span>Back</button>
+      <button type="button" id="navplay" aria-disabled="true"></button>
+      <button type="button" id="next">Next<span aria-hidden="true"> &rarr;</span></button>
+    </div>
+    <section aria-live="polite">
+      <h2 id="title"></h2>
+    </section>
+    <div class="body" id="body"></div>
+  </main>
+  <section class="stage" aria-label="The die at this step">
     <div class="view" id="view" tabindex="0" role="group" aria-label="The die: scroll or + and - to zoom, drag to move, arrow keys to step">
       <canvas id="canvas" role="img" aria-label="The die"></canvas>
       <div class="loading" id="loading">Loading the layout…</div>
@@ -417,19 +428,8 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
       <button type="button" class="playprompt" id="playprompt" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7.5-4.5z" fill="currentColor"/></svg>Play the animation <kbd>→</kbd></button>
       <div class="tip" id="tip" hidden></div>
     </div>
-  </main>
-  <aside>
-    <div class="nav">
-      <button type="button" id="prev"><span aria-hidden="true">&larr; </span>Back</button>
-      <button type="button" id="navplay" aria-disabled="true"></button>
-      <button type="button" id="next">Next<span aria-hidden="true"> &rarr;</span></button>
-    </div>
-    <section aria-live="polite">
-      <h2 id="title"></h2>
-    </section>
-    <div class="body" id="body"></div>
-  </aside>
-  <div class="gloss" id="gloss" role="tooltip" hidden></div>
+  </section>
+  <div class="gloss" id="gloss" role="dialog" aria-label="Definition" hidden></div>
 </div>
 
 <script>
@@ -1394,6 +1394,17 @@ function start(D) {
   var fitS = 1, C = {}, colourGen = 0, pos = 0, target = 0, anim = null;
   var narrow = window.matchMedia("(max-width: 760px)");
 
+  // a colour moved towards black on a light background (white on a dark one) until its contrast
+  // with that background reaches 4.5:1, so it reads as small text
+  function readable(col, bg) {
+    var lum = function (c) { var v = c.map(function (x) { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+    var c = rgbOf(col), b = rgbOf(bg), lb = lum(b), dark = lb < 0.5, to = dark ? [255, 255, 255] : [0, 0, 0];
+    for (var f = 0; f <= 1; f += 0.05) {
+      var m = c.map(function (x, i) { return Math.round(x + (to[i] - x) * f); }), lm = lum(m);
+      if ((Math.max(lm, lb) + 0.05) / (Math.min(lm, lb) + 0.05) >= 4.5) return "rgb(" + m.join(",") + ")";
+    }
+    return dark ? "#fff" : "#000";
+  }
   function readColours() {
     var cs = getComputedStyle(document.documentElement);
     ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "gcell", "ghost", "guide", "tap", "endcap", 
@@ -2205,7 +2216,7 @@ function start(D) {
       if (parts.length === 1) { ctx.fillText(l, bx + w / 2, ty); return; }
       var x0 = bx + w / 2 - ctx.measureText(l).width / 2;
       ctx.textAlign = "left";
-      parts.forEach(function (pt, j) { ctx.fillStyle = j % 2 ? C[pt] : C.ink; ctx.fillText(pt, x0, ty); x0 += ctx.measureText(pt).width; });
+      parts.forEach(function (pt, j) { ctx.fillStyle = j % 2 ? readable(C[pt], C.bg) : C.ink; ctx.fillText(pt, x0, ty); x0 += ctx.measureText(pt).width; });
       ctx.textAlign = "center"; ctx.fillStyle = C.ink;
     });
     return [bx, by, w, h];
@@ -2974,7 +2985,20 @@ function start(D) {
     b.title = st.title;
     b.setAttribute("aria-label", st.short + ": " + st.title.toLowerCase() + ", step " + (i + 1) + " of " + STEPS.length);
     b.addEventListener("click", function () { goTo(i); });
+    b.tabIndex = i === 0 ? 0 : -1;
     track.appendChild(b);
+  });
+  // within the stepper the arrow keys, Home and End move the focus along the steps (Enter or Space
+  // then goes there), instead of stepping the tutorial as they do elsewhere
+  track.addEventListener("keydown", function (e) {
+    var segs = Array.prototype.slice.call(track.children), i = segs.indexOf(document.activeElement);
+    if (i < 0) return;
+    var j = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: segs.length - 1 }[e.key];
+    if (j === undefined) return;
+    e.preventDefault(); e.stopPropagation();
+    j = Math.max(0, Math.min(segs.length - 1, j));
+    segs.forEach(function (b, k) { b.tabIndex = k === j ? 0 : -1; });
+    segs[j].focus();
   });
   // from: the step an entry first shows on; to: its last, for what is on the die for one step only
   var LEGEND = [
@@ -3189,7 +3213,16 @@ function start(D) {
   bodyEl.addEventListener("click", function (e) { var t = e.target.closest(".term"); if (t) showGloss(t); });
   gloss.addEventListener("click", function (e) { var b = e.target.closest("button[data-step]"); if (b) { hideGloss(); goTo(+b.dataset.step); } });
   document.addEventListener("click", function (e) { if (!e.target.closest(".term, .gloss")) hideGloss(); });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !gloss.hidden) { hideGloss(); e.stopPropagation(); } }, true);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !gloss.hidden) { var t = glossFor; hideGloss(); if (t && gloss.contains(document.activeElement)) t.focus(); e.stopPropagation(); } }, true);
+  // Tab from a term with an open popup that holds a link moves into the popup; Tab or Shift+Tab out
+  // of it returns to the term
+  bodyEl.addEventListener("keydown", function (e) {
+    var t = e.target.closest && e.target.closest(".term"), b = gloss.querySelector("button");
+    if (e.key === "Tab" && !e.shiftKey && t && t === glossFor && !gloss.hidden && b) { e.preventDefault(); b.focus(); }
+  });
+  gloss.addEventListener("keydown", function (e) {
+    if (e.key === "Tab" && glossFor) { var t = glossFor; e.preventDefault(); hideGloss(); t.focus(); }
+  });
   bodyEl.addEventListener("scroll", hideGloss);
 
   // A figure's labels scale with it, so in a narrow panel they would shrink below legibility: keep
@@ -3221,6 +3254,7 @@ function start(D) {
     document.getElementById("next").setAttribute("aria-disabled", target >= STEPS.length - 1 ? "true" : "false");
     Array.prototype.forEach.call(track.children, function (b, i) {
       b.classList.toggle("now", i === target); b.classList.toggle("done", i < target);
+      b.tabIndex = i === target ? 0 : -1;   // one tab stop: the current step
       if (i === target) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current");
     });
     updateLegend();
