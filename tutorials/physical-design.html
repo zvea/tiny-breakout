@@ -3276,6 +3276,7 @@ function start(D) {
     camStop();
     view.setPointerCapture(e.pointerId);
     pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    tapStart = e.pointerType !== "mouse" ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
     hideTip();
   });
   view.addEventListener("pointermove", function (e) {
@@ -3296,9 +3297,20 @@ function start(D) {
     }
     p.x = e.clientX; p.y = e.clientY; requestDraw();
   });
-  function up(e) { delete pointers[e.pointerId]; if (!Object.keys(pointers).length) view.classList.remove("dragging"); }
+  // a touch or pen has no hover: a tap (not a drag) names what is under it, as the mouse's tooltip
+  // does, until the next tap, a drag or a change of step
+  var tapStart = null;
+  function up(e) {
+    delete pointers[e.pointerId];
+    if (!Object.keys(pointers).length) view.classList.remove("dragging");
+    if (tapStart && e.type === "pointerup" && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) < 8 && performance.now() - tapStart.t < 600) {
+      var r = view.getBoundingClientRect();
+      lastTip = [e.clientX - r.left, e.clientY - r.top]; showTip(lastTip[0], lastTip[1]);
+    }
+    tapStart = null;
+  }
   view.addEventListener("pointerup", up); view.addEventListener("pointercancel", up);
-  view.addEventListener("pointerleave", function () { if (!Object.keys(pointers).length) { lastTip = null; hideTip(); } });
+  view.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse" && !Object.keys(pointers).length) { lastTip = null; hideTip(); } });
 
   // ---- naming what is under the pointer --------------------------------------------------
   // Everything visible under the pointer, topmost first, each with its colour; what the step
