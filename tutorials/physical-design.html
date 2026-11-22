@@ -220,15 +220,16 @@ aside { grid-area: text; }
 .seg.now .num { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 
 /* the explanation */
+/* the buttons and the title stay put; only the text below them scrolls */
 aside {
-  min-width: 0; min-height: 0; overflow-y: auto; border-right: 1px solid var(--rule);
-  padding-block: calc(14px + env(safe-area-inset-top, 0px)) 16px;
+  min-width: 0; min-height: 0; overflow: hidden; border-right: 1px solid var(--rule);
+  padding-block: 14px 0;
   padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: 20px;
   display: flex; flex-direction: column; gap: 12px;
 }
 h1 { font-size: 17px; font-weight: 700; margin: 0; color: var(--focus); }
 h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text-wrap: balance; }
-.body { font-size: 15px; line-height: 1.55; }
+.body { font-size: 15px; line-height: 1.55; flex: 1; min-height: 0; overflow-y: auto; margin-right: -20px; padding-right: 20px; padding-bottom: 16px; }
 .body p { margin: 0 0 10px; }
 .body ul { margin: 0 0 10px; padding-left: 18px; }
 .body li { margin: 0 0 2px; }
@@ -290,7 +291,8 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
   .brand { flex: 1; }
   .steps { order: 3; flex-basis: 100%; }
   .view { touch-action: pan-y; }
-  aside { border-right: 0; border-top: 1px solid var(--rule); overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .body { overflow: visible; }
+  aside { border-right: 0; border-top: 1px solid var(--rule); overflow: visible; padding-bottom: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .legend { flex-wrap: nowrap; overflow-x: auto; right: 10px; pointer-events: auto; scrollbar-width: none; }
   .legend li.dimmed { display: none; }
   .hint { display: none; }
