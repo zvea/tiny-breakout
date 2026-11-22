@@ -2042,7 +2042,15 @@ function start(D) {
     ctx.arcTo(bx, by + h, bx, by, rr); ctx.arcTo(bx, by, bx + w, by, rr); ctx.closePath();
     ctx.fill(); ctx.stroke();
     ctx.fillStyle = C.ink; ctx.textBaseline = "middle"; ctx.textAlign = "center";
-    lines.forEach(function (l, i) { ctx.fillText(l, bx + w / 2, by + 10.5 + 15 * i); });
+    lines.forEach(function (l, i) {
+      // PROTOTYPE: a wiring layer named in a callout (li1, met1 to met4) in that layer's colour
+      var ty = by + 10.5 + 15 * i, parts = l.split(/\b(li1|met[1-4])\b/);
+      if (parts.length === 1) { ctx.fillText(l, bx + w / 2, ty); return; }
+      var x0 = bx + w / 2 - ctx.measureText(l).width / 2;
+      ctx.textAlign = "left";
+      parts.forEach(function (pt, j) { ctx.fillStyle = j % 2 ? C[pt] : C.ink; ctx.fillText(pt, x0, ty); x0 += ctx.measureText(pt).width; });
+      ctx.textAlign = "center"; ctx.fillStyle = C.ink;
+    });
     return [bx, by, w, h];
   }
   function dimLine(x0, y0, x1, y1, text, side) {
