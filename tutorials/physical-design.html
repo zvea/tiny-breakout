@@ -23,7 +23,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* One screen: the die on the left (canvas, zoom and pan, the legend above it, the play bar and
-   scale below it, the steps along its foot), the current step's explanation on the right.
+   scale below it, the steps along its top), the current step's explanation on the right.
    Each colour keeps its meaning from step to step; whatever is not the current step's subject
    is greyed out. Laptop and tablet first; on a phone the panels stack. */
 :root {
@@ -184,9 +184,9 @@ button { font: inherit; color: inherit; }
 .tip .sw { flex: none; width: 10px; height: 10px; margin-top: 3px; border: 1px solid var(--swatch-edge); border-radius: 1px; }
 .tip code { font-family: var(--mono); font-size: 11.5px; }
 
-/* the steps, along the foot of the die */
+/* the steps, along the top of the die */
 .steps {
-  display: flex; align-items: center; gap: 8px; padding-block: 8px 10px; border-top: 1px solid var(--rule); background: var(--bg);
+  display: flex; align-items: center; gap: 8px; padding-block: calc(8px + env(safe-area-inset-top, 0px)) 8px; border-bottom: 1px solid var(--rule); background: var(--bg);
   padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: 12px;
 }
 .track { flex: 1; min-width: 0; display: flex; gap: 3px; }
@@ -213,7 +213,6 @@ aside {
 .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 h1 { font-size: 15px; font-weight: 600; margin: 0; }
 .head p { margin: 0; color: var(--muted); font-size: 12px; }
-.kicker { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 2px; font-variant-numeric: tabular-nums; }
 h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text-wrap: balance; }
 .tool { margin: 0; font-size: 12px; color: var(--muted); }
 .tool code { font-family: var(--mono); font-size: 11.5px; }
@@ -308,6 +307,9 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
 <body>
 <div class="app">
   <main class="stage">
+    <nav class="steps" aria-label="Steps">
+      <div class="track" id="track"></div>
+    </nav>
     <div class="view" id="view" tabindex="0" role="group" aria-label="The die: scroll or + and - to zoom, drag to move, arrow keys to step">
       <canvas id="canvas" role="img" aria-label="The die"></canvas>
       <div class="loading" id="loading">Loading the layout…</div>
@@ -328,9 +330,6 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
       </div>
       <div class="tip" id="tip" hidden></div>
     </div>
-    <nav class="steps" aria-label="Steps">
-      <div class="track" id="track"></div>
-    </nav>
   </main>
   <aside>
     <div class="head">
@@ -341,7 +340,6 @@ figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted);
       <button type="button" class="iconbtn" id="theme" aria-label="Switch theme"></button>
     </div>
     <section aria-live="polite">
-      <p class="kicker" id="kicker"></p>
       <h2 id="title"></h2>
       <p class="tool" id="tool"></p>
     </section>
@@ -2833,7 +2831,6 @@ function start(D) {
 
   function updatePanel() {
     var st = STEPS[target];
-    document.getElementById("kicker").textContent = "Step " + (target + 1) + " of " + STEPS.length;
     document.getElementById("title").textContent = st.title;
     document.getElementById("tool").innerHTML = st.tool || "";
     document.getElementById("body").innerHTML = st.body + (st.note ? '<p class="note">' + st.note + "</p>" : "");
