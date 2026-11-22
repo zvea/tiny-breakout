@@ -166,7 +166,7 @@ aside { grid-area: text; }
 }
 .scale i { display: block; height: 6px; border: 1.5px solid var(--muted); border-top: 0; margin-bottom: 2px; }
 .hint { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
-.hint kbd { font: inherit; border: 1px solid var(--rule); border-radius: 2px; padding: 0 3px; }
+.hint kbd, .body kbd { font: inherit; border: 1px solid var(--rule); border-radius: 2px; padding: 0 3px; }
 .readout {
   pointer-events: auto; flex: 1; min-width: 0; max-width: 680px; margin-left: auto; display: flex; align-items: center; gap: 10px;
   padding: 5px 10px 5px 5px; background: var(--bg); border: 1px solid var(--rule); border-radius: 2px; font-size: 12px;
@@ -1175,12 +1175,15 @@ function start(D) {
     return '<figure class="stack"><svg viewBox="0 0 384 ' + H + '" role="img" aria-label="Side view of the sky130 layer stack: substrate and transistors at the bottom, then li1 and met1 to met5. A met1 rail is joined by a via stack through met2 and met3 to a met4 stripe. Met5 is outlined.">' + o.join("") + '</svg><figcaption>The sky130 layer stack, side view, heights to scale</figcaption></figure>';
   }
   var STEPS = [];
-  STEPS[S.DIE] = { short: "Die", title: "The die area",
+  STEPS[S.DIE] = { short: "Start", title: "Welcome",
     body:
+      "<p>This tutorial shows, step by step, how a real hardware design becomes the layout a chip is made from. The design is <a href=\"https://github.com/zvea/tiny-breakout\">Tiny Breakout</a>, a complete VGA brick-breaker game written in SystemVerilog.</p>" +
       "<p>Turning SystemVerilog code (the <b>RTL</b>) into a chip layout takes two main steps:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"Step 1\">1</span><b>Synthesis</b> maps the RTL to a gate-level <b>netlist</b>, which lists <b>instances</b> of <b>standard cells</b> and the <b>nets</b> that connect their pins, but gives no positions. In this tutorial the cells come from <code>sky130_fd_sc_hd</code>, SkyWater's 130 nm high-density library, which has logic gates, flip-flops, multiplexers, adders and buffers.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"Step 2\">2</span><b>Physical design</b>, or place and route (PnR), then decides where every instance and every wire goes. Here LibreLane does it, mostly with OpenROAD's tools.</p>" +
-      "<p>This tutorial assumes that synthesis has already been done, and follows physical design from the empty die to the finished layout. Our design's <b>die area</b> is " + fmt(um(DIE[2])) + " × " + fmt(um(DIE[3])) + " µm.</p>",
+      "<p>The tutorial assumes that synthesis has already been done, and follows physical design all the way to the finished layout.</p>" +
+      "<p>We start with an empty <b>die</b>, the rectangle of silicon the design is built on. Its area is " + fmt(um(DIE[2])) + " × " + fmt(um(DIE[3])) + " µm.</p>" +
+      "<p>To continue, tap <b>Next</b> at the top, or press <kbd>→</kbd> on a keyboard.</p>",
     note: "This is one run of the flow, made in November 2026 from <a href=\"https://github.com/zvea/tiny-breakout/tree/8e82a8f\">commit 8e82a8f</a> with LibreLane 3.0.14 and sky130." };
   STEPS[S.FLOOR] = { short: "Floorplan", title: "Floorplan",
     body:
