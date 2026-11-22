@@ -146,6 +146,10 @@ aside { grid-area: text; }
   background: var(--veil); border-radius: 2px;
 }
 .legend:empty { display: none; }
+.legend .more button { pointer-events: auto; font: inherit; color: var(--muted); background: none; border: 1px solid var(--rule); border-radius: 10px; padding: 0 8px; cursor: pointer; }
+.legend .more button:hover { color: var(--ink); border-color: var(--muted); }
+.legend i.ramp { width: 70px; }
+.legend .end { color: var(--muted); font-variant-numeric: tabular-nums; }
 .legend li { display: flex; align-items: center; gap: 7px; }
 .legend li.dimmed { color: var(--muted); }
 .legend i { flex: none; width: 14px; height: 10px; border: 1px solid var(--swatch-edge); border-radius: 1px; transition: opacity 0.6s; }
@@ -1405,7 +1409,7 @@ function start(D) {
     // the legend at its fullest: the tallest any step shows
     var el = document.getElementById("legend"), keep = el.innerHTML;
     legendH = 0;
-    for (var k = 0; k < STEPS.length; k++) { el.innerHTML = legendHTML(legendItems(k, false)); legendH = Math.max(legendH, el.offsetHeight); }
+    for (var k = 0; k < STEPS.length; k++) { el.innerHTML = legendHTML(legendItems(k, false), LEG_OPEN); legendH = Math.max(legendH, el.offsetHeight); }
     el.innerHTML = keep;
     footH = Math.max(44, document.getElementById("foot").offsetHeight);
   }
@@ -2903,15 +2907,15 @@ function start(D) {
     { from: S.HOLD, label: "Delay cell (hold)", c: "hold", g: "hold" }
   ].concat(GLAY.map(function (l) { return { from: l === "li1" ? S.DRT : S.ANT, label: l, c: l, g: l === "li1" ? "route" : "wire", layer: true }; }))
    .concat([{ from: S.GRT, to: S.DRT, label: "Route guide", c: "guide", g: "guide" },
-            { from: S.GRT, to: S.GRT, label: "Nets with guides per g-cell, " + MINALL + "–" + MAXALL, c: "hot", g: "route", ramp: true },
+            { from: S.GRT, to: S.GRT, label: "Nets with guides per g-cell", lo: MINALL, hi: MAXALL, c: "hot", g: "route", ramp: true },
             { from: S.ANT, label: "Antenna diode", c: "diode", g: "diode" },
             { from: S.DRT, label: "Via (zoom in)", c: "wvia", g: "wire" },
             { from: S.FILL, label: "Decap cell", c: "decap", g: "decap" },
             { from: S.FILL, label: "Fill cell", c: "fill", g: "fill", hatch: true },
             { from: S.STA, to: S.STA, label: "Worst flip-flop to flip-flop setup path", c: "setup", g: "path", line: true },
             { from: S.STA, to: S.STA, label: "Worst hold path", c: "holdp", g: "path", line: true },
-            { from: S.IR, to: S.IR, label: "VPWR drop, 0–" + Math.round(IR.worst[0]) + " µV", c: "ir", g: "ir", irramp: "vpwr" },
-            { from: S.IR, to: S.IR, label: "VGND drop, 0–" + Math.round(IR.worst[1]) + " µV", c: "ir", g: "ir", irramp: "vgnd" },
+            { from: S.IR, to: S.IR, label: "VPWR drop", lo: 0, hi: Math.round(IR.worst[0]) + " µV", c: "ir", g: "ir", irramp: "vpwr" },
+            { from: S.IR, to: S.IR, label: "VGND drop", lo: 0, hi: Math.round(IR.worst[1]) + " µV", c: "ir", g: "ir", irramp: "vgnd" },
             { from: S.GDS, label: "n-well", c: "nwell", g: "gds" },
             { from: S.GDS, label: "Diffusion", c: "diff", g: "gds" },
             { from: S.GDS, label: "Tap diffusion", c: "gtap", g: "gds" },
@@ -2938,25 +2942,39 @@ function start(D) {
     if (it.hatch) return "repeating-linear-gradient(135deg, var(--" + it.c + ") 0 1.5px, transparent 1.5px 4px)";
     return "var(--" + it.c + ")";
   }
-  function legendHTML(items) {
-    return items.map(function (it) {
-      var l = it.l, sw;
-      if (l.line) sw = '<i class="line" style="border-color:var(--' + l.c + ')"></i>';
-      else if (l.dot) sw = '<i class="dot" style="background:var(--' + l.c + ')"></i>';
-      else if (l.layer) sw = '<i class="lay" style="--c:var(--' + l.c + ')"></i>';
-      else sw = '<i style="background:' + swatchBg(l) + '"></i>';
-      return "<li" + (it.dimmed ? ' class="dimmed"' : "") + ">" + sw + l.label + "</li>";
-    }).join("");
+  // The legend: this step's entries first, at full strength; the rest, greyed, behind one chip
+  // ("+ 22 earlier") that expands them in place. Whether it is open is remembered for the viewer.
+  var LEG_OPEN = false;
+  try { LEG_OPEN = localStorage.getItem("pd-legend-open") === "1"; } catch (e) {}
+  function legendEntry(it) {
+    var l = it.l, sw;
+    if (l.ramp || l.irramp) return "<li" + (it.dimmed ? ' class="dimmed"' : "") + ">" + l.label + ' <span class="end">' + l.lo + '</span><i class="ramp" style="background:' + swatchBg(l) + '"></i><span class="end">' + l.hi + "</span></li>";
+    if (l.line) sw = '<i class="line" style="border-color:var(--' + l.c + ')"></i>';
+    else if (l.dot) sw = '<i class="dot" style="background:var(--' + l.c + ')"></i>';
+    else if (l.layer) sw = '<i class="lay" style="--c:var(--' + l.c + ')"></i>';
+    else sw = '<i style="background:' + swatchBg(l) + '"></i>';
+    return "<li" + (it.dimmed ? ' class="dimmed"' : "") + ">" + sw + l.label + "</li>";
+  }
+  function legendHTML(items, open) {
+    var now = items.filter(function (it) { return !it.dimmed; }), before = items.filter(function (it) { return it.dimmed; });
+    var h = now.map(legendEntry).join("");
+    if (before.length) {
+      h += '<li class="more"><button type="button" aria-expanded="' + (open ? "true" : "false") + '">' + (open ? "Hide earlier" : "+ " + before.length + " earlier") + "</button></li>";
+      if (open) h += before.map(legendEntry).join("");
+    }
+    return h;
   }
   function updateLegend() {
-    var items = legendItems(target, false), el = document.getElementById("legend");
+    var el = document.getElementById("legend");
     el.classList.toggle("gds", target === S.GDS);   // the metals as outlines, as drawn
-    // the same entries (by name) just change state, so their swatches can fade; otherwise rebuilt
-    var same = el.children.length === items.length && items.every(function (it, i) { return el.children[i].textContent === it.l.label; });
-    if (same) {
-      items.forEach(function (it, i) { el.children[i].classList.toggle("dimmed", it.dimmed); });
-    } else el.innerHTML = legendHTML(items);
+    el.innerHTML = legendHTML(legendItems(target, false), LEG_OPEN);
   }
+  document.getElementById("legend").addEventListener("click", function (e) {
+    if (!e.target.closest(".more button")) return;
+    LEG_OPEN = !LEG_OPEN;
+    try { localStorage.setItem("pd-legend-open", LEG_OPEN ? "1" : "0"); } catch (err) {}
+    updateLegend(); measure(); draw();
+  });
   // ---- glossary -------------------------------------------------------------------------------
   // Terms the panels use on more than one step, or never explain. Each is marked at its first
   // use in a step's panel (not on the step that introduces it unless home, nor in code unless
