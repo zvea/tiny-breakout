@@ -1227,12 +1227,10 @@ function start(D) {
     note: "Delay cells pop in where the resizer put them. Then legalisation makes room." };
   STEPS[S.GRT] = { short: "Route", title: "Global routing", play: 13000,
     body:
-      "<p><b>Global routing</b> plans every net's route before any wire is drawn. It lays a grid of <b>g-cells</b> over the die: " + GNX + " × " + GNY + " squares of " + fmt(um(GG)) + " µm, the last column and row a little wider. For each of the " + n(GR.routed) + " nets it picks the g-cells its wires will pass through, and a layer in each. These are the net's <b>route guides</b>.</p>" +
-      "<p>Routing uses met1 to met4. met1 and met3 run horizontally and met2 and met4 vertically, so wires on neighbouring layers cross at right angles and join through vias. li1 appears only where a pin is reached.</p>" +
-      "<p>Wires pass from one g-cell to the next across their shared edge, and the router's job is to keep every edge within capacity. An edge takes one wire per track (" + Math.floor(TRACKS[GLAY.indexOf("met1")]) + " on met1, " + Math.floor(TRACKS[GLAY.indexOf("met4")]) + " on met4), less a " + GR.adjust + "% margin and what the power grid blocks. Where too many nets would cross, the router detours some through quieter g-cells. The first pass left some edges over capacity. After " + GR.extra + " more rounds of rip-up and reroute, none were left. Overall " + ["met1", "met2", "met3", "met4"].map(function (l) { return l + " uses " + fmt(GR.usage[l], 0) + "%"; }).join(", ") + " of its capacity.</p>" +
-      "<p>The last picture counts, for every g-cell, the nets with a guide in it, and the stronger the colour, the busier the g-cell. It shows where routing is dense. The router itself counts the wires across each edge against the edge's tracks.</p>" +
-      "<h3>How it works</h3>" +
-      "<p>FastRoute routes each net in two dimensions as a tree through g-cells, rips up and reroutes the nets through over-full edges until none remain, and then assigns each stretch a layer.</p>",
+      "<p><b>Global routing</b> plans every net's route before any wire is drawn. Routing uses met1 to met4: met1 and met3 run horizontally, and met2 and met4 vertically, so wires on neighbouring layers cross at right angles and join through vias.</p>" +
+      "<p>The router lays a grid of <b>g-cells</b> over the die. For each net it first finds a tree through the g-cells, in two dimensions, and then gives each stretch of the tree a layer. The g-cells and layers a net is given are its <b>route guides</b>.</p>" +
+      "<p>The limit is capacity. Wires pass from one g-cell to the next across their shared edge, and each edge can take only as many wires as it has routing tracks, less those the power grid blocks. Where too many nets would cross an edge, the router detours some through quieter g-cells. Its first pass left some edges over capacity. After " + GR.extra + " rounds of rip-up and reroute, none were left.</p>" +
+      "<p>The last picture counts, for every g-cell, the nets with a guide in it. The stronger the colour, the busier the g-cell. The router itself works with the wires across each edge, so the picture shows where routing is dense, not exactly where it is tight.</p>",
     note: "First the guides of " + ROUTE_EX.length + " example nets, one at a time, then every net as a count per g-cell." };
   STEPS[S.ANT] = { short: "Antenna", title: "Antenna repair", play: 6500,
     body:
@@ -2186,7 +2184,8 @@ function start(D) {
   // the callout points at the net (a guide, or with wires a wire), near it but over none of it
   function exLabel(ex, k, wires) {
     var at = wires ? exWireAt(ex) : ex.mid;
-    label(ex.name + ": " + ex.npins + " pins", sx(at[0]), sy(at[1]), { dx: k % 2 ? -18 : 18, dy: -40, align: k % 2 ? "right" : "left",
+    label((/net/i.test(ex.name) ? "" : "net ") + ex.name + ": " + ex.npins + " pins",   // a bare name such as _0412_ says it is a net
+           sx(at[0]), sy(at[1]), { dx: k % 2 ? -18 : 18, dy: -40, align: k % 2 ? "right" : "left",
       avoid: function (box) { return exOverlaps(ex, wires, box); } });
   }
   // the example being built in a step that shows them one at a time, from x0 in slots of slot
