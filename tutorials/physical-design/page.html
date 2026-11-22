@@ -985,17 +985,17 @@ function start(D) {
   var GD = LC.gds, GDS_ORDER = [
     { l: "nwell", c: "nwell", a: 0.35, what: "n-well: where the PMOS transistors sit" },
     { l: "diff", c: "diff", a: 0.85, also: ["tap"], what: "diffusion: transistors' source and drain areas, and the taps" },
-    { l: "poly", c: "poly", a: 0.8, what: "poly: the gates; a transistor is where poly crosses diffusion" },
+    { l: "poly", c: "poly", a: 0.8, what: "poly: the transistor gates, wherever poly crosses diffusion" },
     { l: "licon", c: "cut", a: 0.9, what: "licon: contacts from diffusion and poly up to li1" },
     { l: "li1", c: "li1", o: 1, what: "li1: local interconnect, the wiring inside the cells" },
     { l: "mcon", c: "cut", a: 0.9, what: "mcon: contacts from li1 up to met1" },
-    { l: "met1", c: "met1", o: 1, what: "met1: power rails and short wires" },
+    { l: "met1", c: "met1", o: 1, what: "met1: horizontal wiring and the power rails" },
     { l: "via", c: "cut", a: 0.9, what: "via: cuts between met1 and met2" },
-    { l: "met2", c: "met2", o: 1, what: "met2: vertical routing" },
+    { l: "met2", c: "met2", o: 1, what: "met2: vertical wiring" },
     { l: "via2", c: "cut", a: 0.9, what: "via2: cuts between met2 and met3" },
-    { l: "met3", c: "met3", o: 1, what: "met3: horizontal routing" },
+    { l: "met3", c: "met3", o: 1, what: "met3: horizontal wiring" },
     { l: "via3", c: "cut", a: 0.9, what: "via3: cuts between met3 and met4" },
-    { l: "met4", c: "met4", o: 1, what: "met4: power stripes, pins and long wires" }];
+    { l: "met4", c: "met4", o: 1, what: "met4: vertical wiring, the power stripes and the pins" }];
   var GPATH = null, GFOCUS = null;
   // a point on one of a layer's shapes near the close-up's centre, found once (by the layer's
   // path, outward from the centre on screen) and kept in world units
@@ -2447,7 +2447,7 @@ function start(D) {
       if (kin >= 0) { var q1 = centre(K.rszB, kin); label("input buffer", q1[0], q1[1], opt({ dx: 18, dy: 26 })); }
       if (kbuf >= 0) { var q2 = centre(K.rszB, kbuf); label("buffer", q2[0], q2[1], opt({ dx: 18, dy: -36 })); }
       if (ktie >= 0) { var q3 = centre(K.rszB, ktie); label("tie cell", q3[0], q3[1], opt({ dx: -18, dy: -36, align: "right" })); }
-      if (krs >= 0) { var q4 = centre(K.rszB, krs); label("resized: " + shortName(D.types[K.G.ty[krs]]) + " → " + shortName(D.types[K.rszB.ty[krs]]), q4[0], q4[1], opt({ dx: -18, dy: 30, align: "right" })); }
+      if (krs >= 0) { var q4 = centre(K.rszB, krs); label("resized to a stronger cell", q4[0], q4[1], opt({ dx: -18, dy: 30, align: "right" })); }
     }
     // the clk pin, from the start of the clock step: where the tree will grow from. Above the
     // die, in the margin between it and the legend.
@@ -2646,7 +2646,7 @@ function start(D) {
       ctx.globalAlpha = clamp01(uf / 0.04) * clamp01((gEnd - uf) / GDS_Q);
       ctx.strokeStyle = C.pick; ctx.lineWidth = 1; ctx.setLineDash([5, 3]);
       ctx.beginPath(); rect(fr[0], fr[1], fr[2], fr[3]); ctx.stroke(); ctx.setLineDash([]);
-      above("flip-flop (" + shortName(D.types[K.ant.ty[GFOCUS.cell]]) + ")", [(fr[0] + fr[2]) / 2, (fr[1] + fr[3]) / 2],
+      above("flip-flop", [(fr[0] + fr[2]) / 2, (fr[1] + fr[3]) / 2],
             ffa);
       if (GPATH) GDS_ORDER.forEach(function (g, i) {
         var t0 = GDS_START + GDS_L * i, al = clamp01((uf - t0) / GDS_Q) * clamp01((t0 + GDS_L - uf) / GDS_Q);
@@ -2680,8 +2680,8 @@ function start(D) {
       var us = within(pos, S.STA), ce = function (c) { return [sx(SX[c] + SWD[c] / 2), sy(SY[c] + RH / 2)]; };
       if (us >= STA_SET0 || pos > S.STA) {
         ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_SET0) / 0.04);
-        var pl = ce(PSETUP.st[0].ci); label("setup path from flip-flop", pl[0], pl[1], { dx: 18, dy: -40, avoid: pathsOverlap });
-        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("setup path to flip-flop: slack " + fmt(PSETUP.q.slack) + " ns", pc[0], pc[1], { dx: -40, dy: -44, align: "right", avoid: pathsOverlap }); }   // above to the left: the path arrives from the left, below
+        var pl = ce(PSETUP.st[0].ci); label("setup path: launching flip-flop", pl[0], pl[1], { dx: 18, dy: -40, avoid: pathsOverlap });
+        if (us >= STA_SET1 || pos > S.STA) { var pc = ce(PSETUP.st[PSETUP.st.length - 1].ci); label("setup path: capturing flip-flop, slack " + fmt(PSETUP.q.slack) + " ns", pc[0], pc[1], { dx: -40, dy: -44, align: "right", avoid: pathsOverlap }); }   // above to the left: the path arrives from the left, below
       }
       if (us >= STA_HOLD0 || pos > S.STA) {
         ctx.globalAlpha = pos > S.STA ? only(S.STA, 0) : clamp01((us - STA_HOLD0) / 0.04);
@@ -2843,7 +2843,7 @@ function start(D) {
     if (k === S.CTS) {
       if (u >= CTS_SPLIT) return "<b>Legalising</b> around the clock cells";
       var t = u / CTS_SPLIT, L = CLV;
-      if (t >= CTS_END) return "<b>Clock tree</b> complete: " + M.cts.buffers + " clock buffers";
+      if (t >= CTS_END) return "<b>Clock tree</b> complete: " + M.cts.buffers + " clock buffers and " + M.cts.dummies + " dummy loads";
       for (var l = CLV; l >= 0; l--) if (t >= lvStart(l)) L = l;
       return L === CLV ? "<b>Clustering</b>: leaf buffers and their flip-flops" : L === 0 ? "<b>Pin</b>: pin → root buffer" : L === 1 ? "<b>Root</b>: root buffer → branch buffers" : "<b>Branches</b>: branch buffers → leaf buffers";
     }
@@ -2856,11 +2856,11 @@ function start(D) {
     if (k === S.GRT) {
       if (u < EX0) return "<b>G-cell grid</b>: " + GNX + " × " + GNY;
       if (u < DEM0) { var ex = ROUTE_EX[Math.min(ROUTE_EX.length - 1, Math.floor((u - EX0) / EXSLOT))]; return "<b>Net " + ex.name + "</b>: " + ex.npins + " pins, " + ex.count + " guides"; }
-      return "<b>All " + n(GR.routed) + " nets</b>: nets with guides per g-cell, " + MINALL + "–" + MAXALL;
+      return "<b>All " + n(GR.routed) + " nets</b>: how many have guides in each g-cell";
     }
     if (k === S.ANT) {
       if (u < 0.33) return "<b>" + AM.net + "</b> breaks the rule on " + AM.layer + ", " + Math.round(100 * (AM.pr - 1)) + "% over the limit";
-      if (u < ANT_SPLIT) return "<b>Diode</b> beside the root buffer";
+      if (u < ANT_SPLIT) return "<b>Antenna diode</b> beside the root buffer";
       return "<b>" + n(AM.flipped) + " cells lose their mirroring</b>";
     }
     if (k === S.DRT) {
@@ -2868,9 +2868,9 @@ function start(D) {
       if (u >= WDONE) return "<b>Routed</b>: " + (DR.wirelength / 1000).toFixed(1) + " mm of wire, " + n(DR.nvias) + " vias";
       var cl = 1;
       for (var ll = 1; ll < DR.layers.length; ll++) if (wireLayerAt(u, ll) > 0) cl = ll;
-      return "<b>" + DR.layers[cl] + "</b>: " + n(DR.length[DR.layers[cl]]) + " µm";
+      return "<b>" + DR.layers[cl] + "</b>: " + (DR.length[DR.layers[cl]] / 1000).toFixed(1) + " mm";
     }
-    if (k === S.FILL) return u < 1 ? "<b>Filling</b>" : "<b>" + n(FILL.length) + "</b> filler cells";
+    if (k === S.FILL) return u < 1 ? "<b>Filling</b>" : "<b>" + n(FILL.length) + "</b> cells: " + n(FILLT.decap_3 || 0) + " decap cells, " + n(FILL.length - (FILLT.decap_3 || 0)) + " fill cells";
     if (k === S.GDS) {
       if (u < GDS_START) return "<b>Stream-out</b>: every shape on every layer";
       var gi2 = 0;
