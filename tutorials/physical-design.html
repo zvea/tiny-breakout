@@ -83,6 +83,7 @@
   --ir1: #addd8e;
   --ir2: #41ab5d;
   --ir3: #005a32;
+  --irend: #000000;
   /* crowding: overfull placement bins, nets per g-cell */
   --hot: #8a2be2;
   /* routing layers */
@@ -104,7 +105,7 @@
   --pick: #f1f3f5; --hot: #d27bff;
   --setup: #ff8a65; --holdp: #c48bff;
   --nwell: #6f9a3c; --diff: #c9bd5a; --gtap: #8c8433; --poly: #e0506a; --cut: #e9edf2;
-  --ir0: #12301f; --ir1: #23733f; --ir2: #66bd63; --ir3: #d9f0a3;
+  --ir0: #12301f; --ir1: #23733f; --ir2: #66bd63; --ir3: #d9f0a3; --irend: #ffffff;
   --li1: #8f86c0; --met1: #5cc0f5; --met2: #ff7ab4; --met3: #5fd27e; --met4: #ffc24a; --wvia: #e9edf2;
   color-scheme: dark;
 }
@@ -885,16 +886,31 @@ function start(D) {
     });
     IRSTRIPS[net] = strips;
   });
+  // the average drop within 5 µm of one of its net's stripes
+  var IRNEAR = 0;
+  (function () {
+    var near = [];
+    IRNETS.forEach(function (nt) {
+      var xs = PDN.stripes.filter(function (st) { return st[0] === nt; }).map(function (st) { return st[2]; });
+      IRSTRIPS[nt].forEach(function (st) {
+        var xm = (st.x0 + st.x1) / 2, dist = Math.min.apply(null, xs.map(function (x) { return Math.abs(x - xm); }));
+        if (dist < 5 * U) near.push(st.d);
+      });
+    });
+    var avg = function (a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : 0; };
+    IRNEAR = avg(near);
+  })();
   function irWorst(net) { return IRSTRIPS[net].reduce(function (a, b) { return b.d > a.d ? b : a; }); }
-  // a sequential ramp for the drop, from the theme (--ir0 to --ir3)
-  var IRSTOPS = [];
-  function irColour(t) {
-    t = clamp01(t) * (IRSTOPS.length - 1);
-    var i = Math.min(IRSTOPS.length - 2, Math.floor(t)), f = t - i, a = IRSTOPS[i], b = IRSTOPS[i + 1];
+  function irColour(t, net) {
+    var col = rgbOf(C[net === "VGND" ? "vgnd" : "vpwr"]), core = rgbOf(C.core), end = rgbOf(C.irend);
+    var mixc = function (a, b, f) { return [0, 1, 2].map(function (j) { return a[j] + (b[j] - a[j]) * f; }); };
+    var stops = [mixc(core, col, 0.2), col, mixc(col, end, 0.45)];
+    t = clamp01(t) * (stops.length - 1);
+    var i = Math.min(stops.length - 2, Math.floor(t)), f = t - i, a = stops[i], b = stops[i + 1];
     return "rgb(" + Math.round(a[0] + (b[0] - a[0]) * f) + "," + Math.round(a[1] + (b[1] - a[1]) * f) + "," + Math.round(a[2] + (b[2] - a[2]) * f) + ")";
   }
-  var IR_V0 = 0.04, IR_V1 = 0.42, IR_G0 = 0.52, IR_G1 = 0.9;
-  function irNetAt(u) { return u < IR_G0 ? "VPWR" : "VGND"; }
+  // the drop on both nets appears together, over [IR_V0, IR_V1] of the step
+  var IR_V0 = 0.04, IR_V1 = 0.5, IR_G0 = IR_V0, IR_G1 = IR_V1;
 
   // ---- the GDS -------------------------------------------------------------------------------------
   // Each master's rectangles (from the GDS), placed for every instance as the GDS places it; the
@@ -1268,10 +1284,9 @@ function start(D) {
   STEPS[S.IR] = { short: "IR drop", title: "IR drop analysis", play: 7000,
     body:
       "<p>The power grid has resistance, so the supply sags on its way to the cells. A cell far from where power enters sees a little less than 1.8 V on <code>VPWR</code>, and a little more than 0 V on <code>VGND</code>. Too much <b>IR drop</b> slows cells down and can break timing.</p>" +
-      "<p>This design draws an estimated " + fmt(IR.power * 1000, 2) + " mW (typical corner, with an assumed rate of signal switching), so the drop is tiny. At worst it is " + fmt(IR.worst[0], 1) + " µV on <code>VPWR</code> and " + fmt(IR.worst[1], 1) + " µV on <code>VGND</code>, about " + fmt(IR.worst[0] / 18000, 4) + "% of the supply, and " + fmt(IR.average[0], 0) + " µV on average. It is largest at the far ends of the rails, beyond the outermost met4 stripes, and smallest beside the stripes, where power enters the rails.</p>" +
-      "<h3>How it works</h3>" +
-      "<p>PDNSim models every rail, stripe and via of a power net as a resistor network. It places a current source at each cell, according to its estimated power, and a voltage source at each met4 stripe, where power enters the design. Then it solves for the voltage at every node.</p>",
-    note: "The drop is shown in colour along every rail, first on the VPWR rails, then on the VGND rails between them." };
+      "<p>The analysis is static. It models each power net's rails, stripes and vias as a network of resistors, with each met4 stripe, where power enters the design, held at its net's voltage. Each cell is a current source at its power pins, drawing its average current, its estimated power divided by the supply voltage. The power comes from the library's power tables, measured in simulations of each cell, and an assumed rate of signal switching. Solving the network gives the voltage at every point of the grid.</p>" +
+      "<p>This design draws about " + fmt(IR.power * 1000, 2) + " mW in the typical corner, so the drop is tiny. At worst it is " + fmt(IR.worst[0], 1) + " µV on <code>VPWR</code> and " + fmt(IR.worst[1], 1) + " µV on <code>VGND</code>, about " + fmt(IR.worst[0] / 18000, 4) + "% of the supply. The drop is smallest beside the stripes, about " + fmt(IRNEAR, 0) + " µV on average, and the worst values are at the far ends of rails, beyond the outermost stripes. It also differs from rail to rail, with the current drawn by the cells along each.</p>",
+    note: "The drop is shown in colour along every rail." };
   STEPS[S.GDS] = { short: "GDS", title: "GDS stream-out", play: GDS_MS,
     body:
       "<p>Finally the layout is <b>streamed out</b> to a GDS file, from which the fab makes the masks. Until now the tools knew each cell only by its outline, its pins and the areas wiring must avoid, and this page drew it as a box. Stream-out puts in each cell's full layout from the library and adds the routing, vias and power grid. Magic writes the GDS.</p>" +
@@ -1298,10 +1313,9 @@ function start(D) {
     var cs = getComputedStyle(document.documentElement);
     ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "gcell", "ghost", "guide", "tap", "endcap", "ir0", "ir1", "ir2", "ir3",
      "vpwr", "vgnd", "via", "pin", "logic", "ff", "hot", "buf", "tie", "clock", "clknet", "clkpin", "hold",
-     "li1", "met1", "met2", "met3", "met4", "pick", "diode", "decap", "fill", "wvia", "setup", "holdp", "nwell", "diff", "gtap", "poly", "cut", "ink", "muted", "bg", "font"]
+     "li1", "met1", "met2", "met3", "met4", "pick", "diode", "decap", "fill", "wvia", "setup", "holdp", "irend", "nwell", "diff", "gtap", "poly", "cut", "ink", "muted", "bg", "font"]
       .forEach(function (k) { C[k] = cs.getPropertyValue("--" + k).trim(); });
     hatches = {}; rgbCache = {}; GHOST = parseFloat(C.ghost);
-    IRSTOPS = [0, 1, 2, 3].map(function (i) { var h = C["ir" + i].slice(1); return [0, 2, 4].map(function (j) { return parseInt(h.slice(j, j + 2), 16); }); });
     colourGen++;
   }
   // Room round the whole die: the legend above (at its fullest), the foot band below, equal
@@ -1365,7 +1379,6 @@ function start(D) {
       [DIMC.ir, drawIR]];
     layers.forEach(function (l) { if (l[0] < 0.6) l[1](); });
     layers.forEach(function (l) { if (l[0] >= 0.6) l[1](); });
-    if (pos > S.STA && pos <= S.IR + 0.25) drawStripesOnTop();
     drawGDS();
     drawPins();
     ctx.globalAlpha = 1; ctx.strokeStyle = C["die-edge"]; ctx.lineWidth = 1.5;
@@ -1739,15 +1752,6 @@ function start(D) {
     ctx.globalAlpha = 1;
   }
 
-  function drawStripesOnTop() {
-    var d = DIMC.pdn;
-    PDN.stripes.forEach(function (st) {
-      var hs = st[5] / 2;
-      ctx.globalAlpha = 0.9 * d; ctx.fillStyle = C[st[0] === "VPWR" ? "vpwr" : "vgnd"];
-      ctx.beginPath(); rect(st[2] - hs, st[3], st[2] + hs, st[4]); ctx.fill();
-    });
-    ctx.globalAlpha = 1;
-  }
   // GDS: the layers from the substrate up, over the die. The layers fully in are kept as one image
   // for the view, added to as each completes; the layer fading in has its own image, and the next
   // is drawn ahead. While the view moves the images move with it; they are redrawn sharp once it
@@ -1900,7 +1904,7 @@ function start(D) {
   function drawIR() {
     if (pos <= S.STA || pos > S.IR + 0.25) return;
     var u = within(pos, S.IR), d = DIMC.ir;
-    // VPWR's drop first, then VGND's on the rails between, so the end shows both
+    // the drop on both nets' rails, appearing together
     var av = clamp01((u - IR_V0) / (IR_V1 - IR_V0)), ag = clamp01((u - IR_G0) / (IR_G1 - IR_G0));
     if (pos > S.IR) { av = 1; ag = 1; }
     if (av + ag <= 0.01) return;
@@ -1910,12 +1914,13 @@ function start(D) {
       if (q[1] <= 0.01) return;
       // each strip along its rail, on whole pixels so neighbours abut without seams
       ctx.globalAlpha = q[1] * d;
-      var hs = Math.max(1, 0.3 * RH * cam.s);
+      // as wide as the rail itself, but at least 3 px, so the colour shows when zoomed out
+      var hs = Math.max(1.5, RAILW / 2 * cam.s);
       IRSTRIPS[q[0]].forEach(function (st) {
         var x0 = Math.round(sx(st.x0)), x1 = Math.round(sx(st.x1)), y0 = Math.round(sy(st.y) - hs), y1 = Math.round(sy(st.y) + hs);
         if (x1 < 0 || x0 > W || y1 < 0 || y0 > H) return;
-        ctx.fillStyle = irColour(st.d / IRMAX);
-        ctx.fillRect(x0, y0, x1 - x0, Math.max(2, y1 - y0));
+        ctx.fillStyle = irColour(st.d / IRMAX, q[0]);
+        ctx.fillRect(x0, y0, x1 - x0, Math.max(3, y1 - y0));
       });
     });
     ctx.globalAlpha = 1;
@@ -2732,10 +2737,8 @@ function start(D) {
       return u >= GDS_START + GDS_L * GDS_ORDER.length ? "<b>All layers</b>: DRC and LVS clean" : "<b>" + GDS_ORDER[gi2].what.replace(":", "</b>:");
     }
     if (k === S.IR) {
-      if (u < IR_V0) return "<b>Supply voltages</b> at each cell (" + IR.corner.split("_")[1] + " corner)";
-      if (u >= IR_G1) return "<b>Both nets</b>: worst " + fmt(IR.worst[0], 1) + " µV on VPWR, " + fmt(IR.worst[1], 1) + " µV on VGND";
-      var nt = irNetAt(u), j = nt === "VPWR" ? 0 : 1;
-      return "<b>" + nt + "</b>: worst " + fmt(IR.worst[j], 1) + " µV, average " + fmt(IR.average[j], 1) + " µV";
+      if (u < IR_V0) return "<b>Supply voltages</b> at each cell (" + { ss: "slow", tt: "typical", ff: "fast" }[IR.corner.split("_")[1]] + " corner)";
+      return "<b>Both nets</b>: worst " + fmt(IR.worst[0], 1) + " µV on VPWR, " + fmt(IR.worst[1], 1) + " µV on VGND";
     }
     if (k === S.STA) {
       var P = u < STA_HOLD0 ? PSETUP : PHOLD, T = staTime(P, u), at = null;
@@ -2818,7 +2821,8 @@ function start(D) {
             { from: S.FILL, label: "Fill cell", c: "fill", g: "fill", hatch: true },
             { from: S.STA, to: S.STA, label: "Worst flip-flop to flip-flop setup path", c: "setup", g: "path", line: true },
             { from: S.STA, to: S.STA, label: "Worst hold path", c: "holdp", g: "path", line: true },
-            { from: S.IR, to: S.IR, label: "IR drop, 0–" + Math.round(IRMAX) + " µV", c: "ir", g: "ir", irramp: true },
+            { from: S.IR, to: S.IR, label: "VPWR drop, 0–" + Math.round(IR.worst[0]) + " µV", c: "ir", g: "ir", irramp: "vpwr" },
+            { from: S.IR, to: S.IR, label: "VGND drop, 0–" + Math.round(IR.worst[1]) + " µV", c: "ir", g: "ir", irramp: "vgnd" },
             { from: S.GDS, label: "n-well", c: "nwell", g: "gds" },
             { from: S.GDS, label: "Diffusion", c: "diff", g: "gds" },
             { from: S.GDS, label: "Tap diffusion", c: "gtap", g: "gds" },
@@ -2840,7 +2844,7 @@ function start(D) {
   }
   // a swatch's background, for the legend and the tips: { c: colour token, hatch, ramp, irramp }
   function swatchBg(it) {
-    if (it.irramp) return "linear-gradient(90deg, var(--ir0), var(--ir1), var(--ir2), var(--ir3))";
+    if (it.irramp) return "linear-gradient(90deg, color-mix(in srgb, var(--" + it.irramp + ") 20%, var(--core)), var(--" + it.irramp + "), color-mix(in srgb, var(--" + it.irramp + ") 55%, var(--irend)))";
     if (it.ramp) return "linear-gradient(90deg, " + [0, 0.25, 0.5, 0.75, 1].map(function (u) { return "color-mix(in srgb, var(--" + it.c + ") " + Math.round(100 * crowdAlpha(u)) + "%, transparent)"; }).join(", ") + ")";
     if (it.hatch) return "repeating-linear-gradient(135deg, var(--" + it.c + ") 0 1.5px, transparent 1.5px 4px)";
     return "var(--" + it.c + ")";
@@ -3118,9 +3122,9 @@ function start(D) {
       IRNETS.forEach(function (nt) {
         var best = null;
         IRSTRIPS[nt].forEach(function (st) { if (x >= st.x0 && x < st.x1 && Math.abs(y - st.y) <= RH / 2 && (!best || Math.abs(y - st.y) < Math.abs(y - best.y))) best = st; });
-        if (best) parts2.push(nt + " " + fmt(best.d, 0) + " µV");
+        if (best) parts2.push({ c: "ir", h: "<b>" + nt + " drop</b> here: " + fmt(best.d, 0) + " µV", dimmed: false, irramp: nt.toLowerCase() });
       });
-      if (parts2.length) items.push({ c: "ir", h: "<b>IR drop</b> here: " + parts2.join(", "), dimmed: false, irramp: true });
+      parts2.forEach(function (it) { items.push(it); });
     }
     // clock nets
     if (cellsNow && step === S.CTS && pos > S.LEGAL + 0.05) {
