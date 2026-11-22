@@ -1187,12 +1187,11 @@ function start(D) {
     note: "The animation shows the first descent, one rewind and the final pass." };
   STEPS[S.REPAIR] = { short: "Repair", title: "Repair design", play: 5000,
     body:
-      "<p>With every cell placed, each net's wire length can be estimated, and with it the net's capacitance and the slew at its pins. The resizer checks these against the design's limits (from the SDC: " + fmt(M.sdc.slew) + " ns slew, " + fmt(M.sdc.cap) + " pF load capacitance, fanout " + M.sdc.fanout + ") and the library's pin limits, and repairs the violations. Timing optimisation comes later.</p>" +
-      "<p><b>Input buffers</b> (" + M.rsz.inbuf + "): each input pin in use (" + M.inputs.map(function (x) { return "<code>" + x + "</code>"; }).join(", ").replace(/<code>ui_in\[0\]<\/code>.*<code>ui_in\[6\]<\/code>/, "<code>ui_in[6:0]</code>") + ") now drives one small buffer, so the pin sees a single small load and the buffer drives the logic inside. Each buffer starts at its pin, on the die's top edge, so it lies mostly outside the die until legalisation.</p>" +
-      "<p><b>Buffering and sizing</b>: " + M.rsz.slew + " slew and " + M.rsz.fanout + " fanout violations. The resizer fixed them by inserting " + M.rsz.buffers + " buffers into " + M.rsz.nets + " nets, splitting heavy loads into trees, and by sizing up " + M.rsz.resized + " instances.</p>" +
-      "<p><b>Tie cells</b>: a transistor gate is never wired straight to <code>VPWR</code> or <code>VGND</code>, which would expose its thin oxide to supply noise. Constant 0s and 1s come from <code>conb_1</code> tie cells instead. Synthesis left " + nTie + " of them, wherever global placement put them. <code>repair_tie_fanout</code> replaces each with a new one beside the pin it drives.</p>" +
-      "<h3>How it works</h3>" +
-      "<p>Each net's length comes from a Steiner tree over its pins. Its resistance and capacitance are that length times the values per µm, averaged over met1 to met4, since no wire has a layer yet. <code>repair_design</code> aims " + M.sdc.slewpct + "% inside the slew and capacitance limits. Where a net misses that target, or exceeds the fanout limit, the tool inserts buffers or swaps in a stronger cell.</p>",
+      "<p>With every cell placed, each net's wire length can be estimated from a Steiner tree over its pins, and with it the net's capacitance and the slew at its pins. The resizer checks these against the design's limits, set in the SDC, and the library's pin limits, and repairs the violations in three ways:</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Input buffers</b> go in after each input pin in use, so the pin sees a single small load and the buffer drives the logic inside. Each buffer starts at its pin, on the die's top edge, so it lies mostly outside the die until legalisation.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Buffering and sizing</b> fix nets with too much slew or fanout. The resizer inserts buffers, splitting heavy loads into trees, or swaps in a stronger cell.</p>" +
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"3\">3</span><b>Tie cells</b> supply constant 0s and 1s. A transistor gate is never wired straight to <code>VPWR</code> or <code>VGND</code>, which would expose its thin oxide to supply noise. Synthesis left the tie cells wherever global placement put them, and the resizer replaces each with a new one beside the pin it drives.</p>" +
+      "<p>None of this checks whether each signal reaches its flip-flop before the next clock edge. That comes after the clock tree is built.</p>",
     note: "New cells pop in where the resizer put them, overlapping others until legalisation. The resized cells grow." };
   STEPS[S.LEGAL] = { short: "Legalise", title: "Detailed placement", play: 6500,
     body:
@@ -2075,6 +2074,18 @@ function start(D) {
     if (side === "above") ctx.fillText(text, mx, my - 12);
     else { ctx.save(); ctx.translate(mx - 13, my); ctx.rotate(-Math.PI / 2); ctx.fillText(text, 0, 0); ctx.restore(); }
   }
+  // PROTOTYPE: more places for a callout to try, in a ring of growing radius around its point
+  // (offsets of the box's near corner; above the point the box's height is taken off)
+  function ringCands() {
+    var out = [];
+    [36, 56, 80].forEach(function (r) {
+      [[1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) {
+        var al = d[0] > 0 ? "left" : d[0] < 0 ? "right" : "center";
+        out.push([d[0] * r, d[1] >= 0 ? d[1] * r * 0.7 + (d[1] ? 0 : -10) : d[1] * r * 0.7 - 20, al]);
+      });
+    });
+    return out;
+  }
   function only(k, s) { return pos > k ? clamp01(1 - (pos - k) / 0.06) : ease(appear(pos, k, s)); }
   function centre(Sg, i) { return [sx(Sg.xy[2 * i] + WT[Sg.ty[i]] / 2), sy(Sg.xy[2 * i + 1] + RH / 2)]; }
   function pick(kind, row, frac) {
@@ -2263,10 +2274,18 @@ function start(D) {
         if (kbuf < 0 && CLS[i] === "buf" && !/^input\d/.test(NAMES[i]) && has(K.rszB, i) && K.rszB.xy[2 * i + 1] < (CORE[1] + CORE[3]) / 2) kbuf = i;
       }
       for (i = 0; i < NC; i++) if (CHANGED[i] && has(K.rszB, i)) { krs = i; break; }
-      if (kin >= 0) { var q1 = centre(K.rszB, kin); label("input buffer", q1[0], q1[1], { dx: 18, dy: 26 }); }
-      if (kbuf >= 0) { var q2 = centre(K.rszB, kbuf); label("buffer", q2[0], q2[1], { dx: 18, dy: -36 }); }
-      if (ktie >= 0) { var q3 = centre(K.rszB, ktie); label("tie cell", q3[0], q3[1], { dx: -18, dy: -36, align: "right" }); }
-      if (krs >= 0) { var q4 = centre(K.rszB, krs); label("resized: " + shortName(D.types[K.G.ty[krs]]) + " → " + shortName(D.types[K.rszB.ty[krs]]), q4[0], q4[1], { dx: -18, dy: 30, align: "right" }); }
+      // PROTOTYPE: the callouts keep clear of the step's coloured cells (the new and the resized)
+      var hot = [];
+      for (var h2 = 0; h2 < NU; h2++) if (has(K.rszB, h2) && (h2 >= NC || CHANGED[h2])) {
+        var hx = K.rszB.xy[2 * h2], hy = K.rszB.xy[2 * h2 + 1];
+        hot.push([sx(hx) - 3, sy(hy + RH) - 3, sx(hx + WT[K.rszB.ty[h2]]) + 3, sy(hy) + 3]);
+      }
+      var clear = { avoid: function (bx) { return hot.some(function (r) { return bx[0] < r[2] && r[0] < bx[2] && bx[1] < r[3] && r[1] < bx[3]; }); }, more: ringCands() };
+      var opt = function (o) { for (var k in clear) o[k] = clear[k]; return o; };
+      if (kin >= 0) { var q1 = centre(K.rszB, kin); label("input buffer", q1[0], q1[1], opt({ dx: 18, dy: 26 })); }
+      if (kbuf >= 0) { var q2 = centre(K.rszB, kbuf); label("buffer", q2[0], q2[1], opt({ dx: 18, dy: -36 })); }
+      if (ktie >= 0) { var q3 = centre(K.rszB, ktie); label("tie cell", q3[0], q3[1], opt({ dx: -18, dy: -36, align: "right" })); }
+      if (krs >= 0) { var q4 = centre(K.rszB, krs); label("resized: " + shortName(D.types[K.G.ty[krs]]) + " → " + shortName(D.types[K.rszB.ty[krs]]), q4[0], q4[1], opt({ dx: -18, dy: 30, align: "right" })); }
     }
     // the clk pin, from the start of the clock step: where the tree will grow from. Above the
     // die, in the margin between it and the legend.
@@ -2752,15 +2771,15 @@ function start(D) {
     { k: "power grid", rx: /\bpower grid\b/, from: S.PDN, def: "The rails, stripes and via stacks that carry VPWR and VGND to every cell." },
     { k: "cut", rx: /\bcuts?\b/, from: S.PDN, home: true, def: "A small metal-filled hole through the insulation between two layers. A via is made of one or more cuts." },
     { k: "via", rx: /\bvias?\b/, from: S.PDN, def: "A connection between wires on adjacent layers. It is made of one or more cuts, small metal-filled holes through the insulation between the layers." },
-    { k: "pitch", rx: /\bpitch(es)?\b/, from: S.PDN, home: true, def: "The centre-to-centre distance between neighbouring repeated shapes, such as tracks or stripes." },
     { k: "DEF", rx: /\bDEF\b/, from: S.PINS, home: true, def: "Design Exchange Format, the text file in which each step hands the layout to the next. It lists each cell's position, the pins, and later the wires and vias." },
     { k: "global placement", rx: /\b[Gg]lobal (placement|positions?)\b/, from: S.PLACE, def: "Placement's first stage. It finds rough positions that keep connected cells close and spread them to a target density, ignoring rows and allowing overlaps." },
     { k: "Nesterov placement", rx: /\bNesterov placement\b/, inBold: true, def: "Global placement's main phase. It is named after Nesterov's accelerated gradient method, which it uses to trade wirelength against density." },
     { k: "overflow", rx: /\boverflow\b/, from: S.PLACE, home: true, inBold: true, def: "In global placement, the cell area above each bin's target density, summed over all bins, as a share of all movable cell area." },
     { k: "congestion", rx: /\b(routing )?congestion\b/, from: S.PLACE, home: true, def: "How many wires a region would need against how many fit there." },
     { k: "resizer", rx: /\bresizer\b/, from: S.REPAIR, home: true, def: "OpenROAD's tool that inserts buffers and swaps cells for stronger or weaker ones with the same function." },
-    { k: "sizing", rx: /\bsizing\b/, from: S.REPAIR, home: true, def: "Swapping a cell for a stronger or weaker one with the same function." },
+    { k: "sizing", rx: /\bsizing\b/, from: S.REPAIR, home: true, inBold: true, def: "Swapping a cell for a stronger or weaker one with the same function." },
     { k: "transistor gate", rx: /\btransistor gates?\b/, from: S.REPAIR, home: true, def: "A transistor's control terminal, insulated from the silicon below it by a thin layer of oxide." },
+    { k: "capacitance", rx: /\bcapacitance\b/, def: "How much charge a net must take on to change its voltage. The more capacitance a cell drives, the more slowly its output switches." },
     { k: "slew", rx: /\bslew\b/, def: "The time a signal takes to switch from one level to the other. A slow transition slows the cell it drives." },
     { k: "SDC", rx: /\bSDC\b/, def: "The design's timing constraints file (Synopsys Design Constraints). It sets the clock period, the input and output delays, and limits on slew, capacitance and fanout." },
     { k: "fanout", rx: /\bfanout\b/, def: "The number of inputs a net drives. A high fanout loads its driver and slows the signal." },
