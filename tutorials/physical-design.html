@@ -79,10 +79,6 @@
   --poly: #9c1b34;
   --cut: #1f2630;
   /* IR drop, low to high */
-  --ir0: #f7fcb9;
-  --ir1: #addd8e;
-  --ir2: #41ab5d;
-  --ir3: #005a32;
   --irend: #000000;
   /* crowding: overfull placement bins, nets per g-cell */
   --hot: #8a2be2;
@@ -105,7 +101,7 @@
   --pick: #f1f3f5; --hot: #d27bff;
   --setup: #ff8a65; --holdp: #c48bff;
   --nwell: #6f9a3c; --diff: #c9bd5a; --gtap: #8c8433; --poly: #e0506a; --cut: #e9edf2;
-  --ir0: #12301f; --ir1: #23733f; --ir2: #66bd63; --ir3: #d9f0a3; --irend: #ffffff;
+  --irend: #ffffff;
   --li1: #8f86c0; --met1: #5cc0f5; --met2: #ff7ab4; --met3: #5fd27e; --met4: #ffc24a; --wvia: #e9edf2;
   color-scheme: dark;
 }
@@ -268,8 +264,9 @@ h2 { font-size: 19px; font-weight: 600; margin: 0 0 4px; line-height: 1.25; text
 .body li { margin: 0 0 2px; }
 .body h3 { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 12px 0 3px; }
 .body code { font-family: var(--mono); font-size: 0.86em; }
-/* PROTOTYPE: a figure in the panel text, such as the layer stack */
+/* A figure in the panel text, such as the layer stack */
 .body figure { margin: 4px 0 12px; }
+figure.stack svg { overflow: visible; }
 .gloss figure { margin: 6px 0 2px; }
 .gloss.wide { max-width: 390px; }
 figure.stack svg { display: block; width: 100%; height: auto; font: 500 11px var(--font); }
@@ -277,7 +274,7 @@ figure.stack svg { display: block; width: 100%; height: auto; font: 500 11px var
    at about the popup's own size */
 .gloss figure.stack svg { font-size: 9.5px; }
 figure.stack figcaption { margin-top: 2px; font-size: 12px; color: var(--muted); }
-/* PROTOTYPE: the power nets in the colours the pictures draw them in (on the steps that use it) */
+/* The power nets in the colours the pictures draw them in (on the steps that use it) */
 .body code.vpwr { color: var(--vpwr); font-weight: 600; }
 .body code.vgnd { color: var(--vgnd); font-weight: 600; }
 /* the two main steps on the Die step, each numbered in a badge in the margin */
@@ -500,17 +497,13 @@ function start(D) {
 
   // ---- fixed cells, power grid, pins -------------------------------------------------------
   var fixed = D.fixed.map(function (c) { return { kind: c[0], type: D.types[c[1]], site: c[2], row: c[3], w: c[4], orient: c[5], name: c[6] }; });
-  var nTap = 0, nEnd = 0;
   fixed.forEach(function (c) {
-    if (c.kind === "tap") nTap++; else nEnd++;
     // endcaps first, then taps from left to right (the order tapcell inserts them)
     c.s = c.kind === "endcap" ? 0.25 * (c.row / NROWS) : 0.3 + 0.7 * (c.site / D.sitesPerRow);
   });
   var byRow = [];
   for (var r0 = 0; r0 < NROWS; r0++) byRow.push([]);
   fixed.forEach(function (c) { byRow[c.row].push(c); });
-  var tapSites = fixed.filter(function (c) { return c.kind === "tap" && c.row === 1; }).map(function (c) { return c.site; }).sort(function (a, b) { return a - b; });
-  var TAPPITCH = (tapSites[1] - tapSites[0]) * SW;
 
   var PDN = D.pdn, RAILW = PDN.rails[0][4], STRW = PDN.stripes[0][5], nStripe = PDN.stripes.length;
   var nRail = { VPWR: 0, VGND: 0 };
@@ -606,7 +599,7 @@ function start(D) {
   function lvStart(L) { return 0.04 + 0.74 * (CLV - L) / (CLV + 1); }
   var DRVNET = {};   // the clock net each clock buffer drives
   CLOCK.forEach(function (c, j) { if (c.drv >= 0) DRVNET[c.drv] = j; });
-  // PROTOTYPE: while the clock step builds a level, everything not part of it is dimmed: the
+  // While the clock step builds a level, everything not part of it is dimmed: the
   // level's nets, and the cells that drive or load them, keep their colour
   var STAGE_MEM = [];
   for (var sl = 0; sl <= CLV; sl++) STAGE_MEM.push(new Uint8Array(NU));
@@ -1125,17 +1118,7 @@ function start(D) {
   var UNUSED = {};
   LC.unusedPins.forEach(function (nm) { UNUSED[nm] = 1; });
   var unusedList = Object.keys(UNUSED);
-  function busList(names) {
-    // ui_in[7], uio_in[0..7] -> "ui_in[7], uio_in[7:0]"
-    var by = {};
-    names.forEach(function (nm) { var m = nm.match(/^(.*)\[(\d+)\]$/); if (m) (by[m[1]] = by[m[1]] || []).push(+m[2]); else by[nm] = null; });
-    return Object.keys(by).map(function (b) {
-      var ix = by[b];
-      if (!ix) return "<code>" + b + "</code>";
-      ix.sort(function (a, c) { return a - c; });
-      return "<code>" + b + (ix.length > 1 && ix[ix.length - 1] - ix[0] === ix.length - 1 ? "[" + ix[ix.length - 1] + ":" + ix[0] + "]" : "[" + ix.join("], " + b + "[") + "]") + "</code>";
-    }).join(", ");
-  }
+
 
   // ---- what each step focuses on -----------------------------------------------------------------
   // Everything else is greyed out (dimCol), on the die and in the legend.
@@ -1206,7 +1189,7 @@ function start(D) {
   var CORE_UM2 = um(CORE[2] - CORE[0]) * um(CORE[3] - CORE[1]);
   var FIXED_UM2 = fixed.reduce(function (a, c) { return a + c.w; }, 0) * um(SW) * um(RH);
   var MOVABLE_UM2 = M.gpl.area - FIXED_UM2;
-  // PROTOTYPE. The sky130 layer stack, side view, heights to scale (bottom and thickness in µm,
+  // The sky130 layer stack, side view, heights to scale (bottom and thickness in µm,
   // from the PDK's Magic tech file): the PDN's rail, via stack and stripe, a few signal wires on
   // each layer, and met5, which this design does not use, outlined.
   // layersOnly: just the layers, named on the left, with no labels for what the shapes are (for the
@@ -1214,10 +1197,13 @@ function start(D) {
   function stackFigure(layersOnly) {
     var Z = { diff: [0.2062, 0.12], poly: [0.3262, 0.18], li1: [0.9361, 0.10], v0: [1.0361, 0.34], met1: [1.3761, 0.36], v1: [1.7361, 0.27],
               met2: [2.0061, 0.36], v2: [2.3661, 0.42], met3: [2.7861, 0.845], v3: [3.6311, 0.39], met4: [4.0211, 0.845], met5: [5.3711, 1.26] };
-    var X0 = 70, X1 = 300, top = 6.75, bot = -0.9, H = 200, k = (H - 14) / (top - bot);
+    // the drawing between X0 and X1, leaving room either side for labels a narrow panel enlarges;
+    // shapes are given on a 70-300 scale and mapped into it
+    var X0 = 88, X1 = 290, top = 6.75, bot = -0.9, H = 200, k = (H - 14) / (top - bot);
+    var xm = function (x) { return X0 + (x - 70) * (X1 - X0) / 230; };
     var y = function (z) { return 6 + (top - z) * k; };
     var o = [];
-    var box = function (x0, x1, l, fill, extra) { var z = Z[l]; x0 += 12; x1 += 12; o.push('<rect x="' + x0 + '" y="' + y(z[0] + z[1]).toFixed(1) + '" width="' + (x1 - x0) + '" height="' + Math.max(1.5, z[1] * k).toFixed(1) + '" fill="' + fill + '"' + (extra || "") + "/>"); };
+    var box = function (x0, x1, l, fill, extra) { var z = Z[l]; x0 = xm(x0 + 12); x1 = xm(x1 + 12); o.push('<rect x="' + x0.toFixed(1) + '" y="' + y(z[0] + z[1]).toFixed(1) + '" width="' + (x1 - x0).toFixed(1) + '" height="' + Math.max(1.5, z[1] * k).toFixed(1) + '" fill="' + fill + '"' + (extra || "") + "/>"); };
     var mid = function (l) { return (y(Z[l][0]) + y(Z[l][0] + Z[l][1])) / 2; };
     o.push('<rect x="' + X0 + '" y="' + y(Z.diff[0]).toFixed(1) + '" width="' + (X1 - X0) + '" height="' + (y(bot) - y(Z.diff[0])).toFixed(1) + '" fill="var(--die)"/>');
     [[70, 104], [124, 158], [226, 262]].forEach(function (d) { box(d[0], d[1], "diff", "var(--diff)"); box(d[0] + 13, d[0] + 21, "poly", "var(--poly)"); });
@@ -1237,7 +1223,7 @@ function start(D) {
     if (!layersOnly) {
     t(X1 + 6, mid("met5"), "start", "chip's grid", "var(--muted)");
     t(X1 + 6, mid("met4"), "start", "power stripe");
-    var bx = 264, b0 = y(Z.met1[0] + Z.met1[1]), b1 = y(Z.met4[0]), bm = (b0 + b1) / 2;
+    var bx = xm(264), b0 = y(Z.met1[0] + Z.met1[1]), b1 = y(Z.met4[0]), bm = (b0 + b1) / 2;
     o.push('<path d="M' + (bx - 4) + " " + b0.toFixed(1) + "H" + bx + "V" + b1.toFixed(1) + "H" + (bx - 4) + "M" + bx + " " + bm.toFixed(1) + "H" + (X1 + 2) + '" fill="none" stroke="var(--ink)"/>');
     t(X1 + 6, bm, "start", "via stack");
     t(X1 + 6, mid("met1"), "start", "power rail");
@@ -1245,7 +1231,7 @@ function start(D) {
     }
     return '<figure class="stack"><svg viewBox="0 0 ' + (layersOnly ? X1 + 10 : 384) + " " + H + '" role="img" aria-label="Side view of the sky130 layer stack: substrate and transistors at the bottom, then li1 and met1 to met5. A met1 rail is joined by a via stack through met2 and met3 to a met4 stripe. Met5 is outlined.">' + o.join("") + '</svg><figcaption>The sky130 layer stack, side view, heights to scale</figcaption></figure>';
   }
-  // PROTOTYPE. An NMOS transistor as sky130 builds it, from above and in section, not to scale, in
+  // An NMOS transistor as sky130 builds it, from above and in section, not to scale, in
   // the page's layer colours: diffusion crossed by a poly gate, contacts up to li1 on either side.
   function mosfetFigure() {
     var o = [], t = function (x, y, a, txt, c) { o.push('<text x="' + x + '" y="' + y + '" text-anchor="' + a + '" fill="' + (c || "var(--ink)") + '">' + txt + "</text>"); };
@@ -1410,7 +1396,7 @@ function start(D) {
 
   function readColours() {
     var cs = getComputedStyle(document.documentElement);
-    ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "gcell", "ghost", "guide", "tap", "endcap", "ir0", "ir1", "ir2", "ir3",
+    ["stage", "veil", "die", "die-edge", "core", "row", "row-flip", "row-edge", "site", "dim", "gcell", "ghost", "guide", "tap", "endcap", 
      "vpwr", "vgnd", "via", "pin", "logic", "ff", "hot", "buf", "tie", "clock", "clknet", "clkpin", "hold",
      "li1", "met1", "met2", "met3", "met4", "pick", "diode", "decap", "fill", "wvia", "setup", "holdp", "irend", "nwell", "diff", "gtap", "poly", "cut", "ink", "muted", "bg", "font"]
       .forEach(function (k) { C[k] = cs.getPropertyValue("--" + k).trim(); });
@@ -2150,7 +2136,7 @@ function start(D) {
   // right, further out) that overlaps no callout already drawn this frame and stays between the
   // legend and the foot band (opts.more adds places to try last); if none does, it is left out. A box (opts.box) names an event
   // rather than a thing: it sits centred on the point, with no leader.
-  var placed = [];
+  var placed = [], EDGE = 8;   // EDGE: the margin a callout keeps from the view's sides
   function label(text, x, y, opts) {
     opts = opts || {};
     ctx.font = "500 12px " + C.font;
@@ -2162,14 +2148,14 @@ function start(D) {
               : [[dx, dy, al], [dx, -dy - h, al], [-dx, dy, flip[al]], [-dx, -dy - h, flip[al]],
                  [dx, dy * 2, al], [dx, -dy * 2 - h, al], [-dx, dy * 2, flip[al]], [-dx, -dy * 2 - h, flip[al]]].concat(opts.more || []);
     var best = null;
-    // PROTOTYPE: a caller's score(box) picks, among the clash-free places, the one that covers least
+    // A caller's score(box) picks, among the clash-free places, the one that covers least
     if (opts.score) {
       var bestS = Infinity;
       cands.forEach(function (cd, ci) {
         var px = x + cd[0], py = y + cd[1];
         if (cd[2] === "right") px -= w; else if (cd[2] === "center") px -= w / 2;
         var box = [px - 3, py - 3, px + w + 3, py + h + 3];
-        if (box[0] < 0 || box[2] > W || box[1] < legendH + 14 || box[3] > H - footH - 12 || placed.some(function (b2) {
+        if (box[0] < EDGE || box[2] > W - EDGE || box[1] < legendH + 14 || box[3] > H - footH - 12 || placed.some(function (b2) {
           return box[0] < b2[2] && b2[0] < box[2] && box[1] < b2[3] && b2[1] < box[3]; })) return;
         var sc = opts.score(box) + Math.hypot(cd[0], cd[1] + h / 2) * (opts.nearW || 0.05);   // nearer places win ties, or more when nearW asks
         if (sc < bestS) { bestS = sc; best = [px, py, cd[2]]; }
@@ -2183,7 +2169,7 @@ function start(D) {
       var cd = cands[c % cands.length], px = x + cd[0], py = y + cd[1];
       if (cd[2] === "right") px -= w; else if (cd[2] === "center") px -= w / 2;
       var box = [px - 3, py - 3, px + w + 3, py + h + 3];
-      var clash = box[0] < 0 || box[2] > W || box[1] < legendH + (opts.fixed ? 4 : 14) || box[3] > H - footH - 12 || placed.some(function (b2) {
+      var clash = box[0] < EDGE || box[2] > W - EDGE || box[1] < legendH + (opts.fixed ? 4 : 14) || box[3] > H - footH - 12 || placed.some(function (b2) {
         return box[0] < b2[2] && b2[0] < box[2] && box[1] < b2[3] && b2[1] < box[3];
       }) || (strict && opts.avoid && opts.avoid(box));
       if (!clash) best = [px, py, cd[2]];
@@ -2214,7 +2200,7 @@ function start(D) {
     ctx.fill(); ctx.stroke();
     ctx.fillStyle = C.ink; ctx.textBaseline = "middle"; ctx.textAlign = "center";
     lines.forEach(function (l, i) {
-      // PROTOTYPE: a wiring layer named in a callout (li1, met1 to met4) in that layer's colour
+      // A wiring layer named in a callout (li1, met1 to met4) in that layer's colour
       var ty = by + 10.5 + 15 * i, parts = l.split(/\b(li1|met[1-4])\b/);
       if (parts.length === 1) { ctx.fillText(l, bx + w / 2, ty); return; }
       var x0 = bx + w / 2 - ctx.measureText(l).width / 2;
@@ -2235,7 +2221,7 @@ function start(D) {
     if (side === "above") ctx.fillText(text, mx, my - 12);
     else { ctx.save(); ctx.translate(mx - 13, my); ctx.rotate(-Math.PI / 2); ctx.fillText(text, 0, 0); ctx.restore(); }
   }
-  // PROTOTYPE: more places for a callout to try, in a ring of growing radius around its point
+  // More places for a callout to try, in a ring of growing radius around its point
   // (offsets of the box's near corner; above the point the box's height is taken off)
   function ringCands(radii) {
     var out = [];
@@ -2307,16 +2293,22 @@ function start(D) {
   }
   var rowMid = Math.floor(NROWS / 2), siteMid = Math.floor(D.sitesPerRow * 0.45);
   var GCELL_PICK = [2, GNY - 4];   // the g-cell named on the routing step: upper left, clear of the examples
-  // PROTOTYPE. The floorplan's close-up: the example site and the rows above and below it,
+  // The floorplan's close-up: the example site and the rows above and below it,
   // magnified in a circle beside it. It shows what the die is too small to: the sites, the rails on
   // the row boundaries, and which rows hold their cells upside down. It is left out once the rows are large enough to see, or when it does not fit. Returns
   // where the example site is in it, and how far below the site the callout should go, or null.
   function rowsCloseUp(wxc, wyc) {
-    var rowPx = RH * cam.s, R = Math.max(60, Math.min(140, Math.min(W, H) * 0.22)), h = 0.56 * R, mag = h / RH;
-    var srcX = sx(wxc), srcY = sy(wyc), srcR = R * cam.s / mag;
-    var side = srcX + srcR + 90 + 2 * R < W ? 1 : -1;
-    var cx = srcX + side * (srcR + 90 + R), cy = srcY - 0.35 * R;
-    if (rowPx > 30 || cx - R < 0 || cx + R > W || cy - R < legendH + 14 || cy + R > H - footH - 12) return null;
+    var rowPx = RH * cam.s, srcX = sx(wxc), srcY = sy(wyc), R, h, mag, srcR, side, cx, cy, fits = false;
+    if (rowPx > 30) return null;
+    for (R = Math.min(140, Math.min(W, H) * 0.22); R >= 60 && !fits; R -= 10) {
+      h = 0.56 * R; mag = h / RH; srcR = R * cam.s / mag;
+      var gap = Math.min(90, R * 0.65);
+      side = srcX + srcR + gap + 2 * R < W - EDGE ? 1 : -1;
+      cx = srcX + side * (srcR + gap + R); cy = srcY - 0.35 * R;
+      fits = cx - R >= EDGE && cx + R <= W - EDGE && cy - R >= legendH + 14 && cy + R <= H - footH - 12;
+    }
+    if (!fits) return null;
+    R += 10;   // undo the loop's last step
     ctx.save();
     ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
     // the lens: the source circle and the close-up joined by their two outer tangents, the cone
@@ -2347,13 +2339,18 @@ function start(D) {
     for (var k2 = r0; k2 <= r0 + 3; k2++) { ctx.fillStyle = railName(k2) === "VPWR" ? C.vpwr : C.vgnd; ctx.fillRect(cx - R, Y(rowY(k2)) - 0.05 * h, 2 * R, 0.1 * h); }
     // the example site outlined over the rails: it runs from rail centre to rail centre
     ctx.strokeStyle = C.pick; ctx.lineWidth = 2; ctx.strokeRect(X(CORE[0] + siteMid * SW), Y(rowY(rowMid + 1)), SW * mag, h);
-    // each row's orientation, on the left at mid-row
+    // each row's orientation at mid-row, on the left; or on the right when the site's callout has no
+    // room right of the site and must go left of it
     ctx.font = "500 11px " + C.font; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.save(); ctx.font = "500 12px " + C.font;
+    var calloutLeft = X(CORE[0] + (siteMid + 0.5) * SW) + 18 + ctx.measureText("site: " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm").width + 16 > W - EDGE;
+    ctx.restore();
     for (var r2 = r0; r2 <= r0 + 2; r2++) {
       var fs = D.rows[r2], t = fs ? ["FS row", "(upside down)"] : ["N row", "(upright)"];
       var my = Y(rowY(r2) + RH / 2), tw = Math.max(ctx.measureText(t[0]).width, ctx.measureText(t[1]).width);
       var edge = Math.min(Math.abs(my - 15 - cy), Math.abs(my + 15 - cy)) === Math.abs(my - 15 - cy) ? my + 15 : my - 15;
-      var tx = Math.max(cx - Math.sqrt(Math.max(0, R * R - (edge - cy) * (edge - cy))) + 10, cx - 0.85 * R);
+      var half = Math.min(Math.sqrt(Math.max(0, R * R - (edge - cy) * (edge - cy))) - 10, 0.85 * R);
+      var tx = calloutLeft ? cx + half - tw : cx - half;
       ctx.fillStyle = C.ink; ctx.fillText(t[0], tx, my - 7); ctx.fillText(t[1], tx, my + 7);
     }
     ctx.restore();
@@ -2362,7 +2359,7 @@ function start(D) {
     LENS = { cx: cx, cy: cy, R: R, wx: wxc, wy: wyc, mag: mag };
     // the site's callout goes inside the close-up, just right of the site; the caller places it,
     // then marks the close-up as taken
-    return { x: X(CORE[0] + (siteMid + 0.5) * SW), y: Y(wyc), box: [cx - R - 4, cy - R - 4, cx + R + 4, cy + R + 4] };
+    return { x: X(CORE[0] + (siteMid + 0.5) * SW), y: Y(wyc), left: calloutLeft, box: [cx - R - 4, cy - R - 4, cx + R + 4, cy + R + 4] };
   }
   var LENS = null;   // the close-up drawn this frame, for the tooltip: centre, radius, the world point at its centre, scale
   function drawNotes() {
@@ -2377,23 +2374,27 @@ function start(D) {
     var a;
     if ((a = only(S.FLOOR, 0.85)) > 0.01) {
       ctx.globalAlpha = a;
-      // PROTOTYPE: the core outlined, an example row near the top named inside itself, the example
+      // The core outlined, an example row near the top named inside itself, the example
       // site in the middle row and its close-up, then the callouts
       ctx.strokeStyle = C.pick; ctx.lineWidth = 1.5; ctx.beginPath(); rect(CORE[0], CORE[1], CORE[2], CORE[3]); ctx.stroke();
       var yr = CORE[1] + (NROWS - 3) * RH, y0 = CORE[1] + rowMid * RH, xs = CORE[0] + siteMid * SW;
       ctx.strokeStyle = C.pick; ctx.lineWidth = 1;
       ctx.beginPath(); rect(CORE[0], yr, CORE[2], yr + RH); ctx.stroke();
       var fsz = Math.min(11, Math.floor(RH * cam.s * 0.72));
-      if (fsz >= 7) {
+      // named inside the row when that is legible, otherwise by a callout (placed below, after the close-up)
+      var rowCallout = fsz < 8;
+      if (!rowCallout) {
         ctx.font = "500 " + fsz + "px " + C.font; ctx.fillStyle = C.ink; ctx.textAlign = "left"; ctx.textBaseline = "middle";
         ctx.fillText("row: " + D.sitesPerRow + " sites", sx(CORE[0]) + 6, sy(yr + RH / 2) + 0.5);
       }
       ctx.strokeStyle = C.pick; ctx.lineWidth = 1; ctx.beginPath(); rect(xs, y0, xs + SW, y0 + RH); ctx.stroke();
       var lens = rowsCloseUp(xs + SW / 2, y0 + RH / 2);
       label("core area", sx(CORE[0] + 0.12 * (CORE[2] - CORE[0])), sy(CORE[1] + 0.3 * (CORE[3] - CORE[1])), { dx: 14, dy: 24, fixed: true });
-      label("core margin", sx(CORE[0] + 0.3 * (CORE[2] - CORE[0])), sy((CORE[3] + DIE[3]) / 2), { dx: 14, dy: -50, fixed: true });
+      if (!label("core margin", sx(CORE[0] + 0.3 * (CORE[2] - CORE[0])), sy((CORE[3] + DIE[3]) / 2), { dx: 14, dy: -50, fixed: true }))
+        label("core margin", sx((DIE[0] + CORE[0]) / 2), sy(CORE[1] + 0.65 * (CORE[3] - CORE[1])), { dx: 24, dy: 24 });
+      if (rowCallout) label("row: " + D.sitesPerRow + " sites", sx(CORE[0] + 0.3 * (CORE[2] - CORE[0])), sy(yr + RH / 2), { dx: 14, dy: 24 });
       var siteText = "site: " + fmt(um(SW)) + " × " + fmt(um(RH)) + " µm";
-      if (lens) { label(siteText, lens.x, lens.y, { dx: 18, dy: -10, fixed: true }); placed.push(lens.box); }
+      if (lens) { label(siteText, lens.x, lens.y, lens.left ? { dx: -18, dy: -10, align: "right", fixed: true } : { dx: 18, dy: -10, fixed: true }); placed.push(lens.box); }
       else label(siteText, sx(xs + SW / 2), sy(y0 + RH / 2), { dx: 14, dy: 30 });
     }
     if ((a = only(S.TAPS, 0.95)) > 0.01) {
@@ -2436,7 +2437,7 @@ function start(D) {
         if (kbuf < 0 && CLS[i] === "buf" && !/^input\d/.test(NAMES[i]) && has(K.rszB, i) && K.rszB.xy[2 * i + 1] < (CORE[1] + CORE[3]) / 2) kbuf = i;
       }
       for (i = 0; i < NC; i++) if (CHANGED[i] && has(K.rszB, i)) { krs = i; break; }
-      // PROTOTYPE: the callouts keep clear of the step's coloured cells (the new and the resized)
+      // The callouts keep clear of the step's coloured cells (the new and the resized)
       var hot = [];
       for (var h2 = 0; h2 < NU; h2++) if (has(K.rszB, h2) && (h2 >= NC || CHANGED[h2])) {
         var hx = K.rszB.xy[2 * h2], hy = K.rszB.xy[2 * h2 + 1];
@@ -2457,7 +2458,7 @@ function start(D) {
       var pinY = sy(CLKPIN.y1), band = pinY - legendH - 8;
       label("clk pin", sx((CLKPIN.x0 + CLKPIN.x1) / 2), pinY, { dx: -40, dy: -Math.max(24, Math.min(36, band / 2 + 10)), align: "right", fixed: true });
     }
-    // PROTOTYPE: the groups the tree is built from, lightly outlined: while clustering, each leaf
+    // The groups the tree is built from, lightly outlined: while clustering, each leaf
     // buffer with its flip-flops; while the branch buffers are added, each branch buffer with its
     // leaf buffers, how the tree split the die. The branch groups come
     // out roughly as quarters; the outlines show the split as the tool made it.
@@ -2495,12 +2496,12 @@ function start(D) {
     a = only(S.CTS, 0.95);
     var cwl = ctsW();
     if (a > 0.01 || cwl) {
-      // PROTOTYPE: while the tree is built, each callout shows with its stage (the level its cell is
+      // While the tree is built, each callout shows with its stage (the level its cell is
       // added in); at the end of the step, all of them
       var stageA = function (lv) { return cwl ? Math.max(a, cwl[lv] * cwl.all) : a; };
       var here = function (i) { return [sx(SX[i] + SWD[i] / 2), sy(SY[i] + RH / 2)]; };
       var leaf = -1, dummy = -1;
-      // PROTOTYPE: the cell of a kind nearest a chosen spot on the die (in core fractions)
+      // The cell of a kind nearest a chosen spot on the die (in core fractions)
       var nearest = function (ok, fx, fy) {
         var tx = CORE[0] + fx * (CORE[2] - CORE[0]), ty = CORE[1] + fy * (CORE[3] - CORE[1]), bi = -1, bd = Infinity;
         for (var q = 0; q < NU; q++) if (ok(q)) { var dd = Math.hypot(SX[q] + SWD[q] / 2 - tx, SY[q] + RH / 2 - ty); if (dd < bd) { bd = dd; bi = q; } }
@@ -2511,7 +2512,7 @@ function start(D) {
       CLOCK.forEach(function (c) { if (c.lv === CLV - 1) c.loads.forEach(function (l) { if (CLS[l] === "clock" && DRIVES[l]) leaves[l] = 1; }); });
       leaf = nearest(function (q) { return leaves[q]; }, 0.62, 0.08);
       dummy = nearest(function (q) { return CLS[q] === "clock" && !DRIVES[q]; }, 0.03, 0.62);
-      // PROTOTYPE: what the callouts should cover least: the flip-flops and clock cells, and the flylines
+      // What the callouts should cover least: the flip-flops and clock cells, and the flylines
       var busy = [], segs = [];
       for (var j = 0; j < NU; j++) if (CLS[j] === "ff" || CLS[j] === "clock") busy.push([sx(SX[j]), sy(SY[j] + RH), sx(SX[j] + SWD[j]), sy(SY[j])]);
       CLOCK_DRAW.forEach(function (c) {
@@ -2539,7 +2540,7 @@ function start(D) {
     // middle, so it is easy to see, and a decap cell in the lower half
     if ((a = only(S.FILL, 0.95)) > 0.01) {
       ctx.globalAlpha = a;
-      // PROTOTYPE: of each kind, a cell of the widest size that stands alone (no other filler touching
+      // Of each kind, a cell of the widest size that stands alone (no other filler touching
       // it in its row), in the quietest part of the die (fewest fillers around it); its callout goes
       // where it covers the fewest fillers
       var boxes = FILL.map(function (f) { return [sx(CORE[0] + f.site * SW) - 1, sy(CORE[1] + (f.row + 1) * RH) - 1, sx(CORE[0] + (f.site + f.w) * SW) + 1, sy(CORE[1] + f.row * RH) + 1]; });
@@ -2631,7 +2632,7 @@ function start(D) {
         var offCell = function (b) { return b[0] < cellBox[2] && cellBox[0] < b[2] && b[1] < cellBox[3] && cellBox[1] < b[3]; };
         // failing the usual places, just above the cell, else just below it
         var ux = sx(at[0]), uy = sy(at[1]), up = cellBox[1] - 26 - uy, dn = cellBox[3] + 6 - uy;
-        if (at) label(text, ux, uy, { dx: 22, dy: -50, avoid: offCell, more: [[22, up, "left"], [-22, up, "right"], [22, dn, "left"], [-22, dn, "right"]] });
+        if (at) label(text, ux, uy, { dx: 22, dy: -50, avoid: offCell, more: [[22, up, "left"], [-22, up, "right"], [22, dn, "left"], [-22, dn, "right"]].concat(ringCands([56, 80, 110])) });
         else label(text, bxc, byb - 10, { box: true });
       };
       // its own colour over the die while its callout shows, then only its outline
@@ -3191,6 +3192,15 @@ function start(D) {
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !gloss.hidden) { hideGloss(); e.stopPropagation(); } }, true);
   bodyEl.addEventListener("scroll", hideGloss);
 
+  // A figure's labels scale with it, so in a narrow panel they would shrink below legibility: keep
+  // them at 10 px or more on screen
+  function fitFigureText() {
+    Array.prototype.forEach.call(document.querySelectorAll("#body figure.stack svg"), function (svg) {
+      var k = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+      svg.style.fontSize = k > 0 && 11 * k < 10 ? (10 / k).toFixed(2) + "px" : "";
+    });
+  }
+  window.addEventListener("resize", fitFigureText);
   function updatePanel() {
     var st = STEPS[target];
     document.getElementById("title").textContent = st.title;
@@ -3205,6 +3215,7 @@ function start(D) {
     });
     shownPhase = -1;
     markTerms(document.getElementById("body"), target);
+    fitFigureText();
     // unavailable at the ends, but still focusable, so a keyboard user's focus stays put
     document.getElementById("prev").setAttribute("aria-disabled", target === 0 ? "true" : "false");
     document.getElementById("next").setAttribute("aria-disabled", target >= STEPS.length - 1 ? "true" : "false");
