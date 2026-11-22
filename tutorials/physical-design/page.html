@@ -1197,7 +1197,7 @@ function start(D) {
     body:
       "<p><b>Detailed placement</b> moves every instance from its global position to a legal one, in two parts:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Legalisation</b> puts each cell on a row, aligned to a site, overlapping no other. The taps and endcaps are fixed and do not move. A cell that lands in an FS row is flipped top to bottom, so its power rails line up with the row's. The moves are small, because global placement has already spread the cells out, but they still lengthen the estimated wire length by " + Math.round(100 * (M.dpl.hpwl[1] / M.dpl.hpwl[0] - 1)) + "%.</p>" +
-      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Mirroring</b> then flips some cells left to right. A flip moves a cell's pins to its other side, so it is kept only where it shortens the cell's nets. Together the flips win back " + fmt(100 * (1 - M.dpl.hpwl[2] / M.dpl.hpwl[1]), 0) + "% of the wire length.</p>",
+      "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Mirroring</b> then flips some cells left to right. A flip moves a cell's pins to its other side, so it is kept only where it shortens the cell's nets. In all, the flips shorten the estimated wire length by " + fmt(100 * (1 - M.dpl.hpwl[2] / M.dpl.hpwl[1]), 0) + "%.</p>",
     note: "All cells slide at once to their legal sites, some flipping to suit their row. Then the mirrored cells flip." };
   STEPS[S.CTS] = { short: "Clock", title: "Clock tree synthesis", play: 8000,
     body:
