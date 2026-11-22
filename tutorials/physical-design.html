@@ -1632,10 +1632,11 @@ function start(D) {
   function routeT() { return within(pos, S.GRT); }
   // the routing step's layer stays over the cells while it fades out as the next step begins, so
   // its crowding map goes as a whole rather than lingering in the gaps between them
-  function routeOver() { return pos > S.GRT && pos < S.GRT + 0.3 ? 1 : DIMC.route; }
+  function routeOver() { return pos > S.GRT && pos < S.GRT + 0.3 && (anim || target === S.GRT) ? 1 : DIMC.route; }
   function drawGuides() {
     if (pos <= S.HOLD) return;
-    var t = routeT(), gone = pos > S.GRT ? clamp01(1 - (pos - S.GRT) / 0.3) : 1, d = DIMC.route * gone, i;
+    // (the map fades as the next step plays; a step waiting at its start shows none of it)
+    var t = routeT(), gone = pos > S.GRT ? (anim || target === S.GRT ? clamp01(1 - (pos - S.GRT) / 0.3) : 0) : 1, d = DIMC.route * gone, i;
     if (gone <= 0) return;
     // crowding: a veil over the die, then each g-cell as a tile, pale to deep with the number
     // of nets that have guides in it (the count is in the tooltip)
@@ -2246,7 +2247,7 @@ function start(D) {
     });
     return out;
   }
-  function only(k, s) { return pos > k ? clamp01(1 - (pos - k) / 0.06) : ease(appear(pos, k, s)); }
+  function only(k, s) { return pos > k ? (anim || target === k ? clamp01(1 - (pos - k) / 0.06) : 0) : ease(appear(pos, k, s)); }
   function centre(Sg, i) { return [sx(Sg.xy[2 * i] + WT[Sg.ty[i]] / 2), sy(Sg.xy[2 * i + 1] + RH / 2)]; }
   function pick(kind, row, frac) {
     var best = null, want = frac * D.sitesPerRow;
@@ -2858,7 +2859,7 @@ function start(D) {
       return "<b>All " + n(GR.routed) + " nets</b>: nets with guides per g-cell, " + MINALL + "–" + MAXALL;
     }
     if (k === S.ANT) {
-      if (u < 0.33) return "<b>Violation</b>: " + AM.net + ", " + AM.layer + ", " + fmt(AM.partial) + " / " + fmt(AM.required, 0);
+      if (u < 0.33) return "<b>" + AM.net + "</b> breaks the rule on " + AM.layer + ", " + Math.round(100 * (AM.pr - 1)) + "% over the limit";
       if (u < ANT_SPLIT) return "<b>Diode</b> beside the root buffer";
       return "<b>" + n(AM.flipped) + " cells lose their mirroring</b>";
     }
@@ -2883,10 +2884,15 @@ function start(D) {
     if (k === S.STA) {
       var P = u < STA_HOLD0 ? PSETUP : PHOLD, T = staTime(P, u), at = null;
       if (T < 0) return "<b>Extracted parasitics</b>, " + CORNERS.length + " corners";
-      P.st.forEach(function (x) { if (x.t <= T) at = x; });
-      if (T >= P.t1) return P === PSETUP ? "<b>Setup slack</b> " + fmt(P.q.slack) + " ns (arrives " + fmt(P.t1) + ", required " + fmt(P.q.required) + ")"
-                                         : "<b>Hold slack</b> " + fmt(P.q.slack, 3) + " ns (arrives " + fmt(P.t1, 3) + ", allowed from " + fmt(P.q.required, 3) + ")";
-      return "<b>" + (P === PSETUP ? "Setup path" : "Hold path") + "</b>: " + fmt(T, P === PSETUP ? 2 : 3) + " ns at <code>" + at.pin + "</code>" + (at.cell ? " (" + at.cell + ")" : "");
+      // the cells along the path in order (an instance each time the pin's instance changes), and
+      // which of them the signal has reached
+      var seq = [], atI = 0;
+      P.st.forEach(function (x) { var nm = x.pin.split("/")[0]; if (seq[seq.length - 1] !== nm) seq.push(nm); if (x.t <= T) { at = x; atI = seq.length - 1; } });
+      var dp = P === PSETUP ? 2 : 3;
+      if (T >= P.t1) return P === PSETUP ? "<b>Setup slack</b> " + fmt(P.q.slack) + " ns (arrives " + fmt(P.t1) + " ns, must arrive by " + fmt(P.q.required) + " ns)"
+                                         : "<b>Hold slack</b> " + fmt(P.q.slack, 3) + " ns (arrives " + fmt(P.t1, 3) + " ns, may arrive from " + fmt(P.q.required, 3) + " ns)";
+      var where = atI === 0 ? "leaving the launching flip-flop" : atI === seq.length - 1 ? "at the capturing flip-flop" : "cell " + atI + " of " + (seq.length - 2);
+      return "<b>" + (P === PSETUP ? "Setup path" : "Hold path") + "</b>: " + fmt(T, dp) + " ns, " + where;
     }
     return "";
   }
