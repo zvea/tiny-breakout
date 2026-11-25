@@ -83,7 +83,10 @@ tutorial, that needs to match this one exactly:
 
 The run's final GDS is kept too, byte for byte as the flow wrote it:
 [provenance/tt_um_tiny_breakout.gds](provenance/tt_um_tiny_breakout.gds) (SHA-256
-`bb5253e9eb9973ae814a224bcaf76ef5aaf434622b44bfbb4c988b1ca925efa9`).
+`bb5253e9eb9973ae814a224bcaf76ef5aaf434622b44bfbb4c988b1ca925efa9`). Beside it,
+[provenance/tt_um_tiny_breakout.json](provenance/tt_um_tiny_breakout.json) has the project's
+title, clock and pinout from `info.yaml` at that commit, in the form a layout viewer takes as
+project metadata.
 
 The run is reproducible. On 13 November 2026, `tools/flow.sh harden` on commit 8e82a8f's
 `src/`, with the inputs above, gave the same synthesis netlist, final DEF and netlists byte for
