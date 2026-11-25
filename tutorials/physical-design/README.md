@@ -81,6 +81,10 @@ tutorial, that needs to match this one exactly:
   It also has every cell the flow added (buffers, the clock tree, delay cells, the antenna
   diode). The tutorial's cell names are these.
 
+The run's final GDS is kept too, byte for byte as the flow wrote it:
+[provenance/tt_um_tiny_breakout.gds](provenance/tt_um_tiny_breakout.gds) (SHA-256
+`bb5253e9eb9973ae814a224bcaf76ef5aaf434622b44bfbb4c988b1ca925efa9`).
+
 The run is reproducible. On 13 November 2026, `tools/flow.sh harden` on commit 8e82a8f's
 `src/`, with the inputs above, gave the same synthesis netlist, final DEF and netlists byte for
 byte, and the same GDS apart from its timestamps. To check synthesis again (about 4 minutes), in
