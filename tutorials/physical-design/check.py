@@ -15,10 +15,11 @@ something, and 2 if it cannot run (a bad argument, or a page that does not start
   callout has a place, stays inside the view, and overlaps no other callout, the legend, the
   zoom buttons, the play bar, the scale or the play prompt, and that the Floorplan close-up
   shows.
-- keyboard (the first size): that Tab from the panel text goes on to the picture, that the
-  arrow keys step the tutorial after a click on the stepper, that replaying a part from its
-  badge keeps the panel's scroll and focus, and that the play prompt is the first thing Tab
-  reaches in the picture.
+- keyboard (the first size): that Tab from the panel text goes on to the picture, and each
+  term it reaches opens its popup, still open when Tab moves on, that the arrow keys step the
+  tutorial after a click on the stepper, that replaying a part from its badge keeps the
+  panel's scroll and focus, and that the play prompt is the first thing Tab reaches in the
+  picture.
 - touch (the touch sizes): that a tap on a term opens its popup and a tap elsewhere closes it,
   that a tap on the picture names what is under it, and that a drag moves the view.
 - transitions (the first size): that pressing Play goes straight on from the picture the step
@@ -248,7 +249,11 @@ def frame_findings(where, frame, b, edge):
 
 # ---- keyboard ----------------------------------------------------------------------------------
 
-FOCUS = "() => { const a = document.activeElement; return { id: a.id, inStage: !!a.closest('.stage') }; }"
+FOCUS = "() => { const a = document.activeElement; return { id: a.id, inStage: !!a.closest('.stage'), term: a.classList.contains('term') }; }"
+# the focused term's text if its popup is closed, else ''
+CLOSED = "() => { const a = document.activeElement; return document.getElementById('gloss').hidden ? a.textContent : ''; }"
+FRAMES = "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
+CLOSE_DELAY = 250   # ms: longer than the page waits before closing a popup the focus has left
 TABS = 80   # enough to Tab through any step's terms and their popups' links
 
 
@@ -260,19 +265,33 @@ def keyboard(s):
 
 
 def tab_reaches_picture(pg, size):
-    """Tab from the first term of each step's text goes on, through the text, to the picture."""
+    """Tab from the first term of each step's text goes on, through the text, to the picture, and
+    each term it reaches has its popup open once the panel has scrolled to it (two frames on).
+    At the first Tab from one term straight to the next in each step, the popup must still be
+    open after the page's delay for closing the one the focus left."""
     found = []
     for i in range(steps(pg)):
         jump(pg, i)
         if not pg.locator("#body .term").count():
             continue
         pg.locator("#body .term").first.focus()
+        prev_term, waited, closed = False, False, ""
         for _ in range(TABS):
             pg.keyboard.press("Tab")
-            if pg.evaluate(FOCUS)["inStage"]:
+            f = pg.evaluate(FOCUS)
+            if f["inStage"]:
                 break
+            if f["term"]:
+                pg.evaluate(FRAMES)
+                if prev_term and not waited:
+                    pg.wait_for_timeout(CLOSE_DELAY)
+                    waited = True
+                closed = closed or pg.evaluate(CLOSED)
+            prev_term = f["term"]
         else:
             found.append(f"{tag(size)} {slug(pg)}: Tab from the panel text does not reach the picture")
+        if closed:
+            found.append(f"{tag(size)} {slug(pg)}: the popup of \"{closed}\", reached by Tab, closes while it has the focus")
     return found
 
 

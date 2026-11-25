@@ -27,9 +27,10 @@ a headless Chromium at six such sizes, two of them touch screens, and reports:
 - **callouts** (every size): a callout left out, outside the view, or overlapping another
   callout or the controls, at the picture each step waits on and at ten points through its
   animation, and the Floorplan close-up missing;
-- **keyboard** (the first size): Tab from the panel text not reaching the picture, the arrow
-  keys held by the stepper after a click, a replay from a badge losing the panel's scroll or
-  focus, and the play prompt not first in the picture's Tab order;
+- **keyboard** (the first size): Tab from the panel text not reaching the picture, a term's
+  popup closing while the term, reached by Tab, has the focus, the arrow keys held by the
+  stepper after a click, a replay from a badge losing the panel's scroll or focus, and the play
+  prompt not first in the picture's Tab order;
 - **touch** (the touch sizes): a tap on a term or on the picture doing nothing, a tap elsewhere
   not closing a popup, and a drag not moving the view;
 - **transitions** (the first size): Play changing the picture at once instead of going on from
@@ -87,6 +88,11 @@ The run's final GDS is kept too, byte for byte as the flow wrote it:
 [provenance/tt_um_tiny_breakout.json](provenance/tt_um_tiny_breakout.json) has the project's
 title, clock and pinout from `info.yaml` at that commit, in the form a layout viewer takes as
 project metadata.
+The tutorial's last step opens both files in
+[Tiny Explorer](https://zvea.github.io/tiny_explorer/viewer.html), a layout viewer. The link
+names a commit that has the files, because the page cannot contain its own commit's hash.
+[test_explorer_link.py](test_explorer_link.py) checks that the files at that commit match the
+ones here. After a new run, commit and push the new files, then point the link at that commit.
 
 The run is reproducible. On 13 November 2026, `tools/flow.sh harden` on commit 8e82a8f's
 `src/`, with the inputs above, gave the same synthesis netlist, final DEF and netlists byte for

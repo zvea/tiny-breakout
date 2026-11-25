@@ -1425,7 +1425,8 @@ function start(D) {
       "<p>Two checks remain:</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"1\">1</span><b>Design rule checking</b> (DRC) checks the GDS against the full sky130 rule set, which covers far more rules than the router knows.</p>" +
       "<p class=\"mainstep\"><span class=\"runin\" aria-label=\"2\">2</span><b>Layout versus schematic</b> (LVS) extracts a netlist from the layout and compares it with the flow's final netlist, which holds every cell added since synthesis. The cells' insides come unchanged from the library, so LVS treats each standard cell as a black box and checks only the wiring between cells.</p>" +
-      "<p>Both checks are clean.</p>",
+      "<p>Both checks are clean.</p>" +
+      "<p><a href=\"https://zvea.github.io/tiny_explorer/viewer.html?file=https%3A%2F%2Fraw.githubusercontent.com%2Fzvea%2Ftiny-breakout%2Fcdc8884004920626a17f903288a93771862cad47%2Ftutorials%2Fphysical-design%2Fprovenance%2Ftt_um_tiny_breakout.gds&amp;pdk=sky130A&amp;metadata=https%3A%2F%2Fraw.githubusercontent.com%2Fzvea%2Ftiny-breakout%2Fcdc8884004920626a17f903288a93771862cad47%2Ftutorials%2Fphysical-design%2Fprovenance%2Ftt_um_tiny_breakout.json\">Open this GDS in Tiny Explorer</a>, a layout viewer by Alexander Mordvintsev. It finds the transistors in the layout and simulates each one as an on-off switch. It also draws the design's VGA output, so the game's screen appears in the browser.</p>",
     note: "After the animation, zoom in anywhere to see the transistors. Metals are drawn translucent, so the layers beneath show through." };
   function u16len(b64) { return Math.floor(b64.length * 3 / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0); }
   // a run time to the minute (seconds only when under a minute)
@@ -3294,13 +3295,13 @@ function start(D) {
       }
     });
   }
-  var gloss = document.getElementById("gloss"), glossFor = null;
+  var gloss = document.getElementById("gloss"), glossFor = null, glossTop = 0;   // glossTop: the panel's scroll when the popup opened
   function showGloss(span) {
     var g = GLOSSARY[+span.dataset.g];
     var grid = g.grid ? '<table class="ggrid">' + g.grid.map(function (r, i) { return "<tr>" + r.map(function (c, j) { return i && j ? "<td>" + c + "</td>" : "<th>" + c + "</th>"; }).join("") + "</tr>"; }).join("") + "</table>" + (g.after ? "<div>" + g.after + "</div>" : "") : "";
     gloss.classList.toggle("wide", !!g.fig);
     gloss.innerHTML = "<b>" + g.k + "</b>: " + g.def + grid + (g.fig ? g.fig() : "") + (g.from !== undefined && g.from !== target ? '<div class="from">Introduced in <button type="button" data-step="' + g.from + '">' + STEPS[g.from].short + "</button></div>" : "");
-    gloss.hidden = false; glossFor = span;
+    gloss.hidden = false; glossFor = span; glossTop = document.getElementById("body").scrollTop;
     var r = span.getBoundingClientRect(), w = gloss.offsetWidth, h = gloss.offsetHeight;
     var x = Math.max(8, Math.min(window.innerWidth - w - 8, r.left)), y = r.bottom + 6;
     if (y + h > window.innerHeight - 8) y = r.top - h - 6;
@@ -3315,8 +3316,9 @@ function start(D) {
   bodyEl.addEventListener("mouseout", function (e) { if (lastPointer === "mouse" && e.target.closest(".term")) glossTimer = setTimeout(function () { if (!gloss.matches(":hover")) hideGloss(); }, 200); });
   gloss.addEventListener("mouseleave", function () { if (lastPointer === "mouse") glossTimer = setTimeout(hideGloss, 200); });
   gloss.addEventListener("mouseenter", function () { clearTimeout(glossTimer); });
-  bodyEl.addEventListener("focusin", function (e) { var t = e.target.closest(".term"); if (t) showGloss(t); });
-  bodyEl.addEventListener("focusout", function () { glossTimer = setTimeout(function () { if (!gloss.contains(document.activeElement)) hideGloss(); }, 200); });
+  // a close timer left by the term before must not close the popup of the one focused now
+  bodyEl.addEventListener("focusin", function (e) { var t = e.target.closest(".term"); if (t) { clearTimeout(glossTimer); showGloss(t); } });
+  bodyEl.addEventListener("focusout", function () { clearTimeout(glossTimer); glossTimer = setTimeout(function () { if (!gloss.contains(document.activeElement)) hideGloss(); }, 200); });
   // a click or tap on a term only opens its popup (a tap also focuses it, which opens it first);
   // Esc, a click elsewhere or moving away closes it
   bodyEl.addEventListener("click", function (e) { var t = e.target.closest(".term"); if (t) showGloss(t); });
@@ -3342,7 +3344,11 @@ function start(D) {
     var t = glossFor; e.preventDefault(); hideGloss();
     if (e.shiftKey) t.focus(); else focusAfter(t);
   });
-  bodyEl.addEventListener("scroll", hideGloss);
+  // scrolling the panel closes the popup, which would no longer sit by its term. Tab to a term
+  // below the fold also scrolls the panel, and that scroll's event comes a frame after the popup
+  // opens, when the focus may already be in it; so only a scroll away from where the popup opened
+  // closes it
+  bodyEl.addEventListener("scroll", function () { if (bodyEl.scrollTop !== glossTop) hideGloss(); });
 
   // A figure's labels scale with it, so in a narrow panel they would shrink below legibility: keep
   // them at 10 px or more on screen

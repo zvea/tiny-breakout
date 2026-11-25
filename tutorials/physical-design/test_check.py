@@ -135,6 +135,17 @@ def test_keyboard_finds_tab_dropping_the_focus(tmp_path):
     assert has(found, "Tab from the panel text does not reach the picture")
 
 
+def test_keyboard_finds_a_popup_closed_by_the_scroll_to_its_term(tmp_path):
+    found, _ = run(check.keyboard, variant(tmp_path, ("if (bodyEl.scrollTop !== glossTop) hideGloss();", "hideGloss();")))
+    assert has(found, "reached by Tab, closes while it has the focus")
+
+
+def test_keyboard_finds_a_popup_closed_by_the_term_before(tmp_path):
+    found, _ = run(check.keyboard, variant(tmp_path, ('"focusin", function (e) { var t = e.target.closest(".term"); if (t) { clearTimeout(glossTimer); showGloss(t); } }',
+                                                    '"focusin", function (e) { var t = e.target.closest(".term"); if (t) showGloss(t); }')))
+    assert has(found, "reached by Tab, closes while it has the focus")
+
+
 def test_keyboard_finds_the_stepper_keeping_the_arrow_keys(tmp_path):
     found, _ = run(check.keyboard, variant(tmp_path, ("goTo(i, { fresh: true }); if (e.detail > 0) b.blur();", "goTo(i, { fresh: true });")))
     assert has(found, "after a click on the stepper")
@@ -165,7 +176,7 @@ def test_touch_finds_a_popup_that_does_not_open(tmp_path):
 def test_touch_finds_a_popup_that_does_not_close(tmp_path):
     page = variant(tmp_path,
                    ('document.addEventListener("click", function (e) { if (!e.target.closest(".term, .gloss")) hideGloss(); });', ""),
-                   ('bodyEl.addEventListener("focusout", function () { glossTimer = setTimeout(function () { if (!gloss.contains(document.activeElement)) hideGloss(); }, 200); });', ""))
+                   ('bodyEl.addEventListener("focusout", function () { clearTimeout(glossTimer); glossTimer = setTimeout(function () { if (!gloss.contains(document.activeElement)) hideGloss(); }, 200); });', ""))
     found, _ = run(check.touch, page, TABLET)
     assert has(found, "does not close it")
 
