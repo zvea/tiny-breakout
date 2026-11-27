@@ -1,0 +1,620 @@
+[
+  {
+    "id": "rtl",
+    "head": "RTL",
+    "match": {"source": "\\bRTL\\b", "flags": ""},
+    "def": "Register-transfer level. It describes the design as registers and the logic between them, written in a hardware description language (here SystemVerilog).",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "synthesis",
+    "head": "synthesis",
+    "match": {"source": "\\b[Ss]ynthesis\\b", "flags": ""},
+    "def": "The step before physical design. It builds the logic the RTL describes from the library's standard cells, and writes it out as a netlist. Here Yosys does it.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "layout",
+    "head": "layout",
+    "match": {"source": "\\blayouts?\\b", "flags": ""},
+    "def": "The shapes on every layer that make up a chip or a cell. The fab makes its masks from the chip's layout.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "flip-flop",
+    "head": "flip-flop",
+    "match": {"source": "\\bflip-flops?\\b", "flags": ""},
+    "def": "A cell that stores one bit. At each rising edge of its clock it takes the value at its data input and holds it until the next edge.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "buffer",
+    "head": "buffer",
+    "match": {"source": "\\bbuffers?\\b", "flags": ""},
+    "def": "A cell whose output repeats its input. Buffers are inserted to drive long wires or many inputs, or to add delay.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "sky130",
+    "head": "sky130",
+    "match": {"source": "\\bsky130\\b", "flags": ""},
+    "def": "SkyWater's 130 nm CMOS process, whose design files (its rules, layers and standard cell libraries) are open source.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "die",
+    "head": "die",
+    "match": {"source": "\\bdie\\b", "flags": ""},
+    "def": "The rectangle of silicon the layout occupies, here the die area set at the start.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "flow",
+    "head": "flow",
+    "match": {"source": "\\bflow\\b", "flags": ""},
+    "def": "The chain of tools that turns the RTL into a layout, run one step after another.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "librelane",
+    "head": "LibreLane",
+    "match": {"source": "\\bLibreLane\\b", "flags": ""},
+    "def": "The open-source flow used here. It runs each step's tool, most of them from OpenROAD, and passes the design from one step to the next.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "openroad",
+    "head": "OpenROAD",
+    "match": {"source": "\\bOpenROAD\\b", "flags": ""},
+    "def": "An open-source toolkit for physical design. Most steps of the flow are OpenROAD tools.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "net",
+    "head": "net",
+    "match": {"source": "\\bnets?\\b", "flags": ""},
+    "def": "A set of pins that are connected, usually one driver and the inputs it feeds. A net is connectivity only, and its wires come at routing.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "instance",
+    "head": "instance",
+    "match": {"source": "\\binstances?\\b", "flags": ""},
+    "def": "One copy of a library cell in the design. Instances are often just called cells, and the library cell an instance copies is its master.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "standard-cell",
+    "head": "standard cell",
+    "match": {"source": "\\b[Ss]tandard cells?\\b", "flags": ""},
+    "def": "A pre-designed cell from the library, such as a gate, a flip-flop, a buffer, or a cell with no logic like a tap or a fill cell. Each is one row high and a whole number of sites wide.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "netlist",
+    "head": "netlist",
+    "match": {"source": "\\bnetlists?\\b", "flags": ""},
+    "def": "The design as connectivity only. It lists the instances and the nets between them, with no positions.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "utilisation",
+    "head": "utilisation",
+    "match": {"source": "\\b[Uu]tili[sz]ation\\b", "flags": ""},
+    "def": "The cells' total area as a share of the core area.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "row",
+    "head": "row",
+    "match": {"source": "\\brows?\\b", "flags": ""},
+    "def": "A strip of the core one cell high, where standard cells sit.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "site",
+    "head": "site",
+    "match": {"source": "\\bsites?\\b", "flags": ""},
+    "def": "The unit a row is divided into. Every cell is a whole number of sites wide.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "orientation",
+    "head": "orientation",
+    "match": {"source": "\\borientation\\b", "flags": ""},
+    "def": "How a cell sits in its row:",
+    "grid": [["", "as drawn", "mirrored"], ["upright", "N", "FN"], ["upside down", "FS", "S"]],
+    "after": "Rows alternate N and FS.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "routing-track",
+    "head": "routing track",
+    "match": {"source": "\\b(routing )?tracks?\\b", "flags": ""},
+    "def": "One of the evenly spaced lines on a layer that wires follow.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "pmos-nmos",
+    "head": "PMOS, NMOS",
+    "match": {"source": "\\b[PN]MOS\\b", "flags": ""},
+    "def": "The two kinds of transistor in CMOS logic. PMOS transistors pull a logic gate's output up to VPWR, and NMOS transistors pull it down to VGND.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "rail",
+    "head": "rail",
+    "match": {"source": "\\brails?\\b", "flags": ""},
+    "def": "A power line along the top or bottom edge of a cell, VPWR at the top and VGND at the bottom. The cells of a row abut, so their rails join into one along the row. The power grid later lays a met1 rail on each.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "n-well",
+    "head": "n-well",
+    "match": {"source": "\\bn-wells?\\b|\\bwells\\b", "flags": ""},
+    "def": "An n-doped region of the substrate where the PMOS transistors sit. It must be tied to VPWR, which the well taps do.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "vpwr-vgnd",
+    "head": "VPWR, VGND",
+    "match": {"source": "\\bVPWR\\b|\\bVGND\\b", "flags": ""},
+    "def": "The supply (1.8 V) and ground nets.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "substrate",
+    "head": "substrate",
+    "match": {"source": "\\b(p-)?substrate\\b", "flags": ""},
+    "def": "The silicon wafer the chip is built in, lightly p-doped. The NMOS transistors sit in it directly, and it is tied to VGND.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "thyristor",
+    "head": "thyristor",
+    "match": {"source": "\\bthyristors?\\b", "flags": ""},
+    "def": "A switch made of four alternating layers of p- and n-type silicon (PNPN). Once triggered, it stays on until the current through it stops.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "design-rules-drc",
+    "head": "design rules (DRC)",
+    "match": {"source": "\\bDRC\\b|\\bdesign[- ]rules?\\b", "flags": ""},
+    "def": "The fab's geometric rules on the widths, spacings and distances of shapes. DRC (design rule checking) checks a layout against them.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "decap-cell",
+    "head": "decap cell",
+    "match": {"source": "\\bdecap cells?\\b", "flags": ""},
+    "def": "A cell that holds a capacitor between VPWR and VGND, which steadies the supply when nearby cells switch.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "li1-met1-met5",
+    "head": "li1, met1–met5",
+    "match": {"source": "\\b(met[1-5]|li1)\\b|\\bmetals\\b|\\bmetal layers?\\b", "flags": ""},
+    "def": "The wiring layers above the transistors. The lowest, li1, is used inside the cells and for their pins. Above it are met1 to met5. This design is wired on met1 to met4, with met1 and met3 horizontal and met2 and met4 vertical.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "stripe",
+    "head": "stripe",
+    "match": {"source": "\\bstripes?\\b", "flags": ""},
+    "def": "A wide vertical met4 power line that feeds the rails. The stripes are also the design's power pins.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "power-grid",
+    "head": "power grid",
+    "match": {"source": "\\bpower grid\\b", "flags": ""},
+    "def": "The rails, stripes and via stacks that carry VPWR and VGND to every cell.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "cut-layout",
+    "head": "cut (layout)",
+    "match": {"source": "\\bcuts?\\b", "flags": ""},
+    "def": "A small metal-filled hole through the insulation between two layers. A via is made of one or more cuts.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "via",
+    "head": "via",
+    "match": {"source": "\\bvias?\\b", "flags": ""},
+    "def": "A connection between wires on adjacent layers. It is made of one or more cuts, small metal-filled holes through the insulation between the layers.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "def",
+    "head": "DEF",
+    "match": {"source": "\\bDEF\\b", "flags": ""},
+    "def": "Design Exchange Format, a text format for a placed and routed layout. It lists each cell's position, the pins, and later the wires and vias.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "global-placement",
+    "head": "global placement",
+    "match": {"source": "\\b[Gg]lobal (placement|positions?)\\b", "flags": ""},
+    "def": "Placement's first stage. It finds rough positions that keep connected cells close and spread them to a target density, ignoring rows and allowing overlaps.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "nesterov-placement",
+    "head": "Nesterov placement",
+    "match": {"source": "\\bNesterov placement\\b", "flags": ""},
+    "def": "Global placement's main phase. It is named after Nesterov's accelerated gradient method, which it uses to trade wire length against density.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "overflow-placement",
+    "head": "overflow (placement)",
+    "match": {"source": "\\boverflow\\b", "flags": ""},
+    "def": "In global placement, the cell area above each bin's target density, summed over all bins, as a share of all movable cell area.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "congestion",
+    "head": "congestion",
+    "match": {"source": "\\b(routing )?congestion\\b", "flags": ""},
+    "def": "How many wires a region would need against how many fit there.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "resizer",
+    "head": "resizer",
+    "match": {"source": "\\bresizer\\b", "flags": ""},
+    "def": "OpenROAD's tool that inserts buffers and swaps cells for stronger or weaker ones with the same function.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "sizing",
+    "head": "sizing",
+    "match": {"source": "\\bsizing\\b", "flags": ""},
+    "def": "Swapping a cell for a stronger or weaker one with the same function.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "transistor-gate",
+    "head": "transistor gate",
+    "match": {"source": "\\btransistor gates?\\b", "flags": ""},
+    "def": "A transistor's control terminal, insulated from the silicon below it by a thin layer of oxide.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "transistor",
+    "head": "transistor",
+    "match": {"source": "\\btransistors?\\b(?! gates?\\b)", "flags": ""},
+    "def": "A switch made in the silicon. A voltage on its gate opens or closes a channel between its source and drain. Every cell is built from transistors.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "capacitance",
+    "head": "capacitance",
+    "match": {"source": "\\bcapacitance\\b", "flags": ""},
+    "def": "How much charge a net must take on to change its voltage. The more capacitance a cell drives, the more slowly its output switches.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "slew",
+    "head": "slew",
+    "match": {"source": "\\bslew\\b", "flags": ""},
+    "def": "The time a signal takes to switch from one level to the other. A slow transition slows the cell it drives.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "sdc",
+    "head": "SDC",
+    "match": {"source": "\\bSDC\\b", "flags": ""},
+    "def": "The design's timing constraints file (Synopsys Design Constraints). It sets the clock period, the input and output delays, and limits on slew, capacitance and fanout.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "fanout",
+    "head": "fanout",
+    "match": {"source": "\\bfanout\\b", "flags": ""},
+    "def": "The number of inputs a net drives. A high fanout loads its driver and slows the signal.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "steiner-tree",
+    "head": "Steiner tree",
+    "match": {"source": "\\bSteiner tree\\b", "flags": ""},
+    "def": "A tree of horizontal and vertical lines joining a net's pins, with extra branch points where they save length. Tools quickly build a nearly shortest one and use its length to estimate the net's wiring before routing.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "legalisation",
+    "head": "legalisation",
+    "match": {"source": "\\b(re-)?[Ll]egali[sz](ation|es|ed|ing)\\b", "flags": ""},
+    "def": "Moving cells to legal positions, each in a row, on a site, and overlapping nothing.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "mirroring",
+    "head": "mirroring",
+    "match": {"source": "\\bmirror(ing|ed|s)?\\b", "flags": ""},
+    "def": "Flipping a cell left to right, N to FN or FS to S, where that shortens its nets.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "timing-analysis",
+    "head": "timing analysis",
+    "match": {"source": "\\b[Tt]iming analysis\\b", "flags": ""},
+    "def": "Working out when each signal reaches each flip-flop, and checking it against the clock.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "clock-tree",
+    "head": "clock tree",
+    "match": {"source": "\\bclock tree\\b", "flags": ""},
+    "def": "The buffers, and the nets between them, that carry the clock from its pin to every flip-flop with nearly equal delays.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "flyline",
+    "head": "flyline",
+    "match": {"source": "\\bflylines?\\b", "flags": "i"},
+    "def": "A straight line from a driver to a pin it feeds. It shows a connection that has no wire yet.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "launching-capturing",
+    "head": "launching, capturing",
+    "match": {"source": "\\b(launching|capturing) flip-flops?\\b", "flags": ""},
+    "def": "On a timing path, the launching flip-flop sends the data at a clock edge, and the capturing flip-flop receives it. Setup is checked against the next edge, hold against the same one.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "skew",
+    "head": "skew",
+    "match": {"source": "\\bskew\\b", "flags": ""},
+    "def": "The difference in clock arrival time between two flip-flops.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "sink",
+    "head": "sink",
+    "match": {"source": "\\bsinks?\\b", "flags": ""},
+    "def": "A pin a clock net must reach. Here that is a flip-flop's clock input or a dummy load's input.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "setup",
+    "head": "setup",
+    "match": {"source": "\\b[Ss]etup\\b", "flags": ""},
+    "def": "Data launched at one clock edge must reach the capturing flip-flop before the next edge, with the flip-flop's setup time to spare.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "hold",
+    "head": "hold",
+    "match": {"source": "\\b[Hh]old\\b", "flags": ""},
+    "def": "Data must stay stable at a flip-flop for a short time after a clock edge, so new data launched by that same edge must not arrive too soon.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "timing-path",
+    "head": "timing path",
+    "match": {"source": "\\b(timing )?paths?\\b", "flags": ""},
+    "def": "The way a signal travels from where it starts, a flip-flop or an input pin, through logic cells to where it ends, a flip-flop or an output pin. Timing analysis checks every path.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "endpoint",
+    "head": "endpoint",
+    "match": {"source": "\\bendpoints?\\b", "flags": ""},
+    "def": "Where a timing path ends, at a flip-flop's data input or an output pin.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "slack",
+    "head": "slack",
+    "match": {"source": "\\bslack\\b", "flags": ""},
+    "def": "A path's margin against its timing limit. Negative slack means a violation.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "clock-uncertainty",
+    "head": "clock uncertainty",
+    "match": {"source": "\\b(clock )?uncertainty\\b", "flags": ""},
+    "def": "A margin for clock jitter and other variation. Jitter is small random variation in when each clock edge arrives. Setup and hold checks must each leave this much slack beyond their own requirement.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "delay-cell",
+    "head": "delay cell",
+    "match": {"source": "\\bdelay cells?\\b", "flags": ""},
+    "def": "A buffer built to be slow, inserted to delay a signal.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "route-guide",
+    "head": "route guide",
+    "match": {"source": "\\b(route )?guides?\\b", "flags": ""},
+    "def": "The g-cells and layers global routing assigns to a net. Detailed routing keeps the net's wires within those g-cells, though it may move a stretch to another layer.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "g-cell",
+    "head": "g-cell",
+    "match": {"source": "\\bg-cells?\\b", "flags": ""},
+    "def": "A rectangle of the grid that global routing plans in. Global routing decides which g-cells a net passes through, and detailed routing decides where exactly its wires go.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "rip-up-and-reroute",
+    "head": "rip-up and reroute",
+    "match": {"source": "\\brip-up and reroute\\b", "flags": ""},
+    "def": "Removing the routes of nets that cause problems and routing them again.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "diffusion",
+    "head": "diffusion",
+    "match": {"source": "\\bdiffusion\\b", "flags": ""},
+    "def": "Doped silicon at the surface of the chip, such as each transistor's source and drain, and the contacts of the well taps.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "antenna-diode",
+    "head": "antenna diode",
+    "match": {"source": "\\bantenna diodes?\\b", "flags": ""},
+    "def": "A diode that gives charge collected during fabrication a safe path to the substrate. It is reverse-biased, so it does nothing in normal operation.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "maze-search",
+    "head": "maze search",
+    "match": {"source": "\\bmaze search\\b", "flags": ""},
+    "def": "A shortest-path search through a grid. Here the grid is the routing tracks.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "implant",
+    "head": "implant",
+    "match": {"source": "\\bimplants?\\b", "flags": ""},
+    "def": "A doped layer that makes the silicon n-type or p-type, which sets each transistor's type.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "parasitics",
+    "head": "parasitics",
+    "match": {"source": "\\bparasitics\\b", "flags": ""},
+    "def": "The resistance and capacitance of the wires, which slow signals down.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "corner",
+    "head": "corner",
+    "match": {"source": "\\bcorners?\\b", "flags": ""},
+    "def": "One set of conditions for timing analysis. It combines how fast the fab made the transistors (the process), the supply voltage, the temperature, and how large the wires' parasitics are.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "derate",
+    "head": "derate",
+    "match": {"source": "\\bderated?\\b", "flags": ""},
+    "def": "To make a delay longer or shorter by a fixed share, whichever is worse for the check, to allow for variation across the chip.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "ir-drop",
+    "head": "IR drop",
+    "match": {"source": "\\bIR drop\\b", "flags": ""},
+    "def": "The voltage lost as current (I) flows through the power grid's resistance (R).",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "mask",
+    "head": "mask",
+    "match": {"source": "\\bmasks?\\b", "flags": ""},
+    "def": "A glass plate carrying the shapes of one layer. The fab shines light through it to print those shapes onto the wafer, one layer at a time.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "gds",
+    "head": "GDS",
+    "match": {"source": "\\bGDS(II)?\\b", "flags": ""},
+    "def": "The file format of the final layout, named after the Graphic Design System it came from. It holds every shape on every layer, and the fab makes the masks from it.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "lvs",
+    "head": "LVS",
+    "match": {"source": "\\bLVS\\b", "flags": ""},
+    "def": "Layout versus schematic, the check that the layout is wired as the netlist says.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "poly",
+    "head": "poly",
+    "match": {"source": "\\bpoly\\b", "flags": ""},
+    "def": "Polysilicon, the layer that forms the transistor gates. A transistor is where poly crosses diffusion.",
+    "reviewed": true,
+    "sources": []
+  },
+  {
+    "id": "master",
+    "head": "master",
+    "match": {"source": "\\bmasters?\\b", "flags": ""},
+    "def": "The library's design of a cell. Every instance of that cell is a copy of it.",
+    "reviewed": true,
+    "sources": []
+  }
+]

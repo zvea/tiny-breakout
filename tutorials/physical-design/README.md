@@ -6,7 +6,7 @@ Everything it shows comes from one run of the flow, described under Provenance b
 | File | What it does |
 |---|---|
 | [page.html](page.html) | The page, without its data. |
-| [build.py](build.py) | Inlines the data (`data.json`, gzipped) into the page and writes `../physical-design.html`. If there is no `data.json`, it keeps the data already in the page, so edits to the page need nothing else. |
+| [build.py](build.py) | Inlines the data (`data.json`, gzipped) into the page and writes `../physical-design.html`. If there is no `data.json`, it keeps the data already in the page, so edits to the page need nothing else. It also fills in the page's glossary from the shared [glossary](../glossary/README.md): the page lists the terms it uses by id, and the build adds each term's header, pattern and definition. It refuses a term that is not in the glossary or not reviewed. [test_build.py](test_build.py) tests this. |
 | [check.py](check.py) | Checks the built page in a browser at the screen sizes it supports (below). [test_check.py](test_check.py) tests it. |
 | [regenerate.sh](regenerate.sh) | Remakes `data.json` from a run, then the page. It runs the four captures below in LibreLane's container, then `extract.py`. |
 | [extract.py](extract.py) | Reads the run's DEFs, logs and reports, and the captures, and writes `data.json`. |
