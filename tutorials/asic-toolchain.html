@@ -23,7 +23,8 @@
 </script>
 <style>
 /* One figure drawn like a design-review chart. Rows are steps in run order; lanes are
-   side inputs | step (tool: engine) | design representation | verification | simulated/proved as.
+   files read | step (tool: part) | representation | checks (runs as).
+   Each column but the step's can be folded to a narrow strip.
    The colours, the header, the buttons, the shortcuts panel, the defined terms and the note are
    the physical design tutorial's rules, unchanged, so the tutorials look like one site. */
 :root {
@@ -36,17 +37,18 @@
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --box: #ffffff;
+  --tint: rgba(26, 86, 196, 0.09);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #121416; --ink: #e4e6e8; --muted: #9aa0a6; --rule: #3d4247; --bar: #1d2125; --box: #16191c;
-    --focus: #7fb0ff; color-scheme: dark;
+    --focus: #7fb0ff; --tint: rgba(127, 176, 255, 0.13); color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #121416; --ink: #e4e6e8; --muted: #9aa0a6; --rule: #3d4247; --bar: #1d2125; --box: #16191c;
-  --focus: #7fb0ff; color-scheme: dark;
+  --focus: #7fb0ff; --tint: rgba(127, 176, 255, 0.13); color-scheme: dark;
 }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.5; }
@@ -86,7 +88,6 @@ h1 { font-size: 17px; font-weight: 700; margin: 0; color: var(--focus); }
 .help[hidden] { display: none; }
 .helpcard { position: relative; max-width: 460px; width: 100%; box-sizing: border-box; background: var(--bg); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 18px 22px 16px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25); font-size: 14px; line-height: 1.45; }
 .helpcard h2 { margin: 0 0 10px; font-size: 17px; }
-.helpcard h3 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
 .helpcard table { border-collapse: collapse; width: 100%; }
 .helpcard td { padding: 4px 0; vertical-align: top; }
 .helpcard td:first-child { white-space: nowrap; padding-right: 14px; }
@@ -101,15 +102,15 @@ h1 { font-size: 17px; font-weight: 700; margin: 0; color: var(--focus); }
 }
 
 /* The chart keeps its text at 10 px or more on screen, as the physical design tutorial does with
-   its figures: its smallest text is 10.5 units of 1360, so it is drawn at least 1296 px wide and
-   scrolls sideways in a narrower window. */
+   its figures: its smallest text is 10.5 units, so it is drawn at least 10/10.5 px per unit (and at
+   most 1 px per unit) and scrolls sideways in a narrower window. Its width in units follows the
+   columns shown; both limits are set on the svg when it is drawn. */
 .figure { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.figure svg { display: block; width: 100%; min-width: 1296px; height: auto; }
+.figure svg { display: block; width: 100%; height: auto; }
 .scrollnote { display: none; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
 .work.overflows .scrollnote { display: block; }
 
 svg text { font-family: var(--font); fill: var(--ink); white-space: pre; }
-svg .lh { font-size: 10.5px; letter-spacing: 0.06em; fill: var(--muted); }
 svg .ph { font-size: 10.5px; letter-spacing: 0.06em; fill: var(--muted); font-weight: 600; }
 svg .nm { font-size: 12px; font-weight: 600; }
 svg .tl { font-size: 11.5px; fill: var(--muted); }
@@ -135,6 +136,25 @@ svg [data-tool]:focus-visible .hit { stroke: var(--focus); stroke-width: 1.5; }
 svg [data-item]:hover .box, svg [data-item]:hover .barr, svg [data-item]:hover .gapbox { stroke: var(--ink); }
 svg [data-item]:focus-visible .box, svg [data-item]:focus-visible .barr, svg [data-item]:focus-visible .gapbox,
 svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
+/* plain column headings and the column toggles */
+svg .hd { font-size: 11.5px; font-weight: 600; fill: var(--muted); }
+svg .hs { font-size: 11.5px; fill: var(--muted); }
+svg [data-col] { cursor: pointer; outline: none; }
+/* the triangle before a heading (down: shown; right, upright on a folded strip: folded); hover or keyboard focus
+   tints the column it folds */
+svg .tri { fill: var(--muted); }
+svg .tfr { fill: none; stroke: none; }
+svg .stubr { fill: var(--bar); stroke: var(--rule); stroke-width: 1; }
+svg [data-col]:hover .tri { fill: var(--ink); }
+svg [data-col]:hover .stubr { stroke: var(--ink); }
+svg [data-col]:hover .hd { fill: var(--ink); }
+svg [data-col]:focus-visible .tfr, svg [data-col]:focus-visible .stubr { stroke: var(--focus); stroke-width: 2; }
+svg .tint { fill: var(--tint); pointer-events: none; }
+/* a badge for each kind of file a step reads: the word says the kind */
+svg .bdg { fill: var(--bar); stroke: var(--rule); stroke-width: 1; }
+svg .bd { font-size: 10.5px; fill: var(--muted); }
+svg [data-item]:hover .bdg { stroke: var(--ink); }
+svg [data-item]:focus-visible .bdg { stroke: var(--focus); stroke-width: 2; }
 
 .pop {
   position: fixed; inset: auto; margin: 0; box-sizing: border-box; width: 360px; max-width: calc(100vw - 16px);
@@ -149,6 +169,8 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
 .pop .sub { color: var(--muted); margin: 0 0 6px; }
 .pop p { margin: 0 0 6px; }
 .pop p:last-child { margin-bottom: 0; }
+/* a badge's popover: a small heading over each file's definition */
+.pop h3 { font-size: 13px; font-weight: 600; margin: 10px 0 2px; }
 .pop dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 10px; margin: 0; }
 .pop dt { color: var(--muted); }
 .pop dd { margin: 0; }
@@ -157,7 +179,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
 /* in the sheet the 40px button reaches into the padding above and the line below, so the heading
    row stays the heading's height; the line below keeps clear of it */
 .pop.sheet .x { margin: -8px -8px -10px 0; }
-.pop.sheet .sub { padding-right: 36px; }
+.pop.sheet .ph + * { padding-right: 36px; }
 .pop.sheet {
   left: 0; right: 0; bottom: 0; top: auto; width: auto; max-width: none; border-width: 1px 0 0;
   border-radius: 4px 4px 0 0;
@@ -183,7 +205,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
 .lede { margin: 2px 0 8px; max-width: 760px; font-size: 15px; line-height: 1.55; }
 /* what the chart describes: the physical design page's note */
 .note { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13.5px; }
-.note a { color: inherit; text-underline-offset: 2px; }
+.note a, .lede a { color: inherit; text-underline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -202,21 +224,12 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     <button type="button" class="iconbtn helpclose" id="helpclose" aria-label="Close">&times;</button>
     <h2 id="helptitle">Keyboard shortcuts</h2>
     <table>
-      <tr><td><kbd>Tab</kbd></td><td>The next button, chart or name; the chart is one stop</td></tr>
-      <tr><td><kbd>&uarr;</kbd> <kbd>&darr;</kbd></td><td>In the chart: the row above or below, in the same column where possible</td></tr>
-      <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>In the chart: the box or name to the left or right</td></tr>
+      <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd> <kbd>&uarr;</kbd> <kbd>&darr;</kbd></td><td>In the chart: move between boxes and names</td></tr>
       <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>In the chart: the first or last box or name</td></tr>
-      <tr><td><kbd>Enter</kbd> or <kbd>Space</kbd></td><td>Open the details of a box or name in a popup</td></tr>
-      <tr><td><kbd>Tab</kbd> in a popup</td><td>Its names in turn; past the last, close it and go on from what opened it. <kbd>Shift</kbd>+<kbd>Tab</kbd> before the first goes back to what opened it.</td></tr>
-      <tr><td><kbd>Esc</kbd></td><td>Close the top popup and go back to what opened it, or close this panel</td></tr>
+      <tr><td><kbd>Enter</kbd></td><td>Open the details of a box or name</td></tr>
+      <tr><td><kbd>Enter</kbd> on &#9662; &#9656;</td><td>Hide or show a column</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Close the top popup, or this panel</td></tr>
       <tr><td><kbd>?</kbd></td><td>Show this panel</td></tr>
-    </table>
-    <h3>With the mouse or by touch</h3>
-    <table>
-      <tr><td>Hover</td><td>A short definition of a box or an underlined name</td></tr>
-      <tr><td>Click or tap</td><td>The details in a popup; a name in it opens another</td></tr>
-      <tr><td>Click or tap outside</td><td>Close the popups; &times; closes one</td></tr>
-      <tr><td>Scroll sideways</td><td>The rest of the chart, in a narrow window</td></tr>
     </table>
   </div>
 </div>
@@ -308,7 +321,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       "Inside OpenROAD the Resizer and TritonCTS call it to evaluate their changes."] },
     psm: { name: "PSM", alias: ["PDNSim"], sub: "OpenROAD module (PDNSim)", short: "OpenROAD's power-grid analyser: IR drop and grid connectivity.", text: [
       "OpenROAD's power-grid analyser. It builds a resistor network from the power grid's wires and vias, attaches each cell's current draw, and solves for the voltage at every node to report IR drop. It also checks that every power-grid shape is connected."] },
-    opendb: { name: "OpenDB", alias: [".odb", "ODB"], sub: "OpenROAD's design database", text: [
+    opendb: { name: "OpenDB", alias: [".odb", "ODB"], sub: "Representation", text: [
       "OpenROAD's design database: the netlist and the physical design (die, rows, tracks, pins, cell positions, power grid, wires and vias), with the technology and cell abstracts loaded from LEF, in one in-memory data model with Tcl and Python interfaces.",
       "Each step loads the previous step's .odb file, changes it and saves a new one. DEF and Verilog netlists are written from it; Magic and KLayout read the DEF."] },
     magic: { name: "Magic", text: [
@@ -343,46 +356,46 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       "Python library that adds functional coverage (coverage points and crosses) and constrained random stimulus to cocotb testbenches."] },
 
     // file formats and representations
-    rtl: { name: "RTL", sub: "Design representation", short: "Register-transfer level: registers and the logic that computes their next values each clock.", text: [
+    rtl: { name: "RTL", sub: "Representation", short: "Register-transfer level: registers and the logic that computes their next values each clock.", text: [
       "Register-transfer level: hardware described as registers and the logic that computes their next values on each clock, in a language such as SystemVerilog.",
       "Here: 12 SystemVerilog files, read by Verilator, Icarus Verilog and Yosys."] },
-    rtlil: { name: "RTLIL", sub: "Design representation", text: ["RTL Intermediate Language: Yosys's internal netlist. Modules contain wires and cells; cells range from word-level operators (add, compare, multiplex, flip-flops) down to single-bit gates. It can be written out as text."] },
-    aig: { name: "AIG", alias: ["And-Inverter Graph", "AIGs"], sub: "Design representation", text: [
+    rtlil: { name: "RTLIL", sub: "Representation", text: ["RTL Intermediate Language: Yosys's internal netlist. Modules contain wires and cells; cells range from word-level operators (add, compare, multiplex, flip-flops) down to single-bit gates. It can be written out as text."] },
+    aig: { name: "AIG", alias: ["And-Inverter Graph", "AIGs"], sub: "Representation", text: [
       "And-Inverter Graph: combinational logic as 2-input AND nodes with an optional inversion on each edge. The uniform structure makes structural hashing and rewriting simple.",
       "ABC builds it from the BLIF that Yosys writes, optimises and maps it, and writes BLIF back. It exists only in memory."] },
     blif: { name: "BLIF", sub: "File format", text: ["Berkeley Logic Interchange Format: a plain-text netlist of logic gates and storage elements, from UC Berkeley. Yosys hands logic to ABC as BLIF and reads ABC's mapped result back as BLIF."] },
-    netlist: { name: "gate netlist", alias: ["powered gate netlist"], sub: "Design representation", short: "Verilog netlist of sky130 cells, written by Yosys and read by OpenROAD.", text: [
-      "Structural Verilog: instances of sky130_fd_sc_hd cells and the nets between their pins, without behaviour. Yosys writes it; OpenROAD reads it.",
+    netlist: { name: "gate netlist", alias: ["powered gate netlist"], sub: "Representation", short: "Netlist of sky130 cells: made by technology mapping, written out by Yosys as Verilog, read by OpenROAD.", text: [
+      "Instances of sky130_fd_sc_hd cells and the nets between their pins, without behaviour. Technology mapping makes it inside Yosys, which writes it out as structural Verilog; OpenROAD reads that file.",
       "After routing OpenROAD writes it out again with the added buffers, clock tree and delay cells, plus a powered version whose cells also connect to VPWR and VGND. LVS, the equivalence check and the gate-level test read those."] },
-    liberty: { name: "Liberty", alias: [".lib"], sub: "File format; side input", short: "A cell library's timing and power data at one process corner: logic function, delay tables, pin capacitances.", text: [
+    liberty: { name: "Liberty", alias: [".lib"], sub: "Files read", short: "A cell library's timing and power data at one process corner: logic function, delay tables, pin capacitances.", text: [
       "Standard text format for a cell library's timing and power data at one process corner: each cell's logic function and pin capacitances, delay and output slew as tables indexed by input slew and output load, power, and limits.",
       "This flow uses three sky130 Liberty files: slow, typical and fast. Yosys and ABC read the typical one; OpenROAD reads all three, which with three wire corners make nine timing corners."] },
-    lef: { name: "LEF", alias: ["Library Exchange Format", "tech LEF", "technology LEF", "cell LEF"], sub: "File format", text: ["Library Exchange Format: the abstract view of cells and layers that placement and routing use. A cell LEF gives each cell's outline, pin shapes and blockages; a tech LEF gives the metal and via layers, their routing pitch, width and spacing rules, via definitions, antenna rules and the placement site."] },
-    tracks: { name: "tracks file", alias: ["tracks.info"], sub: "Side input", text: ["A short file giving the routing track pitch and offset for each metal layer (tracks.info). In this flow it, not the tech LEF, sets the tracks."] },
+    lef: { name: "LEF", alias: ["Library Exchange Format", "tech LEF", "technology LEF", "cell LEF"], sub: "Files read", text: ["Library Exchange Format: the abstract view of cells and layers that placement and routing use. A cell LEF gives each cell's outline, pin shapes and blockages; a tech LEF gives the metal and via layers, their routing pitch, width and spacing rules, via definitions, antenna rules and the placement site."] },
+    tracks: { name: "tracks file", alias: ["tracks.info"], sub: "Files read", text: ["A short file giving the routing track pitch and offset for each metal layer (tracks.info). In this flow it, not the tech LEF, sets the tracks."] },
     def: { name: "DEF", alias: ["Design Exchange Format"], sub: "File format", text: ["Design Exchange Format: text description of a physical design: die area, rows, tracks, placed cells, pins, and routed wires and vias, naming cells whose shapes come from LEF. OpenROAD writes it beside its database; Magic and KLayout read it."] },
-    tdef: { name: "tile DEF", sub: "Side input", text: ["Tiny Tapeout's DEF template for a 1x1 tile: die size and the names, shapes and positions of the signal pins. Applied at pin placement and checked again at precheck."] },
-    sdc: { name: "SDC", alias: ["Synopsys Design Constraints"], sub: "File format; side input", short: "Timing constraints as Tcl commands: here the 39.7 ns clock, I/O delays, driving cell and loads.", text: [
+    tdef: { name: "tile DEF", sub: "Files read", text: ["Tiny Tapeout's DEF template for a 1x1 tile: die size and the names, shapes and positions of the signal pins. Applied at pin placement and checked again at precheck."] },
+    sdc: { name: "SDC", alias: ["Synopsys Design Constraints"], sub: "Files read", short: "Timing constraints as Tcl commands: here the 39.7 ns clock, I/O delays, driving cell and loads.", text: [
       "Synopsys Design Constraints: timing requirements as Tcl commands. Here: a 39.7 ns clock (25.2 MHz) on clk with a 0.25 ns margin for clock jitter and other variation, input and output delays of 20% of the period, an inverter as the driving cell of every input, and 0.033 pF loads on the outputs.",
       "LibreLane generates it and adds from its configuration a 5% timing derate and limits of 0.75 ns transition, 0.2 pF capacitance and fanout 10. OpenROAD and OpenSTA read it. ABC reads the driving cell and the output load, but its mapping uses neither, nor the clock."] },
     spef: { name: "SPEF", alias: ["Standard Parasitic Exchange Format"], sub: "File format", text: ["Standard Parasitic Exchange Format: the resistor and capacitor network of every routed net. OpenRCX writes one file per wire corner; OpenSTA reads them."] },
-    gdsii: { name: "GDSII", alias: ["GDS"], sub: "File format", text: [
+    gdsii: { name: "GDSII", alias: ["GDS"], sub: "Representation", text: [
       "GDSII stream format: a binary file of polygons on numbered layers in a hierarchy of cells. The layout format foundries make masks from.",
       "Magic writes it from the DEF and the cell GDSII; Magic DRC and Tiny Tapeout's precheck check it, and the shuttle chip is assembled from it."] },
-    cgds: { name: "cell GDSII", alias: ["cell GDS"], sub: "Side input", text: ["GDSII layouts of the sky130 high-density standard cells, down to the transistors. Magic merges them into the routed tile at stream-out."] },
-    spice: { name: "SPICE", alias: ["SPICE netlist"], sub: "File format", text: [
+    cgds: { name: "cell GDSII", alias: ["cell GDS"], sub: "Files read", text: ["GDSII layouts of the sky130 high-density standard cells, down to the transistors. Magic merges them into the routed tile at stream-out."] },
+    spice: { name: "SPICE", alias: ["SPICE netlist"], sub: "Representation", text: [
       "A netlist in the input format of the SPICE circuit simulator.",
       "Here Magic extracts one from the routed layout: the cell instances and the nets between them, named from pin labels. Netgen compares it with the powered gate netlist."] },
-    cspice: { name: "cell SPICE", sub: "Side input", text: ["SPICE subcircuit of each standard cell. Both netlists that LVS compares are cell-level; the subcircuits supply each cell's pin list and order to Magic's extraction and to Netgen."] },
-    rcxrules: { name: "RCX rules", sub: "Side input", text: ["Tables of wire resistance and capacitance by layer and geometry, calibrated from foundry extraction, one set per wire corner. Read by OpenRCX, which in this flow takes only the capacitance from them."] },
-    mtech: { name: "Magic tech file", alias: ["Magic tech", "Magic technology file"], sub: "Side input", text: ["Magic's technology file for sky130: layer definitions, GDSII layer mapping, design rules and device extraction rules."] },
-    ngs: { name: "Netgen setup", sub: "Side input", text: ["sky130 LVS settings for Netgen: device equivalences, pins that may be swapped, how parallel cells are merged, and property tolerances."] },
-    kdrc: { name: "KLayout DRC deck", sub: "Side input", text: ["sky130's design rules written as a Ruby script for KLayout; Tiny Tapeout's precheck runs it."] },
-    cnf: { name: "CNF", alias: ["conjunctive normal form"], sub: "Verification model", text: [
+    cspice: { name: "cell SPICE", sub: "Files read", text: ["SPICE subcircuit of each standard cell. Both netlists that LVS compares are cell-level; the subcircuits supply each cell's pin list and order to Magic's extraction and to Netgen."] },
+    rcxrules: { name: "RCX rules", sub: "Files read", text: ["Tables of wire resistance and capacitance by layer and geometry, calibrated from foundry extraction, one set per wire corner. Read by OpenRCX, which in this flow takes only the capacitance from them."] },
+    mtech: { name: "Magic tech file", alias: ["Magic tech", "Magic technology file"], sub: "Files read", text: ["Magic's technology file for sky130: layer definitions, GDSII layer mapping, design rules and device extraction rules."] },
+    ngs: { name: "Netgen setup", sub: "Files read", text: ["sky130 LVS settings for Netgen: device equivalences, pins that may be swapped, how parallel cells are merged, and property tolerances."] },
+    kdrc: { name: "KLayout DRC deck", sub: "Files read", text: ["sky130's design rules written as a Ruby script for KLayout; Tiny Tapeout's precheck runs it."] },
+    cnf: { name: "CNF", alias: ["conjunctive normal form"], sub: "Runs as", text: [
       "Conjunctive normal form: a Boolean formula written as an AND of clauses, each an OR of variables or their negations; the input form of SAT solvers. Yosys's proofs unroll the circuit over k clock cycles and encode it, with the negated property, as CNF for MiniSat. Unsatisfiable means proven.",
       "The formula stays in memory. AIGER and the SMT solvers' text format, which SymbiYosys hands to external solvers, do not appear in this project."] },
-    cpp: { name: "C++ model", alias: ["2-state"], sub: "Verification model", text: ["Verilator translates the RTL into a C++ class that evaluates the design each time the testbench calls it, with 2-state values, compiled with the system's C++ compiler. 2-state means only 0 and 1: faster, but unknown values silently become 0 or 1. The gameplay scenarios call it once per clock."] },
-    vvp: { name: "vvp", alias: ["4-state"], sub: "Verification model", text: ["Icarus Verilog compiles the RTL or the gate netlist to vvp, a bytecode of nets and events interpreted by its runtime. Event-driven and 4-state: it models every signal change and unknown values."] },
-    cellmodels: { name: "cell models", alias: ["Verilog cell models", "UDP", "UDPs", "user-defined primitives"], sub: "Verification model", text: ["sky130's Verilog model of each standard cell, built from user-defined primitives (UDPs), Verilog's table-based way to describe a simple cell. Icarus Verilog compiles them with the powered gate netlist; no delays are annotated."] },
+    cpp: { name: "C++ model", alias: ["2-state"], sub: "Runs as", text: ["Verilator translates the RTL into a C++ class that evaluates the design each time the testbench calls it, with 2-state values, compiled with the system's C++ compiler. 2-state means only 0 and 1: faster, but unknown values silently become 0 or 1. The gameplay scenarios call it once per clock."] },
+    vvp: { name: "vvp", alias: ["4-state"], sub: "Runs as", text: ["Icarus Verilog compiles the RTL or the gate netlist to vvp, a bytecode of nets and events interpreted by its runtime. Event-driven and 4-state: it models every signal change and unknown values."] },
+    cellmodels: { name: "cell models", alias: ["Verilog cell models", "UDP", "UDPs", "user-defined primitives"], sub: "Runs as", text: ["sky130's Verilog model of each standard cell, built from user-defined primitives (UDPs), Verilog's table-based way to describe a simple cell. Icarus Verilog compiles them with the powered gate netlist; no delays are annotated."] },
     aiger: { name: "AIGER", sub: "File format", text: ["File format for AIGs with registers; the standard input of hardware model checkers."] },
 
     // terms
@@ -515,26 +528,26 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       how: "ABC first simplifies the logic read from BLIF by factoring (fx) and don't-care simplification (mfs). It then builds an AIG with structural hashing and reduces its size and depth with repeated balancing, rewriting and refactoring, keeping structural choices for the mapper. This row and the next alternate inside one ABC script, which Yosys starts once.",
       watch: "The result depends on the starting structure: reordering register declarations alone moves utilisation by about a point." },
     abcmap: { name: "Technology mapping", lab: "ABC", short: "ABC covers the optimised AIG with sky130 cells: fewest levels first, then least area.",
-      in: "optimised AIG; Liberty (typical corner)", out: "the logic as sky130 cells, as BLIF, read back into RTLIL",
-      how: "For every AIG node ABC enumerates cuts of a few inputs, matches each cut's function against the Liberty cells, and picks a cover. The script maps three times, re-optimising in between: twice with amap, which picks the cover of least area, and last with &nf, whose result is kept. &nf first finds the cover with the fewest levels of cells, each cell counting as one unit of delay, then reduces its area in five more rounds without adding a level. ABC also reads an input driving cell and an output load, but mapping uses neither, nor the clock period.",
+      in: "optimised AIG; Liberty (typical corner)", out: "the gate netlist: the logic as sky130 cells, as BLIF, read back into RTLIL inside Yosys",
+      how: "For every AIG node ABC enumerates cuts of a few inputs, matches each cut's function against the Liberty cells, and picks the cover with the fewest levels of cells, each cell counting as one unit of delay; it then reduces the cover's area without adding a level. The clock period plays no part.",
       watch: "Mapping counts levels of cells, not their real delays; timing is repaired after the clock tree is built." },
-    clean: { name: "Write gate netlist", lab: "Yosys", short: "Tie cells, single-bit nets and buffers; the gate netlist is written.",
-      in: "RTLIL with sky130 cells", out: "gate netlist (Verilog)",
-      how: "Constants are driven from tie-high and tie-low cells, buses are split into 1-bit nets, and buffers go where a net drives an output port directly; then the netlist is written.",
+    clean: { name: "Write gate netlist", lab: "Yosys", short: "Tie cells, single-bit nets and buffers; the gate netlist is written out as a Verilog file.",
+      in: "the gate netlist, in RTLIL", out: "the gate netlist as a Verilog file",
+      how: "Constants are driven from tie-high and tie-low cells, buses are split into 1-bit nets, and buffers go where a net drives an output port directly; then the netlist is written out as structural Verilog.",
       fail: "Unmapped cells, leftover assign statements, combinational loops or undriven wires." },
     floorplan: { name: "Floorplan", lab: "OpenROAD: ifp", short: "Sets the die, the core area, the rows of placement sites and the routing tracks.",
       in: "gate netlist; tech LEF; cell LEF; tracks file", out: "OpenDB: die, core area, rows, tracks",
       how: "The die is set to 161 x 111.52 " + UM + ", the core area filled with 39 rows of 338 placement sites (0.46 x 2.72 " + UM + "), and routing tracks laid out on each layer from the tracks file.",
       watch: "Too much logic for the tile shows up at global placement." },
     pdn: { name: "Taps and power grid", lab: "OpenROAD: tapcell, PDNGen", short: "Places tap cells and endcaps and draws the power grid.",
-      in: "OpenDB", out: "OpenDB + tap cells, endcaps, power grid",
+      out: "OpenDB + tap cells, endcaps, power grid",
       how: "tapcell places well-tap cells at the spacing sky130 requires against latch-up, and endcap cells at the row ends. PDNGen draws metal-1 rails along the rows and vertical metal-4 straps, joined by vias; the metal-4 straps are also the tile's power pins.",
       fail: "Unconnected power-grid shapes, found by a checker right after global placement." },
-    pins: { name: "Pin placement", lab: "OpenROAD: OpenDB", short: "Copies the pins from Tiny Tapeout's tile DEF.",
+    pins: { name: "Pin placement", lab: "OpenROAD: LibreLane script", short: "Copies the pins from Tiny Tapeout's tile DEF.",
       in: "OpenDB; tile DEF", out: "OpenDB + pins",
       how: "OpenROAD's pin placer (ppl) and the placement steps around it are skipped. A LibreLane Python script, run in OpenROAD's Python interpreter, copies the pin names, shapes and positions from Tiny Tapeout's tile DEF into OpenDB, so every tile presents the same interface." },
     gpl: { name: "Global placement", lab: "OpenROAD: RePlAce", short: "Spreads the cells over the die to minimise wirelength at a target density; overlaps still allowed.",
-      in: "OpenDB", out: "OpenDB + cell positions",
+      out: "OpenDB + cell positions",
       how: "Cells are spread over the core area, keeping total wirelength short, until little of the cell area lies above the target density; some regions may still exceed it. The configured 60% is below what this design needs (its cells fill 79% of the core area), so RePlAce raised it to 80%. Cells may still overlap.",
       fail: "Only if the cells do not fit in the core area.",
       watch: "Tiny Tapeout's utilisation figure is taken here." },
@@ -543,7 +556,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       how: "Wire lengths are estimated from Steiner trees over the placed pins. Long and high-fanout nets get buffer trees, and gates are upsized where they exceed the limits on slew, capacitance or fanout. No timing optimisation yet.",
       watch: "Each buffer adds area that the utilisation figure from global placement does not include." },
     dpl: { name: "Detailed placement", lab: "OpenROAD: OpenDP", short: "Moves every cell onto a legal, non-overlapping site.",
-      in: "OpenDB", out: "OpenDB, cells on legal sites",
+      out: "OpenDB, cells on legal sites",
       how: "Each cell moves to the nearest free legal site in a row; then some cells are flipped left to right where that shortens their wires.",
       watch: "Large displacements in over-full regions cost timing and routability." },
     cts: { name: "Clock tree synthesis", lab: "OpenROAD: TritonCTS", short: "Builds a buffered clock tree so the clock reaches every flip-flop at nearly the same time.",
@@ -567,14 +580,14 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       how: "Inside the route guides, nets are assigned to tracks, vias are placed, and paths are found by maze routing on the track grid. The router then iterates: find rule violations (spacing, width, enclosure, minimum area), rip up the offending nets and reroute with higher costs, until none remain. The antenna checker then rechecks the final wires.",
       fail: "Router DRC violations left at the end, or critical disconnected pins." },
     fill: { name: "Fill and decap", lab: "OpenROAD: OpenDP", short: "Fills empty sites with filler and decap cells; writes the final gate netlist.",
-      in: "OpenDB", out: "OpenDB + filler and decap cells; final gate netlist",
+      out: "OpenDB + filler and decap cells; final gate netlist",
       how: "Every empty site gets a filler or a decap cell, so the wells and power rails stay continuous; decap cells are capacitors between the supply rails. The final gate netlist and the powered gate netlist are written from OpenDB here." },
     rcx: { name: "Parasitic extraction", lab: "OpenROAD: OpenRCX", short: "Computes the resistance and capacitance of every routed wire.",
       in: "OpenDB (routed); tech LEF; RCX rules", out: "SPEF for minimum, nominal and maximum wires",
       how: "Each wire segment's resistance comes from its length, width and the layer's resistance per square in the tech LEF; its capacitance to ground and to neighbouring wires comes from tables indexed by geometry, calibrated against foundry extraction." },
-    sta: { name: "Static timing analysis", lab: "OpenSTA (standalone)", short: "Checks setup and hold on every path at 9 corners, with the extracted wires.",
-      in: "gate netlist (from OpenDB); SPEF; Liberty; SDC", out: "timing and power reports; a delay file (SDF) that nothing in this project reads",
-      how: "Arrival and required times are propagated through the timing graph, with cell delays from the Liberty tables (delay as a function of input slew and output load) and wire delays from the RC network. Slack is reported at 9 corners: slow (100 C, 1.60 V), typical (25 C, 1.80 V) and fast (-40 C, 1.95 V) silicon, each with minimum, nominal and maximum wires.",
+    sta: { name: "Static timing analysis", lab: "OpenSTA", short: "Checks setup and hold on every path at 9 corners, with the extracted wires.",
+      in: "gate netlist (from OpenDB); SPEF; Liberty; SDC", out: "timing and power reports",
+      how: "OpenSTA runs as a standalone program, outside OpenROAD. Arrival and required times are propagated through the timing graph, with cell delays from the Liberty tables (delay as a function of input slew and output load) and wire delays from the RC network. Slack is reported at 9 corners: slow (100 C, 1.60 V), typical (25 C, 1.80 V) and fast (-40 C, 1.95 V) silicon, each with minimum, nominal and maximum wires.",
       fail: "Setup violations at the typical corners, or hold violations at any corner.",
       watch: "Maximum slew and capacitance are reported but fail at no corner: this run passed with 463 slew violations." },
     ir: { name: "IR drop analysis", lab: "OpenROAD: PSM", short: "Computes the voltage drop across the power grid.",
@@ -597,7 +610,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       how: "Both netlists become graphs of cell instances and nets. Netgen partitions them by connectivity and refines the partitions until every instance and net is matched one to one or a mismatch is isolated. Parallel filler, decap and tap cells are merged and compared like the others.",
       fail: "Any unmatched net or instance." },
     precheck: { name: "Precheck", lab: "TT precheck: Magic, KLayout", short: "Tiny Tapeout's acceptance checks of the finished tile.",
-      in: "GDSII; the tile's LEF; gate netlist; tile DEF; KLayout DRC deck", out: "pass or fail",
+      in: "GDSII; the tile's LEF; gate netlist; tile DEF; Magic tech file; KLayout DRC deck", out: "pass or fail",
       how: "Magic DRC and the KLayout DRC deck; zero-area shapes; tile boundary and size; pin names, layers and positions against the tile DEF; power pins in the netlist and LEF. Runs as a GitHub Actions job after the harden.",
       fail: "Any check; the tile then stays off the shuttle." },
     shuttle: { name: "Shuttle assembly", lab: "Tiny Tapeout", short: "Tiny Tapeout places the tile on the shared chip, which SkyWater manufactures.",
@@ -619,9 +632,9 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       "All scenarios run locally only, because they need Verilator 4."] },
     vproof: { name: "Model proof", lab: "Yosys", short: "Formal proof that the brick wall module equals its reference model on every clock.", text: ["Proves that the brick wall module gives the outputs of a readable reference model of the wall on every clock after reset (its row output only while the beam is within the wall's rows), assuming only what the rest of the chip guarantees on its ports. The two are joined into a mitre, with an invariant stating which brick each of the wall's flip-flops holds for every beam position. A second proof shows that the whole chip meets those assumptions for any inputs on its pins.",
       "Method: SAT-based temporal induction in Yosys, a base case from reset plus an inductive step of up to 4 cycles. Runs in CI on every push."] },
-    vlec: { name: "Equivalence check", lab: "Yosys", short: "Formal comparison of the RTL with the final gate netlist after physical design.", text: ["Compares the RTL with the final gate netlist after physical design, so it covers synthesis and every later step that changes the netlist, such as resizing, the clock tree and hold repair. The netlist's cells are modelled from their Liberty functions, with buffers and delay cells as wires, and the two are merged into one equivalence-checking circuit, with a comparison at each register and output paired by name.",
-      "Each comparison is first tried directly with SAT, from any starting state over up to 4 cycles; a proven one joins its two sides into one signal for the proofs that follow. The rest are proved by a weaker form of induction: once the two circuits have agreed at every comparison for 4 cycles, they never diverge. There is no base case from reset, so this alone does not show that they start out in step. Yosys's help recommends simulation from reset alongside it. The gate-level test gives some of that: it runs the whole-chip test from reset on the netlist of the CI harden, which is built from the same source but is a separate harden.",
-      "LVS compares the layout only with this netlist. Not part of the flow: the project runs it after local hardens, not in the CI harden that produces the submitted GDSII."] },
+    vlec: { name: "Equivalence check", lab: "Yosys", short: "Formal comparison of the RTL with the final gate netlist after physical design.", text: ["Compares the RTL with the final gate netlist, so it covers synthesis and every later step that changes the netlist, such as resizing, the clock tree and hold repair. The netlist's cells are modelled from their Liberty functions, with buffers and delay cells as wires.",
+      "Its induction has no base case from reset: it shows that once the two circuits have agreed at every register and output for 4 cycles they never diverge, not that they start out in step. The gate-level test gives some of that: it runs the whole-chip test from reset on the gate netlist of the CI harden, which is built from the same source but is a separate harden.",
+      "LVS compares the layout only with this netlist. The project runs the check after local hardens, not in the CI harden that produces the submitted GDSII."] },
     vgl: { name: "Gate-level test", lab: "cocotb", short: "The whole-chip test, rerun on the powered gate netlist.", text: ["Tiny Tapeout's action runs the whole-chip test on the powered gate netlist with sky130's Verilog cell models, on Icarus Verilog, without timing.",
       "It finds what RTL simulation hides: unknown (X) values propagating from uninitialised flip-flops, reset problems, missing supply connections."] }
   };
@@ -635,25 +648,22 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     glint: { name: "Second linter", tool: "slang; Verible", short: "A stricter SystemVerilog front end or style linter.", text: ["Yosys, Icarus Verilog and Verilator each parse the RTL with their own front end and support different subsets of SystemVerilog. slang or Verible's linter would flag constructs the tools may read differently."] }
   };
   var X = {
-    reads: { name: "Reads", short: "The fixed files each step reads besides the design.", text: [
-      "The files each step reads besides the design, which no step changes: sky130's library, technology and rule files, Tiny Tapeout's tile DEF, and the timing constraints (SDC). An arrow takes them into the step on the same row.",
-      "The design itself passes from step to step down the step column."] },
-    step: { name: "Step (tool: engine)", short: "The steps of the flow from top to bottom, each with the program that runs it.", text: [
-      "One box per step, from top to bottom in the order the flow runs them, except that the two ABC rows alternate inside one ABC script. On the right of each box after the RTL source is the program or service that runs the step and, after a colon, the part of it or the program it calls that the step uses; most are parts of OpenROAD.",
-      "The bracket marks the steps LibreLane runs, from Lint to LVS. Some steps check the design rather than change it, such as the flow's Lint, static timing analysis, DRC and LVS."] },
-    rep: { name: "Design representation", short: "The form the design is in at each step; a bar lasts as long as that form.", text: [
-      "The form the design is in as it passes down the flow. A bar runs roughly from the step that produces the form to the last step that reads it, so its length shows how long the form lasts. The final gate netlist, written from OpenDB at the end of place and route for timing, LVS, the precheck and the gate-level test, has no bar. The notes in the OpenDB bar say what each step adds to it or which step reads it.",
-      "The narrow column on the right holds two files written from the main form: SPEF, which static timing analysis reads, and GDSII, which lasts to the end."] },
-    verif: { name: "Verification", short: "The project's own lint, tests and proofs, which run outside LibreLane.", text: [
-      "The project's own checks of the design, which run outside LibreLane: a stricter lint, simulation tests and formal proofs, run in CI on every push (the gate-level test by Tiny Tapeout's action, after the harden) or locally. The flow's own checks, and Tiny Tapeout's precheck, are steps in the step column.",
-      "The five checks beside the source read the RTL; the SOURCE band has a row for each. The equivalence check sits where the gate netlist is first written, though it compares the final one with the RTL. The gate-level test sits beside the precheck because Tiny Tapeout's action runs both after the harden.",
-      "The dashed boxes in the last row are common checks this project doesn't use."] },
-    model: { name: "Simulated / proved as", short: "What each check runs: a compiled simulation model, or the formula a SAT solver proves.", text: ["What each check actually runs: the C++ model from Verilator; vvp from Icarus Verilog, with sky130's cell models for the gate netlist; or the CNF formula MiniSat proves. The equivalence check builds its CNF from the RTL and from the gate netlist's cells modelled by their Liberty functions."] }
+    reads: { name: "Files read", short: "Fixed files that no step changes, read besides the design.", text: [
+      "Fixed files that steps read besides the design: sky130's library and rule files (Tiny Tapeout's copy of the KLayout DRC deck), Tiny Tapeout's tile DEF, and the timing constraints (SDC) LibreLane writes from its configuration. No step changes them.",
+      "Each badge is one kind of file and lists the files of that kind that the step on its row reads."] },
+    step: { name: "Step and its tool", short: "The steps of the flow from top to bottom, each with the tool that runs it.", text: [
+      "The steps in the order the flow runs them (the two ABC rows alternate inside one script), each with the tool that runs it and, after a colon, the part of it, or the program or script it calls, that the step uses. LibreLane runs the steps from Lint to LVS; the precheck and the shuttle assembly are Tiny Tapeout's."] },
+    rep: { name: "Representation", short: "A representation starts after the step that makes it and lasts until the last step that reads it.", text: [
+      "How the design is held as it passes down the flow: some representations are files, others exist only in a tool's memory. A representation starts after the step that makes it and lasts until the last step that reads it; the notes in the OpenDB bar say what a step adds to it, writes from it or reads from it."] },
+    verif: { name: "Checks", short: "The project's own lint, tests and proofs, which run outside LibreLane.", text: [
+      "The project's own checks of the design, run outside LibreLane, in CI or locally; the flow's own checks and Tiny Tapeout's precheck are steps.",
+      "The solid boxes beside the source read the RTL. Dashed boxes are common checks this project doesn't use; each sits under the check it would complement."] },
+    model: { name: "Runs as", sub: "Part of the checks column", short: "What each check runs: a compiled simulation model, or the formula a SAT solver proves.", text: ["What each check actually runs: the C++ model from Verilator; vvp from Icarus Verilog, with sky130's cell models for the gate netlist; or the CNF formula MiniSat proves. The equivalence check builds its CNF from the RTL and from the gate netlist's cells modelled by their Liberty functions."] }
   };
 
   // ---------------------------------------------------------------- layout
   var BANDS = [
-    { label: ["SOURCE"], rows: ["src0", "src1", "src2", "src3", "src4"] },
+    { label: ["SOURCE"], rows: ["src0"] },
     { label: ["SYNTHESIS"], rows: ["lint", "parse", "coarse", "techmap", "dfflib", "abcopt", "abcmap", "clean"] },
     { label: ["PLACE AND", "ROUTE"], rows: ["floorplan", "pdn", "pins", "gpl", "rsz1", "dpl", "cts", "rsz2", "grt", "ant", "drt", "fill"] },
     { label: ["SIGN-OFF"], rows: ["rcx", "sta", "ir", "gds", "drc", "ext", "lvs"] },
@@ -662,16 +672,48 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   var INPUTS = { dfflib: ["Liberty"], abcmap: ["Liberty"], floorplan: ["tech LEF", "cell LEF", "tracks file"], pins: ["tile DEF"],
                  rsz1: ["Liberty", "SDC"], cts: ["Liberty"], rsz2: ["Liberty", "SDC"], grt: ["tech LEF"], ant: ["tech LEF"], drt: ["tech LEF"],
                  rcx: ["tech LEF", "RCX rules"], sta: ["Liberty", "SDC"], gds: ["cell GDSII", "tech LEF", "cell LEF", "Magic tech file"], drc: ["Magic tech file"],
-                 ext: ["tech LEF", "cell LEF", "cell SPICE", "Magic tech file"], lvs: ["cell SPICE", "Netgen setup"], precheck: ["tile DEF", "KLayout DRC deck"] };
-  var VROWS = { src0: "vlint", src1: "vunit", src2: "vchip", src3: "vsys", src4: "vproof", clean: "vlec", precheck: "vgl" };
-  var MODELS = { src1: ["cpp", "vvp"], src2: ["vvp"], src3: ["cpp"], src4: ["cnf"], clean: ["cnf"], precheck: ["vvp", "cellmodels"] };
-  var ODB_NOTES = { pdn: "+ tap cells, power grid", pins: "+ pins", gpl: "+ cell positions", rsz1: "+ buffers", dpl: "+ legal sites",
+                 ext: ["tech LEF", "cell LEF", "cell SPICE", "Magic tech file"], lvs: ["cell SPICE", "Netgen setup"], precheck: ["tile DEF", "Magic tech file", "KLayout DRC deck"] };
+  // the kinds of file a step reads, each drawn as one badge on the row, in this order
+  var KINDS = [
+    { key: "library", title: "Library files", files: ["Liberty", "cell LEF", "cell GDSII", "cell SPICE"] },
+    { key: "rules", title: "Rule files", files: ["tech LEF", "tracks file", "RCX rules", "Magic tech file", "Netgen setup", "KLayout DRC deck"] },
+    { key: "constraints", title: "Constraint files", files: ["SDC"] },
+    { key: "tile", title: "Tile files", files: ["tile DEF"] }
+  ];
+  function kindOf(key) { return KINDS.filter(function (kd) { return kd.key === key; })[0]; }
+  function filesOf(row, kd) { return INPUTS[row].filter(function (f) { return kd.files.indexOf(f) >= 0; }); }
+  var GROWS = { gl1: "glint", gl2: "gcdc", gcv: "gcov", gsv: "gsva" };
+  var VROWS = { src0: "vlint", src1: "vunit", src2: "vchip", src3: "vsys", src4: "vproof", fill: "vlec", precheck: "vgl" };
+  var MODELS = { src1: ["cpp", "vvp"], src2: ["vvp"], src3: ["cpp"], src4: ["cnf"], fill: ["cnf"], precheck: ["vvp", "cellmodels"] };
+  var ODB_NOTES = { pdn: "+ tap cells, power grid", pins: "+ pins", gpl: "+ cell positions", rsz1: "+ buffers",
                     cts: "+ clock tree", rsz2: "+ delay cells", grt: "+ route guides", ant: "+ diodes",
-                    drt: "+ wires, vias", fill: "+ filler, decap", rcx: "read by OpenRCX",
-                    ir: "read by PSM", gds: "DEF read by Magic" };
+                    drt: "+ wires, vias", fill: "+ filler, decap; writes gate netlist", rcx: "writes SPEF",
+                    gds: "DEF read by Magic" };
 
-  var W = 1360, P = 22, BH = 18, GAP = 14, Y0 = 44;
-  var XI1 = 338, XS = 350, WS = 372, XLL = 734, XR = 748, WR = 150, XR2 = 906, WR2 = 72, XV = 1000, WV = 220, XM = 1232;
+  var P = 22, BH = 18, GAP = 14, WS = 372, WR = 200, WR2 = 56, WV = 220;
+  // set by setLayout from the columns shown: the chart's width, the top of the first row, and the
+  // x of each lane (files read, step, representation and its narrow column, checks, runs as)
+  var W, Y0, XI1, XS, XR, XR2, XV, XM;
+  // The columns that can be hidden, and where each folded one's stub goes. A folded
+  // column is a narrow strip with its heading written down it; the columns after it move left.
+  var COLS = {
+    reads: { label: "Files read", name: "the files read" },
+    rep: { label: "Representation", name: "the representation" },
+    checks: { label: "Checks", name: "the checks" }
+  };
+  var STUB = 20, cols = { reads: true, rep: true, checks: true }, STUBX = {};
+  function setLayout() {
+    STUBX = {};
+    // with the checks shown, room under the rule for their "Runs as" sub-heading
+    Y0 = cols.checks ? 62 : 44;
+    if (cols.reads) { XI1 = 208; XS = XI1 + 12; } else { STUBX.reads = 94; XS = 94 + STUB + 12; }
+    var x = XS + WS;
+    if (cols.rep) { XR = x + 14; XR2 = XR + WR + 8; x = XR2 + WR2; }
+    else { STUBX.rep = x + 14; x = STUBX.rep + STUB; }
+    if (cols.checks) { XV = x + 14; XM = XV + 232; W = XM + 128; }
+    else { STUBX.checks = x + 10; XV = XM = null; W = STUBX.checks + STUB + 12; }
+  }
+  setLayout();
 
   function el(tag, attrs, parent) {
     var e = document.createElementNS(NS, tag);
@@ -714,7 +756,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   }
 
   function render(fig) {
-    var svg = el("svg", { role: "group", "aria-label": "Tiny Breakout toolchain: steps, design representations, side inputs and verification; arrow keys move between items, Enter opens one" });
+    var svg = el("svg", { role: "group", "aria-label": "Tiny Breakout toolchain: the steps, the files read, the design's representations and the checks; arrow keys move between items, Enter opens one" });
     fig.appendChild(svg);
     var defs = el("defs", {}, svg);
     var mk = el("marker", { id: "ah", viewBox: "0 0 8 8", refX: "7.5", refY: "4", markerWidth: "6", markerHeight: "6",
@@ -723,7 +765,11 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     var lBack = el("g", {}, svg), lMain = el("g", {}, svg);
 
     var top = {}, y = Y0, bandTops = [];
-    BANDS.forEach(function (b, bi) {
+    // with the checks shown, the source stage has a row for each check of the RTL and each unused
+    // check under it; folded, only the source's own row
+    var bands = BANDS.slice();
+    if (cols.checks) bands[0] = { label: BANDS[0].label, rows: ["src0", "gl1", "gl2", "src1", "src2", "src3", "gcv", "src4", "gsv"] };
+    bands.forEach(function (b, bi) {
       if (bi > 0) y += GAP;
       bandTops.push(y);
       b.rows.forEach(function (r) { top[r] = y; y += P; });
@@ -733,23 +779,77 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     function bot(r) { return top[r] + P; }
 
     // lane headers: each opens what its column shows
-    function header(key, x, label, anchor, aria) {
+    function header(key, x, label, aria, yb) {
+      yb = yb || 28;
       var g = itemG(lMain, "x:" + key, aria, 0);
-      var t = tx(g, x, 28, label, "lh", anchor), w = t.getComputedTextLength(), x0 = anchor === "end" ? x - w : x;
-      g.insertBefore(el("rect", { x: x0 - 2, y: 16, width: w + 4, height: 16, "class": "hit" }), t);
-      el("line", { x1: x0, x2: x0 + w, y1: 31, y2: 31, "class": "ul" }, g);
+      var t = tx(g, x, yb, label, "hd"), w = t.getComputedTextLength();
+      g.insertBefore(el("rect", { x: x - 2, y: yb - 12, width: w + 4, height: 16, "class": "hit" }), t);
+      el("line", { x1: x, x2: x + w, y1: yb + 3, y2: yb + 3, "class": "ul" }, g);
     }
-    header("reads", XI1, "READS", "end", "Reads: the fixed files each step reads");
-    header("step", XS, "STEP (TOOL: ENGINE)", null, "Step, tool and engine: the steps in order");
-    header("rep", XR, "DESIGN REPRESENTATION", null, "Design representation: the form the design is in");
-    header("verif", XV, "VERIFICATION", null, "Verification: the checks outside LibreLane");
-    header("model", W - 16, "SIMULATED / PROVED AS", "end", "Simulated or proved as: what each check runs");
+    // the disclosure triangle at a column's left edge x0, with the heading's text after it (TRI
+    // units on): no column is wider for it. Its own target, centred on it and drawn over the
+    // heading's, is 26 units square (46 by touch, about 44 px at the smallest scale), cut off above
+    // the first row's boxes and kept off the column before it; its focus ring stays clear of the
+    // text. Its name is the column's; aria-expanded says whether it is shown.
+    var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches, TRI = 18;
+    function toggle(col, x0) {
+      var hw = coarse ? 46 : 26;
+      var g = el("g", { "data-col": col, tabindex: "-1", role: "button", "aria-expanded": "true", "aria-label": COLS[col].label + " column", "data-oy": 0 }, lMain);
+      // (not reaching back over the column or strip before it)
+      var lo = col === "checks" ? (cols.rep ? XR2 + WR2 : STUBX.rep + STUB) + 1 : col === "rep" ? XS + WS + 1 : 0;
+      el("rect", { x: Math.max(lo, x0 + 7 - hw / 2), y: 24 - hw / 2, width: hw, height: Math.min(hw, Y0 + 1 - (24 - hw / 2)), "class": "hit" }, g);
+      el("rect", { x: x0, y: 17, width: 14, height: 14, rx: 2, "class": "tfr" }, g);
+      el("path", { d: "M" + (x0 + 2.5) + " 21H" + (x0 + 11.5) + "L" + (x0 + 7) + " 27.5z", "class": "tri" }, g);
+    }
+    // a folded column: a strip down the chart, an upright right-pointing triangle at its top and the
+    // heading written down it, all one button. Its target is 30 units wide (46 by touch) where the
+    // gap allows, and stays in the gap: off the boxes and bars beside it, and halfway to a strip next
+    // to it.
+    function stub(col) {
+      var x = STUBX[col], cx = x + STUB / 2, hw = coarse ? STUB + 26 : STUB + 10;
+      var between = STUBX.rep !== undefined && STUBX.checks !== undefined ? (STUBX.rep + STUB + STUBX.checks) / 2 : null;
+      var lo = col === "reads" ? 0 : col === "rep" ? XS + WS + 1 : cols.rep ? XR2 + WR2 + 1 : between;
+      var hi = col === "reads" ? XS - 1 : col === "rep" ? (cols.checks ? XV - 1 : between) : W;
+      var a = Math.max(lo, cx - hw / 2), b = Math.min(hi, a + hw);
+      a = Math.max(lo, b - hw);
+      var g = el("g", { "data-col": col, tabindex: "-1", role: "button", "aria-expanded": "false", "aria-label": COLS[col].label + " column", "data-oy": 0 }, lMain);
+      el("rect", { x: a, y: 12, width: b - a, height: yEnd - 12, "class": "hit" }, g);
+      el("rect", { x: x, y: 14, width: STUB, height: yEnd - 16, rx: 3, "class": "stubr" }, g);
+      el("path", { d: "M" + (cx - 3) + " 19.5V28.5L" + (cx + 3.5) + " 24z", "class": "tri" }, g);
+      var t = tx(g, 0, 0, COLS[col].label, "hd it");
+      t.setAttribute("transform", "translate(" + (cx - 4) + " 36) rotate(90)");
+    }
+    // what each column covers, from its triangle to its right edge: scrolled into view when the
+    // column is shown, and tinted while its triangle is pointed at or focused
+    var spans = {};
+    if (cols.reads) {
+      // the column's left edge: the widest row of badges
+      header("reads", XI1 - 114 + TRI, "Files read", "Files read: library, rule, constraint and tile files"); toggle("reads", XI1 - 114);
+      spans.reads = [XI1 - 117, XS - 3];
+    }
+    header("step", XS, "Step", "Step and its tool: the steps in order");
+    tx(lMain, XS + WS - 8, 28, "Tool", "hs pt", "end").setAttribute("data-oy", 0);
+    if (cols.rep) {
+      header("rep", XR + TRI, "Representation", "Representation: what the design is at each step"); toggle("rep", XR);
+      spans.rep = [XR - 3, XR2 + WR2 + 3];
+    }
+    if (cols.checks) {
+      header("verif", XV + TRI, "Checks", "Checks: the project's own checks, outside LibreLane");
+      toggle("checks", XV);
+      // a sub-heading of the checks, under the rule at the top of its own column
+      header("model", XM, "Runs as", "Runs as: what each check runs", 51);
+      spans.checks = [XV - 3, W - 13];
+    }
+    Object.keys(STUBX).forEach(function (c) { spans[c] = [STUBX[c] - 3, STUBX[c] + STUB + 3]; });
+    svg.__spans = spans;
+    Object.keys(STUBX).forEach(stub);
     el("line", { x1: 16, x2: W - 16, y1: 35, y2: 35, "class": "rule" }, lBack);
 
+    // the stage labels: plain text
     BANDS.forEach(function (b, bi) {
       var t = bandTops[bi];
       if (bi > 0) el("line", { x1: 16, x2: W - 16, y1: t - GAP / 2, y2: t - GAP / 2, "class": "rule" }, lBack);
-      b.label.forEach(function (s, i) { svgRich(lMain, 16, t + 14 + i * 13, s, "ph", null, t); });
+      b.label.forEach(function (s, i) { tx(lBack, 16, t + 14 + i * 13, s, "ph"); });
     });
 
     // steps: the box opens the step; names inside it are not separate targets
@@ -766,46 +866,45 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
         svgRich(lMain, XS + WS - 8, top[r] + 15, s.lab, "tl", "end", top[r]);
       });
     });
-    var lastBottom = top.src0 + P - 2;
-    BANDS.slice(1).forEach(function (b) {
-      var f = b.rows[0];
-      el("path", { d: "M" + (XS + WS / 2) + " " + lastBottom + "V" + (top[f] + 2), "class": "wire", "marker-end": "url(#ah)" }, lBack);
-      lastBottom = top[b.rows[b.rows.length - 1]] + P - 2;
-    });
-    // LibreLane runs the steps from lint to LVS
-    var y1 = top.lint + 2, y2 = bot("lvs") - 2, cy = (y1 + y2) / 2;
-    el("path", { d: "M" + (XLL - 4) + " " + y1 + "H" + XLL + "V" + y2 + "H" + (XLL - 4), "class": "rule" }, lBack);
-    var rot = el("g", { transform: "rotate(-90 " + (XLL + 10) + " " + cy + ")", "data-oy": top.lint }, lMain);
-    var probe = tx(rot, 0, 0, "RUN BY LIBRELANE", "lh"), pw = probe.getComputedTextLength(); rot.removeChild(probe);
-    svgRich(rot, XLL + 10 - pw / 2, cy + 3, "RUN BY LIBRELANE", "lh", null, top.lint);
 
-    // side inputs: each name is a link to its entry
-    Object.keys(INPUTS).forEach(function (r) {
+    // files read: a badge for each kind of file on the row, which lists its files; an arrow into the step
+    if (cols.reads) Object.keys(INPUTS).forEach(function (r) {
       var x = XI1 - 4;
-      INPUTS[r].slice().reverse().forEach(function (name) {
-        x -= svgRich(lMain, x, top[r] + 15, name, "in", "end", top[r]) + 12;
+      KINDS.slice().reverse().forEach(function (kd) {
+        var files = filesOf(r, kd);
+        if (!files.length) return;
+        var g = itemG(lMain, "b:" + r + ":" + kd.key, kd.key + ": " + files.join(", "), top[r]);
+        var t = tx(g, 0, top[r] + 14.5, kd.key, "bd it"), w = t.getComputedTextLength() + 7;
+        t.setAttribute("x", x - w + 3.5);
+        g.insertBefore(el("rect", { x: x - w, y: top[r] + 4, width: w, height: 14, rx: 3, "class": "bdg" }), t);
+        x -= w + 4;
       });
       el("path", { d: "M" + (XI1 - 1) + " " + mid(r) + "H" + (XS - 1), "class": "wire", "marker-end": "url(#ah)" }, lBack);
     });
 
-    // representations: a bar starts at the step that writes the form and ends at the step that consumes it
-    function bar(key, name, sub, x, w, y0, yb, notes) {
-      var g = itemG(lMain, key, name + ", design representation", y0);
+    // the design's representations: a bar starts after the step that makes one (at the top of the source
+    // for the RTL) and ends after the last step that reads it. A note on the bar's first row
+    // follows its name.
+    function bar(key, name, x, w, y0, yb, notes) {
+      var g = itemG(lMain, key, name + ", a representation of the design", y0);
       el("rect", { x: x, y: y0 + 1, width: w, height: yb - y0 - 2, "class": "barr" }, g);
       var h = yb - y0;
-      var t = tx(g, x + 8, h < 30 ? y0 + h / 2 + 4 : y0 + 14, name, "nm it");
-      if (sub) svgRich(lMain, x + 14 + t.getComputedTextLength(), y0 + 14, sub, "an", null, y0);
-      if (notes) Object.keys(notes).forEach(function (n) { svgRich(lMain, x + 8, top[n] + 15, notes[n], "an", null, y0); });
+      var nw = tx(g, x + 8, h < 30 ? y0 + h / 2 + 4 : y0 + 15, name, "nm it").getComputedTextLength();
+      if (notes) Object.keys(notes).forEach(function (n) {
+        svgRich(lMain, x + 8 + (top[n] === y0 ? nw + 6 : 0), top[n] + 15, notes[n], "an", null, y0);
+      });
     }
-    bar("tool:rtl", "SystemVerilog RTL", null, XR, WR, top.src0 + 2, mid("parse"));
-    bar("r:rtlilw", "RTLIL, word-level", null, XR, WR, mid("parse"), mid("techmap"));
-    bar("r:rtlilg", "RTLIL, 1-bit gates", null, XR, WR, mid("techmap"), top.abcopt);
-    bar("tool:aig", "AIG (inside ABC)", null, XR, WR, top.abcopt, mid("abcmap"));
-    bar("tool:netlist", "Gate netlist", null, XR, WR, mid("abcmap"), mid("floorplan"));
-    bar("tool:opendb", "OpenDB", ".odb, DEF", XR, WR, mid("floorplan"), mid("ext"), ODB_NOTES);
-    bar("tool:spice", "SPICE", null, XR, WR, mid("ext"), mid("lvs"));
-    bar("tool:spef", "SPEF", null, XR2, WR2, mid("rcx"), mid("sta"));
-    bar("tool:gdsii", "GDSII", null, XR2, WR2, mid("gds"), bot("shuttle"));
+    if (cols.rep) {
+      bar("tool:rtl", "SystemVerilog RTL", XR, WR, top.src0, bot("parse"));
+      bar("r:rtlilw", "RTLIL, word-level", XR, WR, bot("parse"), bot("techmap"));
+      bar("r:rtlilg", "RTLIL, 1-bit gates", XR, WR, bot("techmap"), bot("abcopt"));
+      bar("tool:aig", "AIG (inside ABC)", XR, WR, bot("abcopt"), bot("abcmap"));
+      bar("tool:netlist", "Gate netlist", XR, WR, bot("abcmap"), bot("floorplan"));
+      bar("tool:opendb", "OpenDB", XR, WR, bot("floorplan"), bot("ext"), ODB_NOTES);
+      bar("tool:spice", "SPICE", XR, WR, bot("ext"), bot("lvs"));
+      // the GDSII, made while OpenDB and then the SPICE netlist still last, in a narrow column beside them
+      bar("tool:gdsii", "GDSII", XR2, WR2, bot("gds"), bot("shuttle"));
+    }
 
     // verification: one row per check
     function vBox(key, r) {
@@ -815,10 +914,10 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       tx(g, XV + 8, top[r] + 15, v.name, "nm it");
       svgRich(lMain, XV + WV - 8, top[r] + 15, v.lab, "tl", "end", top[r]);
     }
-    Object.keys(VROWS).forEach(function (r) { vBox(VROWS[r], r); });
+    if (cols.checks) Object.keys(VROWS).forEach(function (r) { vBox(VROWS[r], r); });
 
     // what each check runs
-    Object.keys(MODELS).forEach(function (r) {
+    if (cols.checks) Object.keys(MODELS).forEach(function (r) {
       el("path", { d: "M" + (XV + WV + 1) + " " + mid(r) + "H" + (XM - 4), "class": "wire" }, lBack);
       var x = XM;
       MODELS[r].forEach(function (k, i) {
@@ -827,25 +926,32 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       });
     });
 
-    // gaps
-    var gy = yEnd + GAP + 8;
-    el("line", { x1: 16, x2: W - 16, y1: gy - 8, y2: gy - 8, "class": "rule" }, lBack);
-    tx(lMain, 16, gy + 14, "NOT IN THIS", "ph");
-    tx(lMain, 16, gy + 27, "PROJECT", "ph");
-    tx(lMain, 100, gy + 14, "Common checks this project doesn't use, and the tools that would do them.", "an");
-    var by = gy + P;
-    var gk = ["gcov", "gsva", "gcdc", "glint"], gw = (W - 16 - 100 - 3 * 12) / 4;
-    gk.forEach(function (k, i) {
-      var x = 100 + i * (gw + 12), gg = G[k];
-      var g = itemG(lMain, "g:" + k, gg.name + ", not used in this project", by);
-      el("rect", { x: x, y: by + 2, width: gw, height: BH + 4, "class": "hit" }, g);
-      el("rect", { x: x, y: by + 2, width: gw, height: BH + 4, "class": "gapbox" }, g);
-      tx(g, x + 8, by + 17, gg.name, "nm it");
-      svgRich(lMain, x + gw - 8, by + 17, gg.tool, "tl", "end", by);
+    // common checks this project doesn't use: a dashed box on its own row under the
+    // check it would complement, as wide as the others; the tools show where they fit, and are
+    // always in the tooltip and the popover
+    if (cols.checks) Object.keys(GROWS).forEach(function (r) {
+      var gg = G[GROWS[r]], gw = WV;
+      var g = itemG(lMain, "g:" + GROWS[r], gg.name + ", not used in this project", top[r]);
+      el("rect", { x: XV, y: top[r] + 2, width: gw, height: BH, "class": "hit" }, g);
+      el("rect", { x: XV, y: top[r] + 2, width: gw, height: BH, "class": "gapbox" }, g);
+      var nw = tx(g, XV + 8, top[r] + 15, gg.name, "nm it").getComputedTextLength();
+      var probe = tx(g, 0, 0, gg.tool, "tl"), tw = probe.getComputedTextLength(); g.removeChild(probe);
+      if (8 + nw + 12 + tw + 8 <= gw) svgRich(lMain, XV + gw - 8, top[r] + 15, gg.tool, "tl", "end", top[r]);
     });
-    svg.setAttribute("viewBox", "0 0 " + W + " " + (by + BH + 14));
-    // the rows the arrow keys move between: the lane headers, the steps, the gaps
-    svg.__rows = [0].concat(Object.keys(top).map(function (r) { return top[r]; }).sort(function (a, b) { return a - b; }), [by]);
+    // the tints: one plain rectangle per column, from the heading row to the last row, behind
+    // everything, shown while the column's triangle (or its folded strip) is pointed at or focused
+    Object.keys(spans).forEach(function (c) {
+      var tg = el("g", { "data-tint": c, display: "none" });
+      svg.insertBefore(tg, lBack);
+      el("rect", { x: spans[c][0], y: 12, width: spans[c][1] - spans[c][0], height: yEnd - 12, rx: 3, "class": "tint" }, tg);
+    });
+    svg.setAttribute("viewBox", "0 0 " + W + " " + (yEnd + 10));
+    svg.style.maxWidth = W + "px";
+    svg.style.minWidth = Math.ceil(W * 10 / 10.5) + "px";
+    // the rows the arrow keys move between: the lane headers and the steps
+    var rowKeys = Object.keys(top).sort(function (a, b) { return top[a] - top[b]; });
+    svg.__rows = [0].concat(rowKeys.map(function (r) { return top[r]; }));
+    svg.__rowKeys = ["head"].concat(rowKeys);
 
     // paint and tab order: row by row, left to right, so labels sit above their boxes
     var nodes = Array.prototype.slice.call(lMain.querySelectorAll(":scope > [data-oy]"));
@@ -854,6 +960,8 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       return (+a.getAttribute("data-oy")) - (+b.getAttribute("data-oy")) || a.__x - b.__x || a.__i - b.__i;
     });
     nodes.forEach(function (n) { lMain.appendChild(n); });
+    // (the triangles over the headings they share a line with, so their whole target is theirs)
+    Array.prototype.forEach.call(lMain.querySelectorAll(":scope > [data-col]"), function (n) { lMain.appendChild(n); });
     return svg;
   }
 
@@ -861,12 +969,16 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   function firstSentence(t) { return t.split(/(?<=[.;])\s+(?=[A-Z])/)[0]; }
   function entry(key) {
     var p = key.split(":"), kind = p[0], id = p[1];
-    if (kind === "tool") { var t = D[id]; return { title: t.name, sub: t.sub || "Tool", text: t.text, self: id, short: t.short || firstSentence(t.text[0]) }; }
+    // (a sub-line that would only say "Term" is left out)
+    if (kind === "tool") { var t = D[id]; return { title: t.name, sub: t.sub === "Term" ? "" : t.sub || "Tool", text: t.text, self: id, short: t.short || firstSentence(t.text[0]) }; }
     if (kind === "s") { var s = S[id]; return { title: s.name, sub: s.lab || s.tool, step: s, short: s.short }; }
-    if (kind === "r") return { title: R[id].name, sub: "Design representation", text: R[id].text, short: R[id].short };
-    if (kind === "v") return { title: V[id].name, sub: "Verification: " + V[id].lab, text: V[id].text, short: V[id].short };
-    if (kind === "g") return { title: G[id].name, sub: "Not in this project. Likely tools: " + G[id].tool.replace(/;/g, ","), text: G[id].text, short: G[id].short };
-    if (kind === "x") return { title: X[id].name, sub: "Column", text: X[id].text, short: X[id].short };
+    if (kind === "r") return { title: R[id].name, sub: "Representation", text: R[id].text, short: R[id].short };
+    if (kind === "v") return { title: V[id].name, sub: "Check: " + V[id].lab, text: V[id].text, short: V[id].short };
+    if (kind === "g") return { title: G[id].name, sub: "Not in this project. Likely tools: " + G[id].tool.replace(/;/g, ","), text: G[id].text, short: G[id].short + " Likely tools: " + G[id].tool.replace(/;/g, ",") + "." };
+    // a badge: the definition of each file of its kind that the step reads, in the row's order
+    if (kind === "b") { var kd = kindOf(p[2]), files = filesOf(id, kd); return { title: kd.title, sub: "Files read by " + S[id].name, files: files, short: files.join(", ") }; }
+    if (kind === "col") return { title: "", short: (cols[id] ? "Hide " : "Show ") + COLS[id].name };
+    if (kind === "x") return { title: X[id].name, sub: X[id].sub || "Column", text: X[id].text, short: X[id].short };
     return null;
   }
   // text in which every known name is a button that opens that entry's popover
@@ -891,7 +1003,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     x.addEventListener("click", function (e) { e.stopPropagation(); pop.hidePopover(); });
     head.appendChild(x);
     pop.appendChild(head);
-    var sub = document.createElement("p"); sub.className = "sub"; rich(sub, d.sub, d.self); pop.appendChild(sub);
+    if (d.sub) { var sub = document.createElement("p"); sub.className = "sub"; rich(sub, d.sub, d.self); pop.appendChild(sub); }
     if (d.step && d.step.how) {
       var dl = document.createElement("dl");
       [["In", d.step.in], ["Out", d.step.out], ["Method", d.step.how], ["Fails if", d.step.fail], ["Watch for", d.step.watch]].forEach(function (f) {
@@ -901,6 +1013,12 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
         dl.appendChild(dt); dl.appendChild(dd);
       });
       pop.appendChild(dl);
+    } else if (d.files) {
+      d.files.forEach(function (f) {
+        var k = NAME_MAP[f.toLowerCase()], h3 = document.createElement("h3");
+        h3.textContent = f; pop.appendChild(h3);
+        D[k].text.forEach(function (s) { var p = document.createElement("p"); rich(p, s, k); pop.appendChild(p); });
+      });
     } else {
       (d.text || (d.step && d.step.text) || []).forEach(function (s) {
         var p = document.createElement("p"); rich(p, s, d.self); pop.appendChild(p);
@@ -914,6 +1032,8 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   var tip = document.getElementById("tip"), tipTimer = null, tipEl = null, ptrTime = 0, suppressTip = false;
   function targetOf(node) {
     if (!node || !node.closest) return null;
+    var cc = node.closest("svg [data-col]");
+    if (cc) return { key: "col:" + cc.getAttribute("data-col"), el: cc };
     var t = node.closest("svg [data-tool], button.tn");
     if (t) return { key: "tool:" + t.getAttribute("data-tool"), el: t };
     var g = node.closest("svg [data-item]");
@@ -926,8 +1046,10 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       if (!t.el.isConnected) return;
       var d = entry(t.key);
       tip.textContent = "";
-      var b = document.createElement("b"); b.textContent = d.title; tip.appendChild(b);
-      tip.appendChild(document.createElement("br"));
+      if (d.title) {
+        var b = document.createElement("b"); b.textContent = d.title; tip.appendChild(b);
+        tip.appendChild(document.createElement("br"));
+      }
       tip.appendChild(document.createTextNode(d.short));
       if (tip.matches(":popover-open")) tip.hidePopover();
       tip.showPopover();
@@ -937,7 +1059,8 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       if (topY < 8) topY = r.bottom + 6;
       tip.style.left = left + "px"; tip.style.top = topY + "px";
       if (tipEl && tipEl !== t.el) tipEl.removeAttribute("aria-describedby");
-      tipEl = t.el; tipEl.setAttribute("aria-describedby", "tip");
+      // (not on a column's triangle, whose name already says what the tooltip does)
+      tipEl = t.el; if (t.key.indexOf("col:") !== 0) tipEl.setAttribute("aria-describedby", "tip");
     }, 350);
   }
   function tipHide() {
@@ -1018,7 +1141,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   document.addEventListener("scroll", function () { if (Date.now() - navScrollAt > 200) tipHide(); }, true);
   document.addEventListener("click", function (e) {
     var c = targetOf(e.target);
-    if (!c) return;
+    if (!c || c.key.indexOf("col:") === 0) return;
     // this click's pointerdown just light-dismissed the popover this element opened: toggle off
     if (closedAt.el === c.el && Date.now() - closedAt.t < 400) return;
     openPop(c.key, c.el, e.detail === 0);
@@ -1030,18 +1153,57 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     work.setAttribute("data-mode", sheetMode() ? "sheet" : "pop");
     work.classList.toggle("overflows", fig.scrollWidth > fig.clientWidth + 1);
   }
-  var svgEl = render(fig);
-  setMode();
-  fig.__names = NAME_MAP;   // read by the automated link check
-  if (sheetMode()) fig.scrollLeft = Math.max(0, (XS - 24) * fig.scrollWidth / W);
+
+  // Which columns show: each column the reader has hidden or shown keeps that choice; the others
+  // are all shown when the window is wide enough for the chart with the checks at 10 px text, else all
+  // but the checks (decided when the page loads, in initialColumns). Only the reader's own choices
+  // are saved.
+  var COLS_KEY = "tb-overview-columns", chosen = {};
+  (function () {
+    var saved = null;
+    try { saved = JSON.parse(window.localStorage.getItem(COLS_KEY)); } catch (e) {}
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
+    Object.keys(cols).forEach(function (k) { if (typeof saved[k] === "boolean") chosen[k] = cols[k] = saved[k]; });
+  })();
+  // the width the chart needs with the checks shown, at the smallest scale, against the room the
+  // figure has once the page is drawn (after any scroll bar takes its share)
+  function checksFit() {
+    var c = cols.checks;
+    cols.checks = true; setLayout();
+    var need = Math.ceil(W * 10 / 10.5);
+    cols.checks = c; setLayout();
+    return fig.clientWidth >= need;
+  }
+  function initialColumns() {
+    draw();
+    if (!("checks" in chosen) && cols.checks && !checksFit()) { cols.checks = false; draw(); }
+  }
 
   // ---------------------------------------------------------------- keys in the chart
   // The chart is one tab stop: the box or name last focused there, at first the RTL source.
   // Up and Down go to the nearest row above or below with an item in the same lane (else in any
   // lane), keeping to the column they started from; Left and Right go along the row; Home and End
-  // go to the first and last item in reading order. Positions are in chart units, measured once.
-  var LANES = [90, XS - 2, XLL, XV, XM - 6];   // labels | reads | step | representation | verification | models
-  var navItems = Array.prototype.slice.call(svgEl.querySelectorAll("[data-item], [data-tool]")), nav = null, navX = null, navAt = null;
+  // go to the first and last item in reading order. Positions are in chart units, measured once
+  // per drawing. A hidden column is not drawn, so the keys never reach it.
+  var NAV_SEL = "[data-item], [data-tool], [data-col]";
+  var svgEl = null, navItems = [], nav = null, navX = null, navAt = null, LANES = [];
+  var hoverCol = null, focusCol = null, suppressTint = false;
+  function paintTint() {
+    var t = hoverCol || focusCol;
+    Array.prototype.forEach.call(svgEl.querySelectorAll("[data-tint]"), function (g) {
+      g.setAttribute("display", g.getAttribute("data-tint") === t ? "inline" : "none");
+    });
+  }
+  function draw() {
+    setLayout();
+    if (svgEl) svgEl.remove();
+    svgEl = render(fig);
+    // labels | files read | step | representation | checks | runs as
+    LANES = [90, XS - 2, XS + WS + 4, cols.checks ? XV : STUBX.checks - 4, cols.checks ? XM - 6 : Infinity];
+    navItems = Array.prototype.slice.call(svgEl.querySelectorAll(NAV_SEL));
+    nav = null; navX = null; navAt = null;
+    svgEl.addEventListener("keydown", onChartKey);
+  }
   function navModel() {
     if (nav) return nav;
     var sr = svgEl.getBoundingClientRect(), k = W / sr.width, rows = svgEl.__rows;
@@ -1056,11 +1218,94 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     return nav;
   }
   function setStop(n) { navItems.forEach(function (m) { m.tabIndex = m === n ? 0 : -1; }); }
+  // an item's identity across drawings: what it is, its row, and which of its kind it is there
+  function idOf(n) {
+    var a = n.getAttribute("data-col") ? "c:" + n.getAttribute("data-col") : n.getAttribute("data-item") ? "i:" + n.getAttribute("data-item") : "t:" + n.getAttribute("data-tool");
+    var oy = n.closest("[data-oy]") ? n.closest("[data-oy]").getAttribute("data-oy") : "";
+    var same = navItems.filter(function (m) { return m.closest("[data-oy]") && m.closest("[data-oy]").getAttribute("data-oy") === oy && (m.getAttribute("data-col") || m.getAttribute("data-item") || m.getAttribute("data-tool")) === (n.getAttribute("data-col") || n.getAttribute("data-item") || n.getAttribute("data-tool")); });
+    return a + "@" + oy + "#" + same.indexOf(n);
+  }
+
+  // Hide or show a column: redraw narrower or wider, keep the reader's place. The stop (or the
+  // focus) stays on the same item, else goes to the nearest item on its row, else on the
+  // nearest row.
+  function toggleCol(col) {
+    var stop = navItems.filter(function (m) { return m.tabIndex === 0; })[0] || navItems[0];
+    var hadFocus = svgEl.contains(document.activeElement);
+    var cur = hadFocus ? document.activeElement.closest(NAV_SEL) : stop;
+    var old = navModel().filter(function (o) { return o.el === cur; })[0], id = idOf(cur), oldKeys = svgEl.__rowKeys;
+    tipHide();
+    Array.prototype.forEach.call(pops.children, closePop);
+    cols[col] = !cols[col];
+    hoverCol = focusCol = null; hoverHeldAt = lastPtr.slice();
+    chosen[col] = cols[col];
+    try { window.localStorage.setItem(COLS_KEY, JSON.stringify(chosen)); } catch (e) {}
+    draw();
+    var to = navItems.filter(function (m) { return idOf(m) === id; })[0];
+    if (!to && old) {
+      // the same row by name, else the nearest named row that still has items, then the nearest x
+      var m = navModel(), keys = svgEl.__rowKeys;
+      for (var dd = 0; !to && dd < oldKeys.length; dd++) {
+        [old.row - dd, old.row + dd].some(function (ri) {
+          var ni = keys.indexOf(oldKeys[ri]), on = m.filter(function (o) { return ni >= 0 && o.row === ni; });
+          if (!on.length) return false;
+          to = on.reduce(function (p, o) { return Math.abs(o.cx - old.cx) < Math.abs(p.cx - old.cx) ? o : p; }).el;
+          return true;
+        });
+      }
+    }
+    to = to || navItems[0];
+    setStop(to);
+    if (hadFocus) { suppressTip = true; suppressTint = true; to.focus({ preventScroll: true }); to.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+    if (cols[col]) reveal(svgEl.__spans[col]);
+    setMode();
+  }
+
+  // A column just shown comes into view sideways: its triangle and heading, and as much of the rest
+  // as fits. span is in chart units.
+  function reveal(span) {
+    var k = fig.scrollWidth / W, m = 8, l = span[0] * k, r = span[1] * k;
+    fig.scrollLeft = Math.max(0, Math.min(l - m, Math.max(fig.scrollLeft, r + m - fig.clientWidth)));
+  }
+
+  initialColumns();
+  setMode();
+  fig.__names = NAME_MAP;   // read by the automated link check
+  // a narrow window starts past the stage labels, at the files read's triangle (or their folded strip)
+  if (sheetMode()) fig.scrollLeft = Math.max(0, (cols.reads ? svgEl.__spans.reads[0] - 2 : 90) * fig.scrollWidth / W);
   setStop(svgEl.querySelector('[data-item="rtl"]'));
   // (on the figure, not the svg: Chromium makes an SVG element with a focus listener a tab stop)
   fig.addEventListener("focusin", function (e) {
-    var n = e.target.closest && e.target.closest("[data-item], [data-tool]");
+    var n = e.target.closest && e.target.closest(NAV_SEL);
     if (n) setStop(n);
+    // a triangle focused from the keyboard tints its column; not right after a toggle
+    var col = n && !suppressTint && n.matches(":focus-visible") && n.getAttribute("data-col");
+    suppressTint = false;
+    focusCol = col || null; paintTint();
+  });
+  fig.addEventListener("focusout", function () { focusCol = null; paintTint(); });
+  // pointing at a triangle with the mouse tints its column
+  // (after a toggle, whatever the redraw puts under a still pointer is not tinted until it moves)
+  var lastPtr = [-1, -1], hoverHeldAt = null;
+  document.addEventListener("pointermove", function (e) {
+    lastPtr = [e.clientX, e.clientY];
+    // the hold ends once the pointer has moved: tint whatever triangle it is on now
+    if (!hoverHeldAt || e.pointerType !== "mouse" || Math.abs(e.clientX - hoverHeldAt[0]) + Math.abs(e.clientY - hoverHeldAt[1]) < 2) return;
+    hoverHeldAt = null;
+    var c = e.target.closest && e.target.closest("svg [data-col]"), v = c ? c.getAttribute("data-col") : null;
+    if (v !== hoverCol) { hoverCol = v; paintTint(); }
+  }, true);
+  fig.addEventListener("pointerover", function (e) {
+    if (e.pointerType !== "mouse") return;
+    if (hoverHeldAt && Math.abs(e.clientX - hoverHeldAt[0]) + Math.abs(e.clientY - hoverHeldAt[1]) < 2) return;
+    hoverHeldAt = null;
+    var c = e.target.closest && e.target.closest("svg [data-col]"), v = c ? c.getAttribute("data-col") : null;
+    if (v !== hoverCol) { hoverCol = v; paintTint(); }
+  });
+  fig.addEventListener("pointerleave", function () { if (hoverCol) { hoverCol = null; paintTint(); } });
+  fig.addEventListener("click", function (e) {
+    var c = e.target.closest && e.target.closest("svg [data-col]");
+    if (c) toggleCol(c.getAttribute("data-col"));
   });
   function navMove(cur, key) {
     var m = navModel(), a = m.filter(function (o) { return o.el === cur; })[0];
@@ -1083,11 +1328,12 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     if (b) { navX = x; navAt = b.el; }
     return b;
   }
-  svgEl.addEventListener("keydown", function (e) {
-    var el = e.target.closest && e.target.closest("[data-item], [data-tool]");
+  function onChartKey(e) {
+    var el = e.target.closest && e.target.closest(NAV_SEL);
     if (!el || e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
+      if (el.hasAttribute("data-col")) { if (!e.repeat) toggleCol(el.getAttribute("data-col")); return; }
       var c = targetOf(el);
       openPop(c.key, c.el, true);
     } else if (/^(Arrow(Up|Down|Left|Right)|Home|End)$/.test(e.key)) {
@@ -1095,7 +1341,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       var to = navMove(el, e.key);
       if (to) { navScrollAt = Date.now(); to.el.focus({ preventScroll: true }); to.el.scrollIntoView({ block: "nearest", inline: "nearest" }); }
     }
-  });
+  }
 
   // ---------------------------------------------------------------- Tab in popovers
   // As on the physical design page: Tab past a popover's last name closes it and goes on to
