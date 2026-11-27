@@ -153,9 +153,10 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
 (function () {
   "use strict";
   // Theme: the saved choice, else the system preference read once at load. The button
-  // shows the theme it switches to.
+  // shows the theme it switches to. The key is shared by all the tutorials, so the choice
+  // carries across; this page's earlier key is read as a fallback.
   var themeBtn = document.getElementById("theme"), theme = null;
-  try { var saved = window.localStorage.getItem("tb-toolchain-theme"); if (saved === "light" || saved === "dark") theme = saved; } catch (e) {}
+  try { var saved = window.localStorage.getItem("tb-tutorial-theme") || window.localStorage.getItem("tb-toolchain-theme"); if (saved === "light" || saved === "dark") theme = saved; } catch (e) {}
   if (!theme) theme = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
   var ICONS = {
     light: '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M3.2 12.8l1.1-1.1M11.7 4.3l1.1-1.1"/></svg>',
@@ -171,7 +172,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   themeBtn.addEventListener("click", function (e) {
     e.stopPropagation();
     theme = theme === "dark" ? "light" : "dark";
-    try { window.localStorage.setItem("tb-toolchain-theme", theme); } catch (err) {}
+    try { window.localStorage.setItem("tb-tutorial-theme", theme); } catch (err) {}
     applyTheme();
   });
   applyTheme();

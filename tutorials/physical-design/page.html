@@ -12,10 +12,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Tiny Breakout Physical Design</title>
 <script>
-// the theme before the first paint: the saved choice, else the system's
+// the theme before the first paint: the saved choice, else the system's. The key is shared by
+// all the tutorials, so the choice carries across; this page's earlier key is read as a fallback.
 (function () {
   var t = null;
-  try { t = window.localStorage.getItem("tb-die-theme"); } catch (e) {}
+  try { t = window.localStorage.getItem("tb-tutorial-theme") || window.localStorage.getItem("tb-die-theme"); } catch (e) {}
   if (t !== "light" && t !== "dark") t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   document.documentElement.setAttribute("data-theme", t);
 })();
@@ -473,7 +474,7 @@ var DATA_GZ = "/*DATA*/";
   }
   themeBtn.addEventListener("click", function () {
     theme = theme === "dark" ? "light" : "dark";
-    try { window.localStorage.setItem("tb-die-theme", theme); } catch (err) {}
+    try { window.localStorage.setItem("tb-tutorial-theme", theme); } catch (err) {}
     applyTheme();
   });
   applyTheme();
