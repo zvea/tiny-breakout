@@ -109,13 +109,12 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
 }
 .pop.sheet .x { padding: 4px 10px; }
-.tn, .tn:hover, .tn:focus, .tn:active, .gl, .gl:hover, .gl:focus, .gl:active {
+.tn, .tn:hover, .tn:focus, .tn:active {
   font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
   text-decoration: underline dotted; text-decoration-color: var(--muted); text-underline-offset: 3px;
 }
-.tn:hover, .gl:hover { text-decoration-style: solid; }
-.gl, .gl:hover, .gl:focus, .gl:active { font-weight: 600; }
-.tn:focus-visible, .gl:focus-visible, .pop .x:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tn:hover { text-decoration-style: solid; }
+.tn:focus-visible, .pop .x:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .tip {
   position: fixed; inset: auto; margin: 0; box-sizing: border-box; max-width: min(320px, calc(100vw - 16px));
   background: var(--bg); color: var(--ink); border: 1px solid var(--muted); border-radius: 2px;
@@ -123,10 +122,6 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
 }
 .asof { margin: 18px 0 0; color: var(--muted); font-size: 12px; }
 .asof a { color: inherit; }
-.glossary { margin-top: 22px; border-top: 1px solid var(--rule); padding-top: 10px; }
-.glossary h2 { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0 0 8px; }
-.gloss { columns: 3 300px; column-gap: 28px; font-size: 12.5px; line-height: 1.45; }
-.ge { break-inside: avoid; margin: 0 0 5px; }
 </style>
 </head>
 <body>
@@ -140,10 +135,6 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     <p class="scrollnote">The chart is wider than the screen; scroll it sideways.</p>
     <div class="figure" id="figure"></div>
   </div>
-  <section class="glossary" aria-labelledby="gloss-h">
-    <h2 id="gloss-h">Glossary</h2>
-    <div class="gloss" id="gloss"></div>
-  </section>
   <p class="asof"><span id="asof">Describes the flow as of November 2026: LibreLane 3.0.14 under Tiny Tapeout's sky26e action, sky130, as of commit 2c6b0f6 of</span> <a href="https://github.com/zvea/tiny-breakout">tiny-breakout</a>.</p>
   <div id="pops"></div>
   <div id="tip" class="tip" role="tooltip" popover="manual"></div>
@@ -184,7 +175,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
 
   // ---------------------------------------------------------------- definitions
   // One table for every tool, engine, file format, model and term. Every mention of a name
-  // or alias in the chart, a popover or the glossary links to its entry. short: the tooltip
+  // or alias in the chart or a popover links to its entry. short: the tooltip
   // text, where the first sentence of text does not serve.
   var D = {
     // tools
@@ -400,7 +391,6 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     clocktree: { name: "clock tree", sub: "Term", text: ["The buffers and wires that carry the clock from its pin to every flip-flop."] },
     cts: { name: "CTS", alias: ["clock tree synthesis"], sub: "Term", text: ["Clock tree synthesis: building the clock tree so the clock reaches every flip-flop with small skew."] },
     skew: { name: "skew", sub: "Term", text: ["Clock skew: the difference in clock arrival time between flip-flops."] },
-    jitter: { name: "jitter", sub: "Term", text: ["Cycle-to-cycle variation of the clock period."] },
     slew: { name: "slew", sub: "Term", text: ["The transition time of a signal edge. Slow edges add delay and power, so libraries set a maximum."] },
     fanout: { name: "fanout", alias: ["high-fanout"], sub: "Term", text: ["The number of inputs a net drives."] },
     setup: { name: "setup", sub: "Term", text: ["Setup requirement: data must reach a flip-flop a minimum time before the clock edge. A setup violation means the path is too slow for the clock."] },
@@ -408,7 +398,6 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     slack: { name: "slack", sub: "Term", text: ["The margin by which a timing requirement is met: positive means met, negative means violated."] },
     corner: { name: "corner", alias: ["corners", "wire corner", "wire corners", "process corner", "timing corners"], sub: "Term", text: ["A combination of transistor speed (slow, typical or fast), temperature and supply voltage at which cells are characterised; timing is checked at each. Wire corners vary the interconnect resistance and capacitance the same way."] },
     derate: { name: "derate", sub: "Term", text: ["A percentage by which timing analysis scales delays to allow for variation the corners do not model; 5% here."] },
-    uncert: { name: "clock uncertainty", sub: "Term", text: ["A margin subtracted from each clock period for jitter and other effects the analysis does not model."] },
     util: { name: "utilisation", sub: "Term", text: ["The fraction of the core area occupied by cells."] },
     sta: { name: "static timing analysis", alias: ["STA", "timing analysis"], sub: "Term", text: ["Checking every path's delay against the clock without simulation, by propagating worst-case arrival times through the circuit."] },
     drc: { name: "DRC", alias: ["design rule check", "design rules", "design-rule"], sub: "Term", text: ["Design rule check: comparing every shape in the layout against the foundry's manufacturing rules, such as minimum widths, spacings and enclosures."] },
@@ -859,9 +848,9 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   // Brief and plain, after a short delay on mouse hover or keyboard focus of a linked name or
   // a chart box; never interactive, never touches the popovers.
   var tip = document.getElementById("tip"), tipTimer = null, tipEl = null, ptrTime = 0, suppressTip = false;
-  function targetOf(node, forClick) {
+  function targetOf(node) {
     if (!node || !node.closest) return null;
-    var t = node.closest(forClick ? "svg [data-tool], button.tn, button.gl" : "svg [data-tool], button.tn");
+    var t = node.closest("svg [data-tool], button.tn");
     if (t) return { key: "tool:" + t.getAttribute("data-tool"), el: t };
     var g = node.closest("svg [data-item]");
     if (g) { var k = g.getAttribute("data-item"); return { key: k.indexOf(":") < 0 ? "s:" + k : k, el: g }; }
@@ -962,7 +951,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   document.addEventListener("focusout", tipHide);
   document.addEventListener("scroll", tipHide, true);
   document.addEventListener("click", function (e) {
-    var c = targetOf(e.target, true);
+    var c = targetOf(e.target);
     if (!c) return;
     // this click's pointerdown just light-dismissed the popover this element opened: toggle off
     if (closedAt.el === c.el && Date.now() - closedAt.t < 400) return;
@@ -984,24 +973,13 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     if (!el) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      var c = targetOf(el, true);
+      var c = targetOf(el);
       openPop(c.key, c.el, true);
     } else if (/^Arrow/.test(e.key)) {
       var list = Array.prototype.slice.call(svgEl.querySelectorAll("[data-item], [data-tool]"));
       var i = list.indexOf(el), j = (e.key === "ArrowDown" || e.key === "ArrowRight") ? i + 1 : i - 1;
       if (list[j]) { e.preventDefault(); list[j].focus(); }
     }
-  });
-
-  // glossary: every entry, alphabetically, with its short form
-  var gloss = document.getElementById("gloss");
-  Object.keys(D).sort(function (a, b) { return D[a].name.toLowerCase() < D[b].name.toLowerCase() ? -1 : 1; }).forEach(function (k) {
-    var row = document.createElement("div"); row.className = "ge";
-    var b = document.createElement("button"); b.type = "button"; b.className = "gl"; b.setAttribute("data-tool", k); b.textContent = D[k].name;
-    row.appendChild(b);
-    row.appendChild(document.createTextNode(" "));
-    var s = document.createElement("span"); rich(s, entry("tool:" + k).short, k); row.appendChild(s);
-    gloss.appendChild(row);
   });
 
   // the "as of" line's names link like everywhere else
