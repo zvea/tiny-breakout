@@ -178,6 +178,9 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 .tip b { font-weight: 600; }
+/* above the chart: what the flow does, in the physical design page's body text, and how to read
+   the chart, in its muted note text; both kept to a readable line length */
+.lede { margin: 2px 0 8px; max-width: 760px; font-size: 15px; line-height: 1.55; }
 /* what the chart describes: the physical design page's note */
 .note { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13.5px; }
 .note a { color: inherit; text-underline-offset: 2px; }
@@ -218,6 +221,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   </div>
 </div>
 <div class="page">
+  <p class="lede rich">The flow turns Tiny Breakout's SystemVerilog source, the RTL, into the layout of one tile of a chip. Synthesis maps the RTL to a gate netlist: sky130 standard cells and the nets between them, with no positions. Place and route gives every cell a position on the die, adds cells such as buffers and the clock tree, and draws every wire. Sign-off extracts the wires' resistance and capacitance and checks timing, writes the layout as GDS, and checks its shapes against the design rules and its circuit against the gate netlist. Tiny Tapeout checks the finished tile again and puts it on a shuttle chip with many other designs.</p>
   <div class="work" id="work" data-mode="pop">
     <p class="scrollnote">The chart is wider than the screen; scroll it sideways.</p>
     <div class="figure" id="figure"></div>
@@ -631,6 +635,19 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     glint: { name: "Second linter", tool: "slang; Verible", short: "A stricter SystemVerilog front end or style linter.", text: ["Yosys, Icarus Verilog and Verilator each parse the RTL with their own front end and support different subsets of SystemVerilog. slang or Verible's linter would flag constructs the tools may read differently."] }
   };
   var X = {
+    reads: { name: "Reads", short: "The fixed files each step reads besides the design.", text: [
+      "The files each step reads besides the design, which no step changes: sky130's library, technology and rule files, Tiny Tapeout's tile DEF, and the timing constraints (SDC). An arrow takes them into the step on the same row.",
+      "The design itself passes from step to step down the step column."] },
+    step: { name: "Step (tool: engine)", short: "The steps of the flow from top to bottom, each with the program that runs it.", text: [
+      "One box per step, from top to bottom in the order the flow runs them, except that the two ABC rows alternate inside one ABC script. On the right of each box after the RTL source is the program or service that runs the step and, after a colon, the part of it or the program it calls that the step uses; most are parts of OpenROAD.",
+      "The bracket marks the steps LibreLane runs, from Lint to LVS. Some steps check the design rather than change it, such as the flow's Lint, static timing analysis, DRC and LVS."] },
+    rep: { name: "Design representation", short: "The form the design is in at each step; a bar lasts as long as that form.", text: [
+      "The form the design is in as it passes down the flow. A bar runs roughly from the step that produces the form to the last step that reads it, so its length shows how long the form lasts. The final gate netlist, written from OpenDB at the end of place and route for timing, LVS, the precheck and the gate-level test, has no bar. The notes in the OpenDB bar say what each step adds to it or which step reads it.",
+      "The narrow column on the right holds two files written from the main form: SPEF, which static timing analysis reads, and GDSII, which lasts to the end."] },
+    verif: { name: "Verification", short: "The project's own lint, tests and proofs, which run outside LibreLane.", text: [
+      "The project's own checks of the design, which run outside LibreLane: a stricter lint, simulation tests and formal proofs, run in CI on every push (the gate-level test by Tiny Tapeout's action, after the harden) or locally. The flow's own checks, and Tiny Tapeout's precheck, are steps in the step column.",
+      "The five checks beside the source read the RTL; the SOURCE band has a row for each. The equivalence check sits where the gate netlist is first written, though it compares the final one with the RTL. The gate-level test sits beside the precheck because Tiny Tapeout's action runs both after the harden.",
+      "The dashed boxes in the last row are common checks this project doesn't use."] },
     model: { name: "Simulated / proved as", short: "What each check runs: a compiled simulation model, or the formula a SAT solver proves.", text: ["What each check actually runs: the C++ model from Verilator; vvp from Icarus Verilog, with sky130's cell models for the gate netlist; or the CNF formula MiniSat proves. The equivalence check builds its CNF from the RTL and from the gate netlist's cells modelled by their Liberty functions."] }
   };
 
@@ -715,16 +732,18 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     function mid(r) { return top[r] + P / 2; }
     function bot(r) { return top[r] + P; }
 
-    // lane headers
-    tx(lMain, XI1, 28, "READS", "lh", "end");
-    tx(lMain, XS, 28, "STEP (TOOL: ENGINE)", "lh");
-    tx(lMain, XR, 28, "DESIGN REPRESENTATION", "lh");
-    tx(lMain, XV, 28, "VERIFICATION", "lh");
-    var mh = itemG(lMain, "x:model", "Simulated or proved as: what each check runs", 0);
-    var mt = tx(mh, W - 16, 28, "SIMULATED / PROVED AS", "lh", "end");
-    var mw = mt.getComputedTextLength();
-    el("rect", { x: W - 16 - mw - 2, y: 16, width: mw + 4, height: 16, "class": "hit" }, mh).parentNode.insertBefore(mh.lastChild, mt);
-    el("line", { x1: W - 16 - mw, x2: W - 16, y1: 31, y2: 31, "class": "ul" }, mh);
+    // lane headers: each opens what its column shows
+    function header(key, x, label, anchor, aria) {
+      var g = itemG(lMain, "x:" + key, aria, 0);
+      var t = tx(g, x, 28, label, "lh", anchor), w = t.getComputedTextLength(), x0 = anchor === "end" ? x - w : x;
+      g.insertBefore(el("rect", { x: x0 - 2, y: 16, width: w + 4, height: 16, "class": "hit" }), t);
+      el("line", { x1: x0, x2: x0 + w, y1: 31, y2: 31, "class": "ul" }, g);
+    }
+    header("reads", XI1, "READS", "end", "Reads: the fixed files each step reads");
+    header("step", XS, "STEP (TOOL: ENGINE)", null, "Step, tool and engine: the steps in order");
+    header("rep", XR, "DESIGN REPRESENTATION", null, "Design representation: the form the design is in");
+    header("verif", XV, "VERIFICATION", null, "Verification: the checks outside LibreLane");
+    header("model", W - 16, "SIMULATED / PROVED AS", "end", "Simulated or proved as: what each check runs");
     el("line", { x1: 16, x2: W - 16, y1: 35, y2: 35, "class": "rule" }, lBack);
 
     BANDS.forEach(function (b, bi) {
@@ -1127,8 +1146,8 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     }
   });
 
-  // the note's names link like everywhere else
-  Array.prototype.forEach.call(document.querySelectorAll(".note .rich"), function (span) {
+  // the names in the text around the chart link like everywhere else
+  Array.prototype.forEach.call(document.querySelectorAll(".page .rich"), function (span) {
     var t = span.textContent; span.textContent = ""; rich(span, t);
   });
 
