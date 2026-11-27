@@ -273,7 +273,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     // file formats and representations
     rtl: { name: "RTL", sub: "Design representation", short: "Register-transfer level: registers and the logic that computes their next values each clock.", text: [
       "Register-transfer level: hardware described as registers and the logic that computes their next values on each clock, in a language such as SystemVerilog.",
-      "Here: 12 hand-written SystemVerilog files, read by Verilator, Icarus Verilog and Yosys."] },
+      "Here: 12 SystemVerilog files, read by Verilator, Icarus Verilog and Yosys."] },
     rtlil: { name: "RTLIL", sub: "Design representation", text: ["RTL Intermediate Language: Yosys's internal netlist. Modules contain wires and cells; cells range from word-level operators (add, compare, multiplex, flip-flops) down to single-bit gates. It can be written out as text."] },
     aig: { name: "AIG", alias: ["And-Inverter Graph", "AIGs"], sub: "Design representation", text: [
       "And-Inverter Graph: combinational logic as 2-input AND nodes with an optional inversion on each edge. The uniform structure makes structural hashing and rewriting simple.",
@@ -445,8 +445,8 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   // ---------------------------------------------------------------- steps
   // fail: what makes the flow stop; watch: costs and caveats.
   var S = {
-    rtl: { name: "RTL source", tool: "12 SystemVerilog files", short: "The hand-written SystemVerilog source: 12 files, one clock.",
-      text: ["Hand-written source: one top module with Tiny Tapeout's fixed port list, one 25.2 MHz clock, synchronous active-low reset."] },
+    rtl: { name: "RTL source", tool: "12 SystemVerilog files", short: "The SystemVerilog source: 12 files, one clock.",
+      text: ["One top module with Tiny Tapeout's fixed port list, one 25.2 MHz clock, synchronous active-low reset."] },
     lint: { name: "Lint", lab: "Verilator", short: "Static checks of the RTL: widths, undriven or unused signals, latches, multiple drivers.",
       in: "RTL", out: "warning and error counts",
       how: "Verilator elaborates the design and runs its static checks: width mismatches, undriven and unused signals, latches, multiple drivers, and timing constructs that cannot be synthesised.",
