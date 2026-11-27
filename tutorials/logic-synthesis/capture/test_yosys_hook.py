@@ -115,3 +115,28 @@ def test_a_design_with_processes_is_dumped_as_rtlil():
     ys.Design([FakeModule("top", processes=True), FakeModule("cell")]).run_pass("hierarchy")
     assert ys.calls[3][2] == ["write_rtlil", "/d/0001.il"]
     assert records == [{"command": ["hierarchy"], "dump": "0001.il"}]
+
+
+def test_with_rtlil_every_dump_also_writes_rtlil_from_the_same_copy_and_log_level():
+    # JSON first, as without the option, then RTLIL of the same copy in the same log level.
+    ys = FakeYs()
+    records = []
+    yosys_hook.install(ys, dump_dir="/d", record=records.append, rtlil=True)
+    d = ys.Design([FakeModule("top"), FakeModule("cell")])
+    d.run_pass("opt_expr")
+    assert [c[0] for c in ys.calls] == ["run_pass", "sort", "log_push", "Pass.call",
+                                        "Pass.call", "log_pop"]
+    copy = ys.calls[1][1]
+    assert copy is not d
+    assert ys.calls[3][1:] == (copy, ["write_json", "/d/0001.json"])
+    assert ys.calls[4][1:] == (copy, ["write_rtlil", "/d/0001.il"])
+    assert records == [{"command": ["opt_expr"], "dump": "0001.json", "also": ["0001.il"]}]
+
+
+def test_with_rtlil_a_design_with_processes_is_written_once_as_rtlil():
+    ys = FakeYs()
+    records = []
+    yosys_hook.install(ys, dump_dir="/d", record=records.append, rtlil=True)
+    ys.Design([FakeModule("top", processes=True)]).run_pass("hierarchy")
+    assert [c[2] for c in ys.calls if c[0] == "Pass.call"] == [["write_rtlil", "/d/0001.il"]]
+    assert records == [{"command": ["hierarchy"], "dump": "0001.il"}]

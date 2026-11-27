@@ -26,7 +26,9 @@ It makes two captures:
    blocks not yet turned into cells): JSON cannot hold those, so these dumps are RTLIL,
    Yosys's own text format. A dump writes a copy of the design, so it cannot change the
    design. The copy is sorted by name. The dump is written inside a log level of its own, so
-   the log's numbering stays the same.
+   the log's numbering stays the same. With `--rtlil`, every dump written as JSON is also
+   written as RTLIL, from the same copy and in the same log level, so the design after each
+   command is also in the text Yosys itself writes.
 
 Each capture's `manifest.json` lists its inputs with their SHA-256 (sources, configuration,
 liberty files, the container image, the Yosys version), the container command, its outputs
@@ -50,16 +52,21 @@ The dump capture against the plain one, and against its own log:
 - The netlists are byte-identical to the plain capture's.
 - Its log, with the dumps' log lines taken out, is identical to the plain capture's after
   normalisation. A dump's lines are its header, the blank line before it, and for RTLIL the
-  line with the file name. Yosys prints that blank line only if the log does not already
-  end with one. So where a dump is followed by a line that is not blank, the blank line
-  before it is kept if the line before that is not blank and the plain log has a blank line
-  there followed by the same line.
+  line with the file name. With `--rtlil`, a JSON dump's lines also include the RTLIL
+  backend's header that follows it (`N.2.` under the same `N`), the blank line before it
+  and the line with the file name. Yosys prints that blank line only if the log does not
+  already end with one. So where a dump is followed by a line that is not blank, the blank
+  line before it is kept if the line before that is not blank and the plain log has a blank
+  line there followed by the same line.
 - There is one dump per numbered top-level command of the log, in order. Each command's
   header must name it. The script prints a few headers of its own between commands, and
   the hook records them. Only one command may print a second top-level header: `hierarchy`,
   with "Executing AST frontend in derive mode". The manifest lists these. A command that
   prints no header must leave the design unchanged: its dump must be byte-identical to the
-  one before.
+  one before. With `--rtlil`, both of its files must be: the RTLIL also holds Yosys's
+  `autoidx`, the counter for automatic names, so this check is stricter than JSON alone.
+- Each command's record in `commands.jsonl` lists every file of its dump. With `--rtlil`,
+  every JSON dump has an RTLIL file beside it; without, none has.
 - Each of the log's statistics printouts has the same cell counts by type as the dump after
   that command.
 - The last dump equals `tt_um_tiny_breakout.nl.v.json`, apart from the order of each
@@ -91,9 +98,10 @@ In the output folder:
   folder per call, each with the `stdcells.genlib` Yosys wrote for ABC). The plain
   capture's manifest says which ABC folder belongs to which call.
 - `dumps/dumps/raw/`: every dump, numbered in command order, and `commands.jsonl`, the
-  script's commands and its own headers, in order.
-- `dumps/dumps/after/NNN.json` (or `NNN.il`): a link to the dump after numbered command NNN
-  of the log.
+  script's commands and its own headers, in order. With `--rtlil`, a dump's RTLIL file
+  shares its number (`0042.json` and `0042.il`), and its record lists it under `also`.
+- `dumps/dumps/after/NNN.json` (or `NNN.il`, or both with `--rtlil`): a link to the dump
+  after numbered command NNN of the log.
 
 ### Running it
 
@@ -102,15 +110,24 @@ In the project's `.venv`, from the repository root. The capture needs Docker and
 `ghcr.io/librelane/librelane@sha256:f91b21d75f79871f9ccf37451020b5d2f7b3236881a997ff709c561e8280a30f`
 (Yosys 0.62). Each container is capped at 2 GB. The two runs take about 40 seconds in all.
 To run a command before each container run, for example one that waits for free memory,
-give it with `--gate` or in the `CAPTURE_GATE` environment variable.
+give it with `--gate` or in the `CAPTURE_GATE` environment variable. To write RTLIL beside
+every JSON dump, give `--rtlil`, which passes `CAPTURE_DUMP_RTLIL=1` to the dump capture's
+container. The RTLIL files add about half the size of the JSON ones.
 
 ```sh
 .venv/bin/python tutorials/logic-synthesis/capture/capture.py runs/exp_rowtail OUT_DIR
+.venv/bin/python tutorials/logic-synthesis/capture/capture.py --rtlil runs/exp_rowtail OUT_DIR
 .venv/bin/python tutorials/logic-synthesis/capture/capture.py --prove-only runs/exp_rowtail OUT_DIR
 .venv/bin/pytest tutorials/logic-synthesis/capture          # unit tests, under a second
 .venv/bin/pytest tutorials/logic-synthesis/capture --slow   # also the full capture, in a temporary folder
 ```
 
+The slow tests also run the capture with `--rtlil` and check that its JSON dumps and
+records are the same as without it.
+
 `capture.py` prints each check's result. It exits 0 if every check passes and 1 if one
 fails. It refuses to write over an earlier capture. `--prove-only` runs the checks again on
-the captures in `OUT_DIR` and rewrites their manifests.
+the captures in `OUT_DIR` and rewrites their manifests. It takes `--rtlil` from the dump
+capture's recorded container command, rebuilds each capture's command and fails the check
+if it differs from the recorded one. Giving `--rtlil` for a capture made without it is an
+error.

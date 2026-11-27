@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for the pure parts of capture.py. The container runs are in test_capture_slow.py."""
 
+import json
+
 import pytest
 
 import capture
@@ -134,3 +136,98 @@ def test_place_dumps_refuses_a_different_file_in_the_way(tmp_path):
     (tmp_path / "after" / "014.json").write_text("a")
     with pytest.raises(ValueError, match="014.json is not a link to raw/0001.json"):
         capture.place_dumps(raw, tmp_path / "after", [(14, "0001.json")])
+
+
+def test_place_dumps_links_rtlil_beside_json(tmp_path):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    for name in ["0001.il", "0002.json", "0002.il", "0003.json", "0003.il"]:
+        (raw / name).write_text(name)
+    kept = [(14, "0001.il"), (16, "0003.json")]
+    paths = capture.place_dumps(raw, tmp_path / "after", kept)
+    # The path returned is the dump's own file, the one the record names.
+    assert paths == {14: tmp_path / "after" / "014.il", 16: tmp_path / "after" / "016.json"}
+    assert sorted(p.name for p in (tmp_path / "after").iterdir()) == [
+        "014.il", "016.il", "016.json"]
+    assert (tmp_path / "after" / "016.il").samefile(raw / "0003.il")
+    assert capture.place_dumps(raw, tmp_path / "after", kept) == paths
+
+
+def test_same_dumps_compares_every_file_of_both_dumps(tmp_path):
+    for name, text in [("0001.json", "a"), ("0001.il", "x"), ("0002.json", "a"),
+                       ("0002.il", "x"), ("0003.json", "a"), ("0003.il", "y"),
+                       ("0004.json", "a")]:
+        (tmp_path / name).write_text(text)
+    assert capture.same_dumps(tmp_path, "0002.json", "0001.json")
+    assert not capture.same_dumps(tmp_path, "0003.json", "0002.json")  # the RTLIL differs
+    assert not capture.same_dumps(tmp_path, "0004.json", "0002.json")  # no RTLIL
+    assert capture.same_dumps(tmp_path, "0004.json", "0004.json")
+
+
+def test_container_env_passes_the_dump_options():
+    base = {"HOME": "/tmp", "CAPTURE_LIBRELANE_SCRIPT": "/s.py"}
+    assert capture.container_env("/s.py", None) == base
+    assert capture.container_env("/s.py", "/d/raw") == {**base, "CAPTURE_DUMP_DIR": "/d/raw"}
+    assert capture.container_env("/s.py", "/d/raw", rtlil=True) == {
+        **base, "CAPTURE_DUMP_DIR": "/d/raw", "CAPTURE_DUMP_RTLIL": "1"}
+
+
+def test_recorded_rtlil_reads_the_container_environment():
+    argv = capture.docker_argv("img", "1:1", "/w", [], capture.container_env("/s.py", "/d", True),
+                               ["yosys", "CAPTURE_DUMP_RTLIL=1"])
+    assert capture.recorded_rtlil(argv)
+    argv = capture.docker_argv("img", "1:1", "/w", [], capture.container_env("/s.py", "/d"),
+                               ["yosys", "CAPTURE_DUMP_RTLIL=1"])
+    assert not capture.recorded_rtlil(argv)  # only an -e setting counts
+
+
+def test_command_check_compares_the_recorded_and_rebuilt_commands():
+    ok = capture.command_check(["docker", "run", "-e", "X=1"], ["docker", "run", "-e", "X=1"])
+    assert ok["passed"] and ok["detail"] == "the recorded command, rebuilt word for word"
+    bad = capture.command_check(["docker", "run", "-e", "X=1"], ["docker", "run", "-e", "X=2"])
+    assert not bad["passed"]
+    assert bad["detail"] == "word 3: recorded 'X=1', rebuilt 'X=2'"
+    short = capture.command_check(["docker", "run"], ["docker", "run", "-q"])
+    assert short["detail"] == "word 2: recorded (none), rebuilt '-q'"
+
+
+def _records_dir(tmp_path, names):
+    for name in names:
+        (tmp_path / name).write_text(name)
+    return tmp_path
+
+
+def test_check_dump_records_with_rtlil(tmp_path):
+    raw = _records_dir(tmp_path, ["0001.il", "0002.json", "0002.il"])
+    records = [{"log_header": "x"}, {"command": ["proc"], "dump": "0001.il"},
+               {"command": ["opt"], "dump": "0002.json", "also": ["0002.il"]}]
+    assert capture.check_dump_records(raw, records, rtlil=True) == []
+    # Without the option, a JSON dump must have nothing beside it.
+    assert capture.check_dump_records(raw, records, rtlil=False) == [
+        "dump 0002.json lists also ['0002.il'], but the command has no CAPTURE_DUMP_RTLIL=1"]
+
+
+def test_check_dump_records_finds_files_the_records_do_not_list(tmp_path):
+    raw = _records_dir(tmp_path, ["0001.json", "0001.il", "0002.json"])
+    records = [{"command": ["opt"], "dump": "0001.json"},
+               {"command": ["opt"], "dump": "0002.json", "also": ["0002.il"]}]
+    assert capture.check_dump_records(raw, records, rtlil=False) == [
+        "dump 0001.json: recorded ['0001.json'], on disk ['0001.il', '0001.json']",
+        "dump 0002.json: recorded ['0002.il', '0002.json'], on disk ['0002.json']",
+        "dump 0002.json lists also ['0002.il'], but the command has no CAPTURE_DUMP_RTLIL=1"]
+    assert capture.check_dump_records(raw, records[1:], rtlil=True) == [
+        "dump 0002.json: recorded ['0002.il', '0002.json'], on disk ['0002.json']"]
+    assert capture.check_dump_records(raw, records[:1], rtlil=True)[-1] == (
+        "dump 0001.json lists no also, but the command has CAPTURE_DUMP_RTLIL=1")
+
+
+def test_prove_only_refuses_rtlil_the_recording_lacks(tmp_path):
+    run, out = tmp_path / "run", tmp_path / "out"
+    (run / "06-yosys-synthesis").mkdir(parents=True)
+    (out / "dumps").mkdir(parents=True)
+    argv = capture.docker_argv("img", "1:1", "/w", [], capture.container_env("/s.py", "/d"),
+                               ["yosys"])
+    (out / "dumps" / "manifest.json").write_text(json.dumps({"commands": [argv]}))
+    with pytest.raises(SystemExit, match="--rtlil was given, but the dump capture in .* was "
+                                         "made without it"):
+        capture.main([str(run), str(out), "--prove-only", "--rtlil"])

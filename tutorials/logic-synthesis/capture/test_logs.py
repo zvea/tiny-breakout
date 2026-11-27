@@ -214,3 +214,25 @@ def test_strip_dumps_restores_no_blank_line_after_another_one():
     dump = " Yosys 1.23\n\n1. Executing X pass.\nx\n\n\n1.1. Executing JSON backend.\ny\n"
     plain = " Yosys 1.23\n\n1. Executing X pass.\nx\n\n\ny\n"
     assert logs.strip_dumps(dump, plain) == " Yosys 1.23\n\n1. Executing X pass.\nx\n\ny\n"
+
+
+def test_strip_dumps_takes_out_rtlil_written_beside_json():
+    # With RTLIL beside JSON, the RTLIL backend follows in the same log level, as N.2.
+    dump = DUMP_LOG.replace(
+        "1.1. Executing JSON backend.\n",
+        "1.1. Executing JSON backend.\n\n1.2. Executing RTLIL backend.\n"
+        "Output filename: /d/0001.il\n").replace(
+        "3.1. Executing JSON backend.\n",
+        "3.1. Executing JSON backend.\n\n3.2. Executing RTLIL backend.\n"
+        "Output filename: /d/0004.il\n")
+    assert logs.events(dump) == logs.events(DUMP_LOG)
+    assert logs.strip_dumps(dump, PLAIN_LOG) == PLAIN_LOG
+    plain = PLAIN_LOG.replace("top.\n[INFO]", "top.\n\n[INFO]")
+    assert logs.strip_dumps(dump, plain) == plain
+
+
+def test_strip_dumps_keeps_an_rtlil_header_under_another_number():
+    # Only RTLIL in the dump's own log level, right after its JSON, belongs to the dump.
+    dump = DUMP_LOG.replace("3.1. Executing JSON backend.\n",
+                            "3.1. Executing JSON backend.\n\n4.2. Executing RTLIL backend.\n")
+    assert logs.strip_dumps(dump, PLAIN_LOG) == PLAIN_LOG + "\n4.2. Executing RTLIL backend.\n"

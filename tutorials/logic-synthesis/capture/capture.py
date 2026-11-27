@@ -4,14 +4,17 @@
 """Re-runs a run's Yosys synthesis step in LibreLane's container, twice, and checks both
 reruns against the run.
 
-Usage: capture.py [--gate COMMAND] [--prove-only] RUN_DIR OUT_DIR
+Usage: capture.py [--gate COMMAND] [--rtlil] [--prove-only] RUN_DIR OUT_DIR
 
 - OUT_DIR/plain: the step as the run ran it, keeping ABC's temporary files.
 - OUT_DIR/dumps: the same, with the design written after every command of the script: as
-  JSON, or as RTLIL while the design has processes.
+  JSON, or as RTLIL while the design has processes. With --rtlil, also as RTLIL beside
+  every JSON dump.
 
 Each writes a manifest.json with its inputs, commands and check results. Exits 0 if every
-check passes, 1 if one fails. --prove-only runs the checks again on existing captures.
+check passes, 1 if one fails. --prove-only runs the checks again on existing captures. It
+takes --rtlil from the dump capture's recorded command, and checks that each recorded
+command is the one the capture rebuilds.
 
 The gate command, from --gate or the CAPTURE_GATE environment variable, runs before each
 container run, for example to wait for free memory. Without one, containers start at once.
@@ -135,23 +138,88 @@ def gate_command(option, environ):
     return shlex.split(text) if text else None
 
 
+def dump_files(raw, name):
+    """{suffix: path} for every file of dump `name`: its own file and any written beside it
+    (such as 0012.il beside 0012.json), which share its stem."""
+    return {p.suffix: p for p in sorted(raw.glob(Path(name).stem + ".*"))}
+
+
+def same_dumps(raw, name, other):
+    """Whether two dumps have the same files, each byte-identical."""
+    a, b = dump_files(raw, name), dump_files(raw, other)
+    return a.keys() == b.keys() and all(filecmp.cmp(a[s], b[s], shallow=False) for s in a)
+
+
 def place_dumps(raw, after, kept):
-    """Links each kept dump as after/NNN.json (or .il), for the header number NNN.
+    """Links each kept dump as after/NNN.json (or .il, or both), for the header number NNN.
 
     Leaves every dump in raw. Links already there are kept. Raises ValueError if another
-    file is in the way. Returns {header number: path}.
+    file is in the way. Returns {header number: path of the file the record names}.
     """
     after.mkdir(exist_ok=True)
     paths = {}
     for n, name in kept:
-        path = after / f"{n:03d}{Path(name).suffix}"
-        if path.exists():
-            if not path.samefile(raw / name):
-                raise ValueError(f"{path.name} is not a link to raw/{name}")
-        else:
-            os.link(raw / name, path)
-        paths[n] = path
+        for suffix, source in dump_files(raw, name).items():
+            path = after / f"{n:03d}{suffix}"
+            if path.exists():
+                if not path.samefile(source):
+                    raise ValueError(f"{path.name} is not a link to raw/{source.name}")
+            else:
+                os.link(source, path)
+        paths[n] = after / f"{n:03d}{Path(name).suffix}"
     return paths
+
+
+def container_env(script, dump_dir, rtlil=False):
+    """The container's environment for yosys_hook.py."""
+    env = {"HOME": "/tmp", "CAPTURE_LIBRELANE_SCRIPT": script}
+    if dump_dir:
+        env["CAPTURE_DUMP_DIR"] = dump_dir
+        if rtlil:
+            env["CAPTURE_DUMP_RTLIL"] = "1"
+    return env
+
+
+def recorded_rtlil(argv):
+    """Whether a recorded container command set CAPTURE_DUMP_RTLIL=1 (with -e)."""
+    return any(a == "-e" and b == "CAPTURE_DUMP_RTLIL=1" for a, b in zip(argv, argv[1:]))
+
+
+def command_check(recorded, rebuilt):
+    """Whether the container command a manifest recorded is the one the capture rebuilds."""
+    name = "container command rebuilt from the recording"
+    if recorded == rebuilt:
+        return {"name": name, "passed": True,
+                "detail": "the recorded command, rebuilt word for word"}
+    i = next(i for i, (a, b) in enumerate(zip(recorded + [None], rebuilt + [None])) if a != b)
+    word = lambda w: "(none)" if w is None else repr(w)
+    return {"name": name, "passed": False,
+            "detail": f"word {i}: recorded {word((recorded + [None])[i])}, "
+                      f"rebuilt {word((rebuilt + [None])[i])}"}
+
+
+def check_dump_records(raw, records, rtlil):
+    """Problems with the hook's records of dumps against the files in raw. Empty if none.
+
+    Each command's record must list every file of its dump: `dump` and any `also`. A JSON
+    dump has `also` exactly when the capture ran with CAPTURE_DUMP_RTLIL=1.
+    """
+    problems = []
+    for r in records:
+        if "command" not in r:
+            continue
+        name = r["dump"]
+        listed = sorted([name, *r.get("also", [])])
+        on_disk = sorted(p.name for p in dump_files(raw, name).values())
+        if listed != on_disk:
+            problems.append(f"dump {name}: recorded {listed}, on disk {on_disk}")
+        if "also" in r and not rtlil:
+            problems.append(f"dump {name} lists also {r['also']}, but the command has no "
+                            "CAPTURE_DUMP_RTLIL=1")
+        elif "also" not in r and rtlil and name.endswith(".json"):
+            problems.append(f"dump {name} lists no also, but the command has "
+                            "CAPTURE_DUMP_RTLIL=1")
+    return problems
 
 
 def sha256(path):
@@ -203,7 +271,7 @@ def yosys_version(log_text):
 class Capture:
     """One rerun of the step: its folders, inputs and container command."""
 
-    def __init__(self, kind, run, step, out, rtl, user):
+    def __init__(self, kind, run, step, out, rtl, user, rtlil=False):
         self.kind, self.run, self.step = kind, Path(run), step
         self.dir = Path(out) / kind
         self.run_step = self.run / step
@@ -213,9 +281,8 @@ class Capture:
         self.top = self.config["DESIGN_NAME"]
         self.log = self.dir / "yosys-synthesis.log"
         self.dump_dir = self.dir / "dumps" if kind == "dumps" else None
-        env = {"HOME": "/tmp", "CAPTURE_LIBRELANE_SCRIPT": self.script}
-        if self.dump_dir:
-            env["CAPTURE_DUMP_DIR"] = str(self.dump_dir / "raw")
+        self.rtlil = rtlil
+        env = container_env(self.script, self.dump_dir and str(self.dump_dir / "raw"), rtlil)
         self.argv = docker_argv(
             IMAGE, user, str(self.dir / "abc"),
             mounts(str(self.run), step, str(self.dir), str(rtl), self.config["DESIGN_DIR"],
@@ -276,7 +343,7 @@ def prove_dumps(c, plain):
     """Checks a dump capture against the plain one, and its dumps against the log.
 
     Every dump stays in dumps/raw. The one after each numbered command is linked as
-    dumps/after/NNN.json (or NNN.il).
+    dumps/after/NNN.json (or NNN.il, or both).
     """
     results = [
         proofs.identical("nl.v identical to the plain capture's", c.netlist(), plain.netlist()),
@@ -289,9 +356,9 @@ def prove_dumps(c, plain):
     raw = c.dump_dir / "raw"
     records = [json.loads(line) for line in (raw / "commands.jsonl").read_text().splitlines()]
     a = proofs.assign_dumps(logs.events(text), records)
-    problems = list(a.problems)
+    problems = list(a.problems) + check_dump_records(raw, records, c.rtlil)
     for name, previous in a.unchanged:
-        if previous is None or not proofs.identical("", raw / name, raw / previous)["passed"]:
+        if previous is None or not same_dumps(raw, name, previous):
             problems.append(f"dump {name} (a command without a header) differs from {previous}")
     plain_numbers = [n for n, _ in logs.top_level_headers(plain.log.read_text(encoding="utf-8"))]
     covered = sorted([n for n, _ in a.kept] + a.script_headers + [n for n, _ in a.inner_headers])
@@ -299,6 +366,7 @@ def prove_dumps(c, plain):
         problems.append("the dumps' headers are not the plain log's headers 1 to "
                         f"{len(plain_numbers)}")
     commands = sum("command" in r for r in records)
+    also = sum("also" in r for r in records)
     unchanged = [next(r["command"][0] for r in records if r.get("dump") == name)
                  for name, _ in a.unchanged]
     results.append({
@@ -308,7 +376,8 @@ def prove_dumps(c, plain):
          f"kept, one per command with a header; {len(a.unchanged)} commands without a header "
          f"left the design unchanged ({', '.join(unchanged)}); headers printed by the script "
          f"between commands: {a.script_headers}; printed inside another command: "
-         + ", ".join(f"{h} (in {o})" for h, o in a.inner_headers))})
+         + ", ".join(f"{h} (in {o})" for h, o in a.inner_headers)
+         + (f"; {also} dumps also written as RTLIL" if c.rtlil else ""))})
     if problems:
         return results
     kept = place_dumps(raw, c.dump_dir / "after", a.kept)
@@ -360,6 +429,8 @@ def main(argv=None):
     parser.add_argument("out", help="the folder to write the captures to")
     parser.add_argument("--gate", help="a command to run before each container run "
                         "(default: $CAPTURE_GATE; none if unset)")
+    parser.add_argument("--rtlil", action="store_true",
+                        help="in the dump capture, also write every JSON dump as RTLIL")
     parser.add_argument("--prove-only", action="store_true",
                         help="run the checks again on the captures already in OUT_DIR")
     args = parser.parse_args(argv)
@@ -371,7 +442,15 @@ def main(argv=None):
     gate = gate_command(args.gate, os.environ)
     if args.prove_only:
         rtl = out / "rtl" / "src"
+        # The dump option comes from the recorded command. Each capture's command is rebuilt
+        # with it and checked against the recording below.
+        rtlil = recorded_rtlil(
+            json.loads((out / "dumps" / "manifest.json").read_text())["commands"][0])
+        if args.rtlil and not rtlil:
+            sys.exit(f"--rtlil was given, but the dump capture in {out / 'dumps'} was made "
+                     "without it (its recorded command has no CAPTURE_DUMP_RTLIL=1)")
     else:
+        rtlil = args.rtlil
         for kind in ("rtl", "plain", "dumps"):
             if (out / kind).exists():
                 sys.exit(f"{out / kind} exists; remove it first")
@@ -379,12 +458,16 @@ def main(argv=None):
         rtl = build_rtl(repo, out / "rtl")
     plain = Capture("plain", run, step, out, rtl, user)
     image = inspect_image()
-    dumps = Capture("dumps", run, step, out, rtl, user)
+    dumps = Capture("dumps", run, step, out, rtl, user, rtlil)
     passed = True
     for c in (plain, dumps):
+        checks = []
         if args.prove_only:
             old = json.loads((c.dir / "manifest.json").read_text())
             code, seconds = old["exit_code"], old["seconds"]
+            checks.append(command_check(old["commands"][0], c.argv))
+            # Nothing runs again, so the manifest keeps the command that made the capture.
+            c.argv = old["commands"][0]
         else:
             c.prepare()
             print(f"{c.kind}: running the step", flush=True)
@@ -396,6 +479,7 @@ def main(argv=None):
             results = proofs.guarded(prove_plain, c)
         else:
             results = proofs.guarded(prove_dumps, c, plain)
+        results = checks + results
         m = manifest(c, rtl, repo, image, code, seconds, results)
         (c.dir / "manifest.json").write_text(json.dumps(m, indent=1) + "\n")
         print(f"{c.kind}:")

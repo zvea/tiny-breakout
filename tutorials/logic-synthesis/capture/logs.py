@@ -12,6 +12,9 @@ _HEADER = re.compile(r"(\d+)\. (.+)")
 _DUMP_MARKER = re.compile(r"(\d+)\.1\. Executing (?:JSON|RTLIL) backend\.")
 # The RTLIL backend logs one more line, with the file's name.
 _RTLIL_FILENAME = re.compile(r"Output filename: .*")
+# With RTLIL beside JSON, the RTLIL backend follows the JSON backend in the same log level,
+# so its header is "N.2." under the same N.
+_RTLIL_BESIDE = "{}.2. Executing RTLIL backend."
 
 
 def top_level_headers(text):
@@ -117,10 +120,12 @@ def strip_dumps(text, reference):
     """A dump run's log with the dumps' lines taken out, to compare with `reference`.
 
     A dump's lines are its marker, the blank line before it, and for RTLIL the file name
-    line. Yosys prints that blank line only if the log does not already end with one. So
-    when the dump is followed by a line that is not blank, the blank line may be the log's
-    own. It is kept if the line before it is not blank, and `reference`, the same log
-    without dumps, has a blank line there followed by the same line.
+    line. A dump written as JSON and RTLIL also has the RTLIL backend's header (N.2), the
+    blank line before it and the file name line. Yosys prints the blank line before a
+    marker only if the log does not already end with one. So when the dump is followed by a
+    line that is not blank, the blank line may be the log's own. It is kept if the line
+    before it is not blank, and `reference`, the same log without dumps, has a blank line
+    there followed by the same line.
     """
     lines = text.split("\n")
     ref = reference.split("\n")
@@ -131,10 +136,11 @@ def strip_dumps(text, reference):
             kept.append(lines[i])
             i += 1
             continue
-        rtlil = "RTLIL" in lines[i]
-        i += 1
-        if rtlil and i < len(lines) and _RTLIL_FILENAME.fullmatch(lines[i]):
-            i += 1
+        number = _DUMP_MARKER.fullmatch(lines[i]).group(1)
+        i = _after_backend(lines, i)
+        if (i + 1 < len(lines) and lines[i] == ""
+                and lines[i + 1] == _RTLIL_BESIDE.format(number)):
+            i = _after_backend(lines, i + 1)
         kept.pop()
         # Restore the blank line only if the line before it is not blank, and the reference
         # has the blank line here, followed by the same line.
@@ -143,6 +149,15 @@ def strip_dumps(text, reference):
                 and k + 1 < len(ref) and ref[k] == "" and ref[k + 1] == lines[i]):
             kept.append("")
     return "\n".join(kept)
+
+
+def _after_backend(lines, i):
+    """The index after a dump's backend header at lines[i], and for RTLIL its file name."""
+    rtlil = "RTLIL" in lines[i]
+    i += 1
+    if rtlil and i < len(lines) and _RTLIL_FILENAME.fullmatch(lines[i]):
+        i += 1
+    return i
 
 
 # Normalisation: the differences allowed between the run's log and a capture's. Each rule is
