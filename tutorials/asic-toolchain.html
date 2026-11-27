@@ -11,18 +11,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Tiny Breakout Toolchain</title>
+<script>
+// the theme before the first paint: the saved choice, else the system's. The key is shared by
+// all the tutorials, so the choice carries across; this page's earlier key is read as a fallback.
+(function () {
+  var t = null;
+  try { t = window.localStorage.getItem("tb-tutorial-theme") || window.localStorage.getItem("tb-toolchain-theme"); } catch (e) {}
+  if (t !== "light" && t !== "dark") t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", t);
+})();
+</script>
 <style>
 /* One figure drawn like a design-review chart. Rows are steps in run order; lanes are
-   side inputs | step (tool: engine) | design representation | verification | simulated/proved as. */
+   side inputs | step (tool: engine) | design representation | verification | simulated/proved as.
+   The colours, the header, the buttons, the shortcuts panel, the defined terms and the note are
+   the physical design tutorial's rules, unchanged, so the tutorials look like one site. */
 :root {
   --bg: #ffffff;
   --ink: #1b1d1f;
   --muted: #5d6369;
   --rule: #c9cdd1;
   --bar: #eef0f2;
-  --box: #ffffff;
   --focus: #1a56c4;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --box: #ffffff;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -38,25 +51,62 @@
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.5; }
 .page {
-  max-width: 1360px; margin: 0 auto; padding-block: 20px 28px;
+  max-width: 1360px; margin: 0 auto; padding-block: 14px 28px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-h1 { font-size: 19px; font-weight: 600; margin: 0 0 2px; }
-.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.theme {
-  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;
-  color: var(--muted); background: none; cursor: pointer; border: 1px solid var(--rule); border-radius: 2px;
+
+/* the header across the top: the title, the theme switch and the shortcuts */
+.top {
+  display: flex; align-items: center; gap: 20px; border-bottom: 1px solid var(--rule); background: var(--bg);
+  padding-block: calc(8px + env(safe-area-inset-top, 0px)) 6px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px));
 }
-.theme svg { width: 16px; height: 16px; display: block; }
-.theme:hover { color: var(--ink); border-color: var(--muted); }
-.theme:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.hint { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+.brand { flex: none; }
+.tools { flex: none; display: flex; gap: 8px; }
+/* with no steps between them: the tools to the right, and the physical design page's line height */
+.brand + .tools { margin-left: auto; }
+.top { line-height: 1.45; }
+/* the bar stays on screen while the long chart scrolls, so the theme and ? buttons are always at
+   hand; what scrolls into view (a focused chart item) stops below it */
+.top { position: sticky; top: 0; z-index: 10; }
+html { scroll-padding-top: 72px; }
+#help { font-size: 15px; font-weight: 600; }
+h1 { font-size: 17px; font-weight: 700; margin: 0; color: var(--focus); }
+.brand p { margin: 0; color: var(--muted); font-size: 12px; }
+.iconbtn {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0;
+  color: var(--muted); background: var(--bg); cursor: pointer; border: 1px solid var(--rule); border-radius: 2px;
+}
+.iconbtn svg { width: 16px; height: 16px; display: block; }
+.iconbtn:hover:not(:disabled) { color: var(--ink); border-color: var(--muted); }
+.iconbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* the keyboard shortcuts, over everything */
+.help { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.4); padding: 16px; }
+.help[hidden] { display: none; }
+.helpcard { position: relative; max-width: 460px; width: 100%; box-sizing: border-box; background: var(--bg); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 18px 22px 16px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25); font-size: 14px; line-height: 1.45; }
+.helpcard h2 { margin: 0 0 10px; font-size: 17px; }
+.helpcard h3 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.helpcard table { border-collapse: collapse; width: 100%; }
+.helpcard td { padding: 4px 0; vertical-align: top; }
+.helpcard td:first-child { white-space: nowrap; padding-right: 14px; }
+.helpcard kbd { font: inherit; font-size: 12.5px; border: 1px solid var(--rule); border-radius: 3px; padding: 0 5px; background: var(--bar); }
+.helpclose { position: absolute; top: 10px; right: 10px; font-size: 18px; }
+/* a short window scrolls the panel rather than cut it off */
+.helpcard { max-height: 100%; overflow-y: auto; }
+@media (pointer: coarse) { .iconbtn { width: 40px; height: 40px; } }
+@media (max-width: 760px) {
+  .top { flex-wrap: wrap; gap: 8px 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); }
+  .brand { flex: 1; }
+}
+
+/* The chart keeps its text at 10 px or more on screen, as the physical design tutorial does with
+   its figures: its smallest text is 10.5 units of 1360, so it is drawn at least 1296 px wide and
+   scrolls sideways in a narrower window. */
 .figure { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.figure svg { display: block; width: 100%; min-width: 1040px; height: auto; }
+.figure svg { display: block; width: 100%; min-width: 1296px; height: auto; }
 .scrollnote { display: none; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
-.work[data-mode="sheet"] .scrollnote { display: block; }
-.work[data-mode="sheet"] .figure svg { min-width: 1180px; }
+.work.overflows .scrollnote { display: block; }
 
 svg text { font-family: var(--font); fill: var(--ink); white-space: pre; }
 svg .lh { font-size: 10.5px; letter-spacing: 0.06em; fill: var(--muted); }
@@ -76,7 +126,10 @@ svg .pt, svg .it { pointer-events: none; }
 /* Links keep their colour in every state; only the underline and the focus ring change. */
 svg .ul { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 1 2; opacity: 0.6; }
 svg [data-item], svg [data-tool] { outline: none; }
-svg [data-item], svg [data-tool] { cursor: pointer; }
+/* a defined name shows its definition, as the terms do on the physical design page; a box is a
+   control that opens its step */
+svg [data-item] { cursor: pointer; }
+svg [data-tool] { cursor: help; }
 svg [data-tool]:hover .ul { opacity: 1; stroke-dasharray: none; }
 svg [data-tool]:focus-visible .hit { stroke: var(--focus); stroke-width: 1.5; }
 svg [data-item]:hover .box, svg [data-item]:hover .barr, svg [data-item]:hover .gapbox { stroke: var(--ink); }
@@ -86,56 +139,90 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
 .pop {
   position: fixed; inset: auto; margin: 0; box-sizing: border-box; width: 360px; max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px); overflow: auto;
-  background: var(--bg); color: var(--ink); border: 1px solid var(--muted); border-radius: 2px;
+  background: var(--bg); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   padding: 10px 12px 12px; font: 13px/1.45 var(--font);
 }
 .pop:focus { outline: none; }
-.pop .ph { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.pop h2 { font-size: 14px; font-weight: 600; margin: 0; }
+.pop .ph { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.pop h2 { font-size: 14px; font-weight: 600; margin: 3px 0 0; }
 .pop .sub { color: var(--muted); margin: 0 0 6px; }
 .pop p { margin: 0 0 6px; }
 .pop p:last-child { margin-bottom: 0; }
 .pop dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 10px; margin: 0; }
 .pop dt { color: var(--muted); }
 .pop dd { margin: 0; }
-.pop .x {
-  font: inherit; font-size: 12px; color: var(--muted); background: none; flex: none;
-  border: 1px solid var(--rule); border-radius: 2px; padding: 0 6px; cursor: pointer;
-}
+/* the close button: the shortcuts panel's, pulled into the heading's corner */
+.pop .x { flex: none; font-size: 18px; margin: -4px -6px 0 0; }
+/* in the sheet the 40px button reaches into the padding above and the line below, so the heading
+   row stays the heading's height; the line below keeps clear of it */
+.pop.sheet .x { margin: -8px -8px -10px 0; }
+.pop.sheet .sub { padding-right: 36px; }
 .pop.sheet {
   left: 0; right: 0; bottom: 0; top: auto; width: auto; max-width: none; border-width: 1px 0 0;
+  border-radius: 4px 4px 0 0;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
 }
-.pop.sheet .x { padding: 4px 10px; }
-.tn, .tn:hover, .tn:focus, .tn:active {
-  font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
-  text-decoration: underline dotted; text-decoration-color: var(--muted); text-underline-offset: 3px;
+/* defined terms in the text: the physical design page's dotted underline, in the text's colour */
+.tn {
+  font: inherit; line-height: 1.2; color: inherit; background: none; padding: 0; margin: 0;
+  border: 0; border-bottom: 1px dotted currentColor; border-radius: 0; cursor: help;
 }
-.tn:hover { text-decoration-style: solid; }
-.tn:focus-visible, .pop .x:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .tip {
-  position: fixed; inset: auto; margin: 0; box-sizing: border-box; max-width: min(320px, calc(100vw - 16px));
-  background: var(--bg); color: var(--ink); border: 1px solid var(--muted); border-radius: 2px;
-  padding: 5px 8px; font: 12.5px/1.4 var(--font); pointer-events: none; overflow: visible;
+  position: fixed; inset: auto; margin: 0; box-sizing: border-box; max-width: min(300px, calc(100vw - 16px));
+  background: var(--bg); color: var(--ink); border: 1px solid var(--rule); border-radius: 2px;
+  padding: 5px 8px; font: 12px/1.4 var(--font); pointer-events: none; overflow: visible;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
-.asof { margin: 18px 0 0; color: var(--muted); font-size: 12px; }
-.asof a { color: inherit; }
+.tip b { font-weight: 600; }
+/* what the chart describes: the physical design page's note */
+.note { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13.5px; }
+.note a { color: inherit; text-underline-offset: 2px; }
 </style>
 </head>
 <body>
-<div class="page">
-  <div class="head">
+<header class="top">
+  <div class="brand">
     <h1>Tiny Breakout toolchain</h1>
-    <button type="button" class="theme" id="theme" aria-label="Switch theme"></button>
+    <p>From the RTL to the finished GDS, and how it is checked</p>
   </div>
-  <p class="hint" id="hint">Hover or focus a box or an underlined name for a short definition; click or press Enter for details. Escape closes the top popover.</p>
+  <div class="tools">
+    <button type="button" class="iconbtn" id="theme" aria-label="Switch theme"></button>
+    <button type="button" class="iconbtn" id="help" aria-label="Keyboard shortcuts (?)" title="Keyboard shortcuts (?)" aria-haspopup="dialog">?</button>
+  </div>
+</header>
+<div class="help" id="helpbox" role="dialog" aria-modal="true" aria-labelledby="helptitle" hidden>
+  <div class="helpcard">
+    <button type="button" class="iconbtn helpclose" id="helpclose" aria-label="Close">&times;</button>
+    <h2 id="helptitle">Keyboard shortcuts</h2>
+    <table>
+      <tr><td><kbd>Tab</kbd></td><td>The next button, chart or name; the chart is one stop</td></tr>
+      <tr><td><kbd>&uarr;</kbd> <kbd>&darr;</kbd></td><td>In the chart: the row above or below, in the same column where possible</td></tr>
+      <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>In the chart: the box or name to the left or right</td></tr>
+      <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>In the chart: the first or last box or name</td></tr>
+      <tr><td><kbd>Enter</kbd> or <kbd>Space</kbd></td><td>Open the details of a box or name in a popup</td></tr>
+      <tr><td><kbd>Tab</kbd> in a popup</td><td>Its names in turn; past the last, close it and go on from what opened it. <kbd>Shift</kbd>+<kbd>Tab</kbd> before the first goes back to what opened it.</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Close the top popup and go back to what opened it, or close this panel</td></tr>
+      <tr><td><kbd>?</kbd></td><td>Show this panel</td></tr>
+    </table>
+    <h3>With the mouse or by touch</h3>
+    <table>
+      <tr><td>Hover</td><td>A short definition of a box or an underlined name</td></tr>
+      <tr><td>Click or tap</td><td>The details in a popup; a name in it opens another</td></tr>
+      <tr><td>Click or tap outside</td><td>Close the popups; &times; closes one</td></tr>
+      <tr><td>Scroll sideways</td><td>The rest of the chart, in a narrow window</td></tr>
+    </table>
+  </div>
+</div>
+<div class="page">
   <div class="work" id="work" data-mode="pop">
     <p class="scrollnote">The chart is wider than the screen; scroll it sideways.</p>
     <div class="figure" id="figure"></div>
   </div>
-  <p class="asof"><span id="asof">Describes the flow as of November 2026: LibreLane 3.0.14 under Tiny Tapeout's sky26e action, sky130, as of commit 2c6b0f6 of</span> <a href="https://github.com/zvea/tiny-breakout">tiny-breakout</a>.</p>
+  <p class="note"><span class="rich">Describes the flow as of</span> <a href="https://github.com/zvea/tiny-breakout/commit/2c6b0f6f80b467ea4f3e959c48467c28bc162692">commit 2c6b0f6</a> <span class="rich">of tiny-breakout (November 2026): LibreLane 3.0.14 under Tiny Tapeout's sky26e action, with sky130.</span></p>
   <div id="pops"></div>
   <div id="tip" class="tip" role="tooltip" popover="manual"></div>
 </div>
@@ -143,12 +230,8 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
 <script>
 (function () {
   "use strict";
-  // Theme: the saved choice, else the system preference read once at load. The button
-  // shows the theme it switches to. The key is shared by all the tutorials, so the choice
-  // carries across; this page's earlier key is read as a fallback.
-  var themeBtn = document.getElementById("theme"), theme = null;
-  try { var saved = window.localStorage.getItem("tb-tutorial-theme") || window.localStorage.getItem("tb-toolchain-theme"); if (saved === "light" || saved === "dark") theme = saved; } catch (e) {}
-  if (!theme) theme = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  // Theme: set in the head before the first paint; the button shows the theme it switches to.
+  var themeBtn = document.getElementById("theme"), theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
   var ICONS = {
     light: '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M3.2 12.8l1.1-1.1M11.7 4.3l1.1-1.1"/></svg>',
     dark: '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M13.6 9.6A5.6 5.6 0 0 1 6.4 2.4a5.6 5.6 0 1 0 7.2 7.2z"/></svg>'
@@ -587,7 +670,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     return t;
   }
   function itemG(parent, key, label, oy) {
-    return el("g", { "data-item": key, tabindex: "0", role: "button", "aria-label": label, "data-oy": oy }, parent);
+    return el("g", { "data-item": key, tabindex: "-1", role: "button", "aria-label": label, "data-oy": oy }, parent);
   }
   // Chart text: every known name becomes its own focusable target; plain parts let the
   // pointer through to the box underneath.
@@ -601,7 +684,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     if (anchor === "end") x -= total;
     parts.forEach(function (p, i) {
       if (p.k) {
-        var g = el("g", { "data-tool": p.k, tabindex: "0", role: "button", "aria-label": D[p.k].name }, wrap);
+        var g = el("g", { "data-tool": p.k, tabindex: "-1", role: "button", "aria-label": D[p.k].name }, wrap);
         el("rect", { x: x - 1, y: y - 12, width: widths[i] + 2, height: 16, "class": "hit" }, g);
         tx(g, x, y, p.t, cls);
         el("line", { x1: x, x2: x + widths[i], y1: y + 3, y2: y + 3, "class": "ul" }, g);
@@ -614,7 +697,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   }
 
   function render(fig) {
-    var svg = el("svg", { role: "group", "aria-label": "Tiny Breakout toolchain: steps, design representations, side inputs and verification" });
+    var svg = el("svg", { role: "group", "aria-label": "Tiny Breakout toolchain: steps, design representations, side inputs and verification; arrow keys move between items, Enter opens one" });
     fig.appendChild(svg);
     var defs = el("defs", {}, svg);
     var mk = el("marker", { id: "ah", viewBox: "0 0 8 8", refX: "7.5", refY: "4", markerWidth: "6", markerHeight: "6",
@@ -742,6 +825,8 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       svgRich(lMain, x + gw - 8, by + 17, gg.tool, "tl", "end", by);
     });
     svg.setAttribute("viewBox", "0 0 " + W + " " + (by + BH + 14));
+    // the rows the arrow keys move between: the lane headers, the steps, the gaps
+    svg.__rows = [0].concat(Object.keys(top).map(function (r) { return top[r]; }).sort(function (a, b) { return a - b; }), [by]);
 
     // paint and tab order: row by row, left to right, so labels sit above their boxes
     var nodes = Array.prototype.slice.call(lMain.querySelectorAll(":scope > [data-oy]"));
@@ -783,7 +868,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     var head = document.createElement("div"); head.className = "ph";
     var h = document.createElement("h2"); h.id = id; h.textContent = d.title; head.appendChild(h);
     var x = document.createElement("button");
-    x.type = "button"; x.className = "x"; x.textContent = "Close"; x.setAttribute("aria-label", "Close " + d.title);
+    x.type = "button"; x.className = "iconbtn x"; x.innerHTML = "&times;"; x.setAttribute("aria-label", "Close " + d.title);
     x.addEventListener("click", function (e) { e.stopPropagation(); pop.hidePopover(); });
     head.appendChild(x);
     pop.appendChild(head);
@@ -884,7 +969,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       closedAt = { el: pop.__invoker, t: Date.now() };
       var hadFocus = pop.contains(document.activeElement) || document.activeElement === document.body;
       pop.remove();
-      if (hadFocus && pop.__invoker.isConnected) { suppressTip = true; pop.__invoker.focus({ preventScroll: true }); }
+      if (hadFocus && !pop.__noRefocus && pop.__invoker.isConnected) { suppressTip = true; pop.__invoker.focus({ preventScroll: true }); }
     });
     pop.showPopover();
     placePop(pop, anchor, parent, level);
@@ -909,7 +994,9 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     if (t) tipShow(t); else tipHide();
   });
   document.addEventListener("focusout", tipHide);
-  document.addEventListener("scroll", tipHide, true);
+  // (not for the scroll that brings an arrow-key target into view: its tooltip is on the way)
+  var navScrollAt = 0;
+  document.addEventListener("scroll", function () { if (Date.now() - navScrollAt > 200) tipHide(); }, true);
   document.addEventListener("click", function (e) {
     var c = targetOf(e.target);
     if (!c) return;
@@ -919,33 +1006,157 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   });
 
   var work = document.getElementById("work"), fig = document.getElementById("figure");
+  // the scroll note shows whenever the chart is wider than the window
   function setMode() {
     work.setAttribute("data-mode", sheetMode() ? "sheet" : "pop");
-    if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches)
-      document.getElementById("hint").textContent = "Tap a box or an underlined name for details; tap a name inside to go deeper. Close or tap outside to dismiss.";
+    work.classList.toggle("overflows", fig.scrollWidth > fig.clientWidth + 1);
   }
-  setMode();
   var svgEl = render(fig);
+  setMode();
   fig.__names = NAME_MAP;   // read by the automated link check
   if (sheetMode()) fig.scrollLeft = Math.max(0, (XS - 24) * fig.scrollWidth / W);
+
+  // ---------------------------------------------------------------- keys in the chart
+  // The chart is one tab stop: the box or name last focused there, at first the RTL source.
+  // Up and Down go to the nearest row above or below with an item in the same lane (else in any
+  // lane), keeping to the column they started from; Left and Right go along the row; Home and End
+  // go to the first and last item in reading order. Positions are in chart units, measured once.
+  var LANES = [90, XS - 2, XLL, XV, XM - 6];   // labels | reads | step | representation | verification | models
+  var navItems = Array.prototype.slice.call(svgEl.querySelectorAll("[data-item], [data-tool]")), nav = null, navX = null, navAt = null;
+  function navModel() {
+    if (nav) return nav;
+    var sr = svgEl.getBoundingClientRect(), k = W / sr.width, rows = svgEl.__rows;
+    nav = navItems.map(function (n) {
+      var r = n.getBoundingClientRect(), x0 = (r.left - sr.left) * k, x1 = (r.right - sr.left) * k, y0 = (r.top - sr.top) * k;
+      var cx = (x0 + x1) / 2, row = 0, lane = 0;
+      rows.forEach(function (t, i) { if (t <= y0 + 3) row = i; });
+      LANES.forEach(function (b, i) { if (cx >= b) lane = i + 1; });
+      return { el: n, cx: cx, row: row, lane: lane };
+    });
+    nav.sort(function (a, b) { return a.row - b.row || a.cx - b.cx; });
+    return nav;
+  }
+  function setStop(n) { navItems.forEach(function (m) { m.tabIndex = m === n ? 0 : -1; }); }
+  setStop(svgEl.querySelector('[data-item="rtl"]'));
+  // (on the figure, not the svg: Chromium makes an SVG element with a focus listener a tab stop)
+  fig.addEventListener("focusin", function (e) {
+    var n = e.target.closest && e.target.closest("[data-item], [data-tool]");
+    if (n) setStop(n);
+  });
+  function navMove(cur, key) {
+    var m = navModel(), a = m.filter(function (o) { return o.el === cur; })[0];
+    if (!a) return null;
+    if (key === "Home") return m[0];
+    if (key === "End") return m[m.length - 1];
+    if (key === "ArrowLeft" || key === "ArrowRight") {
+      var row = m.filter(function (o) { return o.row === a.row; }), i = row.indexOf(a);
+      return row[key === "ArrowLeft" ? i - 1 : i + 1] || null;
+    }
+    var down = key === "ArrowDown", x = navAt === cur ? navX : a.cx;
+    function pick(cands) {
+      if (!cands.length) return null;
+      var best = cands.reduce(function (p, o) { return (down ? o.row < p.row : o.row > p.row) ? o : p; });
+      cands = cands.filter(function (o) { return o.row === best.row; });
+      return cands.reduce(function (p, o) { return Math.abs(o.cx - x) < Math.abs(p.cx - x) ? o : p; });
+    }
+    var ahead = m.filter(function (o) { return down ? o.row > a.row : o.row < a.row; });
+    var b = pick(ahead.filter(function (o) { return o.lane === a.lane; })) || pick(ahead);
+    if (b) { navX = x; navAt = b.el; }
+    return b;
+  }
   svgEl.addEventListener("keydown", function (e) {
     var el = e.target.closest && e.target.closest("[data-item], [data-tool]");
-    if (!el) return;
+    if (!el || e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       var c = targetOf(el);
       openPop(c.key, c.el, true);
-    } else if (/^Arrow/.test(e.key)) {
-      var list = Array.prototype.slice.call(svgEl.querySelectorAll("[data-item], [data-tool]"));
-      var i = list.indexOf(el), j = (e.key === "ArrowDown" || e.key === "ArrowRight") ? i + 1 : i - 1;
-      if (list[j]) { e.preventDefault(); list[j].focus(); }
+    } else if (/^(Arrow(Up|Down|Left|Right)|Home|End)$/.test(e.key)) {
+      e.preventDefault();
+      var to = navMove(el, e.key);
+      if (to) { navScrollAt = Date.now(); to.el.focus({ preventScroll: true }); to.el.scrollIntoView({ block: "nearest", inline: "nearest" }); }
     }
   });
 
-  // the "as of" line's names link like everywhere else
-  var asof = document.getElementById("asof"), asofText = asof.textContent;
-  asof.textContent = "";
-  rich(asof, asofText);
+  // ---------------------------------------------------------------- Tab in popovers
+  // As on the physical design page: Tab past a popover's last name closes it and goes on to
+  // whatever follows its opener; Shift+Tab before its first goes back to the opener. In a nested
+  // popover "what follows" is looked for in its parent, and past the parent's end the parent
+  // closes too.
+  function focusables(scope) {
+    return Array.prototype.filter.call(scope.querySelectorAll("a[href], button, input, [tabindex]"), function (x) {
+      return x.tabIndex >= 0 && !x.closest("[hidden]") && x.getAttribute("aria-hidden") !== "true" && x.getClientRects().length;
+    });
+  }
+  function closePop(pop) { if (pop.matches(":popover-open")) pop.hidePopover(); }
+  function tabOut(pop, back) {
+    var opener = pop.__invoker, parent = opener.closest(".pop");
+    pop.__noRefocus = true;
+    closePop(pop);
+    if (!opener.isConnected) return;
+    suppressTip = false;
+    if (back) { suppressTip = true; opener.focus({ preventScroll: true }); return; }
+    var scope = parent || document;
+    var next = focusables(scope).filter(function (x) {
+      return x.closest(".pop") === parent && (opener.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING);
+    })[0];
+    if (next) next.focus();
+    else if (parent) tabOut(parent, false);
+    else opener.blur();
+  }
+  // Tab from an opener whose popover is open, opened by the mouse for instance, goes into it
+  function openPopOf(opener) {
+    return Array.prototype.filter.call(document.querySelectorAll(".pop"), function (p) {
+      return p.__invoker === opener && p.matches(":popover-open");
+    })[0];
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Tab" || e.altKey || e.ctrlKey || e.metaKey) return;
+    var t = !e.shiftKey && targetOf(e.target), into = t && t.el === e.target && openPopOf(t.el);
+    if (into) {
+      var f = focusables(into).filter(function (x) { return x.closest(".pop") === into; })[0];
+      e.preventDefault(); (f || into).focus({ preventScroll: true }); return;
+    }
+    var pop = e.target.closest && e.target.closest(".pop");
+    if (!pop) return;
+    var own = focusables(pop).filter(function (x) { return x.closest(".pop") === pop; });
+    var first = own[0], last = own[own.length - 1];
+    if (e.shiftKey ? (e.target === pop || e.target === first) : e.target === last) {
+      e.preventDefault();
+      tabOut(pop, e.shiftKey);
+    }
+  });
+
+  // the note's names link like everywhere else
+  Array.prototype.forEach.call(document.querySelectorAll(".note .rich"), function (span) {
+    var t = span.textContent; span.textContent = ""; rich(span, t);
+  });
+
+  // ---------------------------------------------------------------- the shortcuts panel
+  // As on the physical design page: the ? button or key opens it; Esc, its close button or a
+  // click outside it closes it, and focus goes back where it was. The popovers sit above it, so
+  // they close first; focus then goes back to the chart item or name that opened them.
+  var helpbox = document.getElementById("helpbox"), helpFrom = null;
+  function showHelp() {
+    helpFrom = document.activeElement;
+    var inPop = helpFrom && helpFrom.closest && helpFrom.closest(".pop");
+    if (inPop) { while (inPop.__invoker.closest(".pop")) inPop = inPop.__invoker.closest(".pop"); helpFrom = inPop.__invoker; }
+    tipHide();
+    Array.prototype.forEach.call(pops.children, closePop);
+    helpbox.hidden = false; document.getElementById("helpclose").focus();
+  }
+  function hideHelp() { helpbox.hidden = true; if (helpFrom && helpFrom.focus && helpFrom.isConnected) { suppressTip = true; helpFrom.focus(); } }
+  document.getElementById("help").addEventListener("click", showHelp);
+  document.getElementById("helpclose").addEventListener("click", hideHelp);
+  helpbox.addEventListener("click", function (e) { if (e.target === helpbox) hideHelp(); });
+  document.addEventListener("keydown", function (e) {
+    if (!helpbox.hidden) {
+      if (e.key === "Escape" || e.key === "?") { hideHelp(); e.preventDefault(); }
+      else if (e.key === "Tab") { e.preventDefault(); document.getElementById("helpclose").focus(); }
+      e.stopPropagation(); return;
+    }
+    if (e.key === "?" && !(e.target.closest && e.target.closest("textarea, input, select"))) { showHelp(); e.preventDefault(); e.stopPropagation(); }
+  }, true);
 
   var rt = null, lastW = window.innerWidth;
   window.addEventListener("resize", function () {
