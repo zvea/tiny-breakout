@@ -180,10 +180,10 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   var D = {
     // tools
     librelane: { name: "LibreLane", text: [
-      "Python flow manager, the successor to OpenLane 2. A flow is a list of steps; each step is a Python class that launches one tool process (Verilator, Yosys, OpenROAD with a Tcl or Python script, Magic, Netgen or KLayout), parses its log into metrics and hands the next step a state: the paths of the current netlist, .odb, DEF, SDC, SPEF and GDSII.",
+      "Python flow manager, the successor to OpenLane 2. A flow is a list of steps; each step is a Python class that runs a tool (Verilator, Yosys, OpenROAD with a Tcl or Python script, OpenSTA, Magic, Netgen or KLayout), parses its log into metrics and hands the next step a state: the paths of the current netlist, .odb, DEF, SDC, SPEF and GDSII.",
       "Checker steps fail the run on metric thresholds. LibreLane has no synthesis, placement or routing algorithms of its own."] },
     yosys: { name: "Yosys", short: "Open-source synthesis framework: reads the RTL, transforms it with passes, and calls ABC for logic optimisation and mapping.", text: [
-      "Open-source synthesis framework. It reads Verilog and much of SystemVerilog into RTLIL and transforms it with a script of passes: elaboration, FSM and arithmetic extraction, flattening, technology mapping.",
+      "Open-source synthesis framework. It reads Verilog and a subset of SystemVerilog into RTLIL and transforms it with a script of passes: elaboration, FSM and arithmetic extraction, flattening, technology mapping.",
       "Logic optimisation and mapping to cells are handed to ABC. In this project Yosys also runs the model proof of the brick wall and the equivalence check of the routed netlist against the RTL."] },
     abc: { name: "ABC", text: [
       "Logic synthesis and verification program from UC Berkeley. It represents combinational logic as an AIG, optimises it by local rewriting, and maps it to library cells by cut enumeration.",
@@ -191,21 +191,21 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     openroad: { name: "OpenROAD", text: [
       "One application for physical design, built around OpenDB, a single in-memory database holding the netlist, the technology and the layout.",
       "Its engines began as separate research tools and are still developed as modules: ifp (floorplan), ppl (pins), tapcell, PDNGen (power grid), RePlAce (global placement), OpenDP (detailed placement), TritonCTS (clock tree), the Resizer (sizing, buffering), FastRoute (global routing), the antenna checker, TritonRoute (detailed routing), OpenRCX (extraction), PSM (power grid analysis) and OpenSTA (timing).",
-      "They are linked into the one executable and run as Tcl commands on the shared database, not as plugins or separate programs. OpenSTA is also distributed as a standalone timer. LibreLane starts a fresh OpenROAD process for each step, which loads the previous step's .odb file."] },
+      "They are linked into the one executable and run as Tcl commands on the shared database, not as plugins or separate programs. OpenSTA is also distributed as a standalone timer. Each LibreLane step that uses it starts a fresh OpenROAD process, which loads the previous step's .odb file."] },
     ifp: { name: "ifp", alias: ["InitFloorplan"], sub: "OpenROAD module", short: "OpenROAD's floorplan module: die, core area, rows of placement sites and routing tracks.", text: [
       "InitFloorplan, OpenROAD's floorplan module. It creates the die and the core area, the rows of placement sites and the routing tracks of each metal layer."] },
     ppl: { name: "ppl", sub: "OpenROAD module", text: [
       "OpenROAD's pin placer: it assigns I/O pins to slots on the die edge so that wires to the connected cells are short.",
       "Skipped in this flow: Tiny Tapeout's tile DEF fixes every pin."] },
     tapcell: { name: "tapcell", sub: "OpenROAD module", text: [
-      "OpenROAD module that inserts well-tap cells in a staggered pattern, so that no transistor is farther from a tap than the process allows (13 " + UM + " apart here), and endcap cells at both ends of every row."] },
+      "OpenROAD module that inserts well-tap cells in a staggered pattern, so that no transistor is farther from a tap than the process allows, and endcap cells at both ends of every row. Here most rows have a tap every 25.76 " + UM + ", each row offset by half that from the next."] },
     pdngen: { name: "PDNGen", sub: "OpenROAD module", short: "OpenROAD's power-grid generator: rails, straps and the vias between them.", text: [
-      "OpenROAD's power-grid generator. From a grid specification it draws the rails along the standard cell rows, the straps on upper metal layers and the vias between them, and connects them to the power pins."] },
+      "OpenROAD's power-grid generator. From a grid specification it draws the rails along the standard cell rows, the straps on upper metal layers and the vias between them. Here its metal-4 straps are also the design's power pins."] },
     replace: { name: "RePlAce", sub: "OpenROAD module (gpl)", text: [
       "OpenROAD's global placer. It models cells as charges in an electrostatic system and minimises wirelength plus density energy with Nesterov's method.",
       "Timing-driven and routability-driven modes re-weight critical nets and inflate cells in congested regions."] },
     opendp: { name: "OpenDP", sub: "OpenROAD module (dpl)", short: "OpenROAD's detailed placer; it also places filler and decap cells.", text: [
-      "OpenROAD's detailed placer. It legalises a placement by moving each cell to a nearby free site in a row without overlaps, then improves wirelength with local moves.",
+      "OpenROAD's detailed placer. It legalises a placement by moving each cell to a nearby free site in a row without overlaps. In this flow it then flips cells left to right where that shortens their wires.",
       "The same module places filler and decap cells in the remaining gaps."] },
     tritoncts: { name: "TritonCTS", sub: "OpenROAD module (cts)", text: [
       "OpenROAD's clock tree synthesis module. It clusters the flip-flops' clock pins by location, builds a buffered tree over the clusters, and picks buffers and wire segments from characterised clock-buffer data so that the clock arrives at all flip-flops at nearly the same time."] },
@@ -220,7 +220,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     tritonroute: { name: "TritonRoute", sub: "OpenROAD module (drt)", text: [
       "OpenROAD's detailed router. Within the global route guides it assigns tracks and runs a maze search with costs for design-rule violations, then repeatedly rips up and reroutes the offending nets until the layout is clean."] },
     openrcx: { name: "OpenRCX", sub: "OpenROAD module (rcx)", short: "OpenROAD's parasitic extractor; it writes SPEF.", text: [
-      "OpenROAD's parasitic extractor. It computes each routed wire's resistance and its capacitance to ground and to neighbouring wires from pattern tables calibrated for the process, and writes SPEF."] },
+      "OpenROAD's parasitic extractor. It computes each routed wire's capacitance to ground and to neighbouring wires from pattern tables calibrated for the process, and writes SPEF. In this flow the wires' resistance comes from the sheet resistance in the tech LEF."] },
     opensta: { name: "OpenSTA", sub: "OpenROAD module; also standalone", text: [
       "Static timing analyser from Parallax Software, built into OpenROAD and also distributed as a standalone program. It reads Verilog netlists, Liberty, SDC and SPEF, propagates arrival and required times through the timing graph and reports slack.",
       "Inside OpenROAD the Resizer and TritonCTS call it to evaluate their changes."] },
@@ -278,7 +278,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     aig: { name: "AIG", alias: ["And-Inverter Graph", "AIGs"], sub: "Design representation", text: [
       "And-Inverter Graph: combinational logic as 2-input AND nodes with an optional inversion on each edge. The uniform structure makes structural hashing and rewriting simple.",
       "ABC builds it from the BLIF that Yosys writes, optimises and maps it, and writes BLIF back. It exists only in memory."] },
-    blif: { name: "BLIF", sub: "File format", text: ["Berkeley Logic Interchange Format: a plain-text netlist of logic gates and latches, from UC Berkeley. Yosys hands logic to ABC as BLIF and reads ABC's mapped result back as BLIF."] },
+    blif: { name: "BLIF", sub: "File format", text: ["Berkeley Logic Interchange Format: a plain-text netlist of logic gates and storage elements, from UC Berkeley. Yosys hands logic to ABC as BLIF and reads ABC's mapped result back as BLIF."] },
     netlist: { name: "gate netlist", alias: ["powered gate netlist"], sub: "Design representation", short: "Verilog netlist of sky130 cells, written by Yosys and read by OpenROAD.", text: [
       "Structural Verilog: instances of sky130_fd_sc_hd cells and the nets between their pins, without behaviour. Yosys writes it; OpenROAD reads it.",
       "After routing OpenROAD writes it out again with the added buffers, clock tree and delay cells, plus a powered version whose cells also connect to VPWR and VGND. LVS, the equivalence check and the gate-level test read those."] },
@@ -290,10 +290,10 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     clef: { name: "cell LEF", sub: "Side input", text: ["LEF abstract of each standard cell: outline, pin shapes and layers, and blockages where routing may not pass. Placement and routing work on these abstracts; Magic also builds the layout for extraction from them."] },
     tracks: { name: "tracks file", alias: ["tracks.info"], sub: "Side input", text: ["A short file giving the routing track pitch and offset for each metal layer (tracks.info). In this flow it, not the tech LEF, sets the tracks."] },
     def: { name: "DEF", alias: ["Design Exchange Format"], sub: "File format", text: ["Design Exchange Format: text description of a physical design: die area, rows, tracks, placed cells, pins, and routed wires and vias, naming cells whose shapes come from LEF. OpenROAD writes it beside its database; Magic and KLayout read it."] },
-    tdef: { name: "tile DEF", sub: "Side input", text: ["Tiny Tapeout's DEF template for a 1x1 tile: die size and the names, shapes and positions of the signal and power pins. Applied at pin placement and checked again at precheck."] },
+    tdef: { name: "tile DEF", sub: "Side input", text: ["Tiny Tapeout's DEF template for a 1x1 tile: die size and the names, shapes and positions of the signal pins. Applied at pin placement and checked again at precheck."] },
     sdc: { name: "SDC", alias: ["Synopsys Design Constraints"], sub: "File format; side input", short: "Timing constraints as Tcl commands: here the 39.7 ns clock, I/O delays, driving cell and loads.", text: [
-      "Synopsys Design Constraints: timing requirements as Tcl commands. Here: a 39.7 ns clock (25.2 MHz) on clk with 0.25 ns uncertainty, input and output delays of 20% of the period, an inverter as the driving cell of every input, and 0.033 pF loads on the outputs.",
-      "LibreLane generates it and adds from its configuration a 5% timing derate and limits of 0.75 ns transition, 0.2 pF capacitance and fanout 10. OpenROAD and OpenSTA read it; ABC gets only the driving cell and the output load, not the clock."] },
+      "Synopsys Design Constraints: timing requirements as Tcl commands. Here: a 39.7 ns clock (25.2 MHz) on clk with a 0.25 ns margin for clock jitter and other variation, input and output delays of 20% of the period, an inverter as the driving cell of every input, and 0.033 pF loads on the outputs.",
+      "LibreLane generates it and adds from its configuration a 5% timing derate and limits of 0.75 ns transition, 0.2 pF capacitance and fanout 10. OpenROAD and OpenSTA read it. ABC reads the driving cell and the output load, but its mapping uses neither, nor the clock."] },
     spef: { name: "SPEF", alias: ["Standard Parasitic Exchange Format"], sub: "File format", text: ["Standard Parasitic Exchange Format: the resistor and capacitor network of every routed net. OpenRCX writes one file per wire corner; OpenSTA reads them."] },
     sdf: { name: "SDF", alias: ["Standard Delay Format"], sub: "File format", text: ["Standard Delay Format: computed delays of every cell and wire, for back-annotating gate-level simulation. OpenSTA writes it here; nothing in this project reads it."] },
     gdsii: { name: "GDSII", alias: ["GDS"], sub: "File format", text: [
@@ -304,17 +304,17 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       "A netlist in the input format of the SPICE circuit simulator.",
       "Here Magic extracts one from the routed layout: the cell instances and the nets between them, named from pin labels. Netgen compares it with the powered gate netlist."] },
     cspice: { name: "cell SPICE", sub: "Side input", text: ["SPICE subcircuit of each standard cell. Both netlists that LVS compares are cell-level; the subcircuits supply each cell's pin list and order to Magic's extraction and to Netgen."] },
-    rcxrules: { name: "RCX rules", sub: "Side input", text: ["Tables of wire resistance and capacitance by layer and geometry, calibrated from foundry extraction, one set per wire corner. Read by OpenRCX."] },
+    rcxrules: { name: "RCX rules", sub: "Side input", text: ["Tables of wire resistance and capacitance by layer and geometry, calibrated from foundry extraction, one set per wire corner. Read by OpenRCX, which in this flow takes only the capacitance from them."] },
     mtech: { name: "Magic tech file", alias: ["Magic tech", "Magic technology file"], sub: "Side input", text: ["Magic's technology file for sky130: layer definitions, GDSII layer mapping, design rules and device extraction rules."] },
     ngs: { name: "Netgen setup", sub: "Side input", text: ["sky130 LVS settings for Netgen: device equivalences, pins that may be swapped, how parallel cells are merged, and property tolerances."] },
     kdrc: { name: "KLayout DRC deck", sub: "Side input", text: ["sky130's design rules written as a Ruby script for KLayout; Tiny Tapeout's precheck runs it."] },
     cnf: { name: "CNF", alias: ["conjunctive normal form"], sub: "Verification model", text: [
       "Conjunctive normal form: a Boolean formula written as an AND of clauses, each an OR of variables or their negations; the input form of SAT solvers. Yosys's proofs unroll the circuit over k clock cycles and encode it, with the negated property, as CNF for MiniSat. Unsatisfiable means proven.",
       "The formula stays in memory. AIGER and SMT-LIB, the formats SymbiYosys hands to external solvers, do not appear in this project."] },
-    cpp: { name: "C++ model", sub: "Verification model", text: ["Verilator translates the RTL into a C++ class that evaluates the whole design once per clock, with 2-state values, compiled with the system's C++ compiler."] },
+    cpp: { name: "C++ model", sub: "Verification model", text: ["Verilator translates the RTL into a C++ class that evaluates the design each time the testbench calls it, with 2-state values, compiled with the system's C++ compiler. The gameplay scenarios call it once per clock."] },
     vvp: { name: "vvp", sub: "Verification model", text: ["Icarus Verilog compiles the RTL or the gate netlist to vvp, a bytecode of nets and events interpreted by its runtime. Event-driven and 4-state: it models every signal change and unknown values."] },
     cellmodels: { name: "cell models", alias: ["Verilog cell models"], sub: "Verification model", text: ["sky130's Verilog model of each standard cell, built from user-defined primitives (UDPs). Icarus Verilog compiles them with the powered gate netlist; no delays are annotated."] },
-    aiger: { name: "AIGER", sub: "File format", text: ["File format for AIGs with latches; the standard input of hardware model checkers."] },
+    aiger: { name: "AIGER", sub: "File format", text: ["File format for AIGs with registers; the standard input of hardware model checkers."] },
     smtlib: { name: "SMT-LIB", sub: "File format", text: ["Standard text format for SMT problems, read by SMT solvers such as Z3 and Yices."] },
 
     // terms
@@ -346,7 +346,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     sva: { name: "SVA", sub: "Term", text: ["SystemVerilog Assertions: SystemVerilog's language for properties a design must satisfy, checked in simulation or proved formally."] },
     sat: { name: "SAT", sub: "Term", text: ["Boolean satisfiability: finding values that make a Boolean formula true, or proving that none exist. Formal hardware proofs encode 'the property fails' as a formula; if no solution exists, the property holds."] },
     smt: { name: "SMT", alias: ["SMT solvers", "SMT solver"], sub: "Term", text: ["Satisfiability modulo theories: SAT extended with arithmetic, bit-vectors and arrays, so word-level hardware properties can be stated directly. SMT solvers such as Z3 and Yices decide them."] },
-    induction: { name: "induction", alias: ["temporal induction", "k-induction"], sub: "Term", short: "Proof over all clock cycles: a base case from reset plus an inductive step.", text: ["Proof by induction over clock cycles: show the property holds for the first k cycles after reset (base case), and that any k consecutive cycles in which it holds are followed by another (inductive step). Together they prove it for every cycle."] },
+    induction: { name: "induction", alias: ["temporal induction", "k-induction"], sub: "Term", short: "Proof over all clock cycles: a base case from reset plus an inductive step.", text: ["Proof by induction over clock cycles: show the property holds for the first k cycles after reset (base case), and that any k consecutive cycles in which it holds are followed by another (inductive step). Together they prove it for every cycle. Yosys's equiv_induct, used by the equivalence check, proves only the inductive step."] },
     mitre: { name: "mitre", sub: "Term", short: "Two designs fed the same inputs with their outputs compared, so equivalence becomes one property to prove.", text: ["A circuit built to compare two designs: both get the same inputs, and each pair of corresponding outputs is compared. The designs are equivalent exactly when no input sequence makes a comparison fail, which turns 'are these the same?' into one property a SAT solver can check. Yosys and ABC build one with a command called 'miter'."] },
     bmc: { name: "bounded model checking", sub: "Term", text: ["Checking a property for every input sequence up to a fixed number of cycles by unrolling the circuit into a SAT or SMT problem. It finds bugs but proves nothing beyond the bound; induction extends it."] },
     refmodel: { name: "reference model", alias: ["reference models"], sub: "Term", text: ["A second description of a module's behaviour, written for clarity rather than size, against which the real module is proved or tested."] },
@@ -359,7 +359,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     alu: { name: "ALU", alias: ["ALU cells"], sub: "Term", text: ["Arithmetic logic unit; here Yosys's word-level cell for add, subtract and compare."] },
     techmap: { name: "technology mapping", sub: "Term", text: ["Implementing a generic logic network with the cells of a specific library."] },
     elab: { name: "elaboration", alias: ["elaborates", "elaborate"], sub: "Term", text: ["Resolving a design's hierarchy, parameters and generate blocks into a concrete set of module instances and signals."] },
-    strash: { name: "structural hashing", alias: ["hashing"], sub: "Term", text: ["Merging AIG nodes that have the same two inputs, so each distinct piece of logic exists once."] },
+    strash: { name: "structural hashing", alias: ["hashing"], sub: "Term", text: ["Merging AIG nodes that have the same two inputs, so no AND of the same two signals is built twice. The same function built in a different structure is not merged."] },
     fx: { name: "factoring", alias: ["fx"], sub: "Term", text: ["Extracting common sub-expressions shared by several functions, so they are computed once."] },
     mfs: { name: "don't-care simplification", alias: ["mfs"], sub: "Term", text: ["Simplifying a node using input combinations that never occur or whose output never matters (don't-cares)."] },
     balancing: { name: "balancing", sub: "Term", text: ["Restructuring chains of AND nodes in an AIG into balanced trees, reducing logic depth."] },
@@ -377,16 +377,16 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     site: { name: "site", alias: ["sites", "placement sites"], sub: "Term", text: ["Placement site: the smallest legal slot in a row, 0.46 x 2.72 " + UM + " in sky130's high-density library. Every cell is a whole number of sites wide."] },
     track: { name: "track", alias: ["tracks", "routing tracks"], sub: "Term", text: ["Routing track: one of the evenly spaced lines on a metal layer along which wires run; their pitches come from the tracks file here."] },
     via: { name: "via", alias: ["vias"], sub: "Term", text: ["A vertical connection between two adjacent metal layers."] },
-    tap: { name: "tap cells", alias: ["well-tap cells", "well-tap", "taps"], sub: "Term", text: ["Well-tap cells connect the n-well and the substrate to the supply rails. Without one close enough, parasitic transistors in the CMOS structure can trigger latch-up."] },
-    endcap: { name: "endcap", alias: ["endcaps", "endcap cells"], sub: "Term", text: ["Endcap cell: a cell at each end of a row that terminates the wells and diffusion cleanly."] },
+    tap: { name: "tap cells", alias: ["well-tap cells", "well-tap", "taps"], sub: "Term", text: ["Well-tap cells connect the n-well and the substrate to the supply rails. Without one close enough, unintended transistors formed by the CMOS structure can trigger latch-up."] },
+    endcap: { name: "endcap", alias: ["endcaps", "endcap cells"], sub: "Term", text: ["Endcap cell: a cell at each end of a row that terminates the wells and diffusion cleanly. sky130's high-density library has none, so this flow uses a decap cell."] },
     decap: { name: "decap", alias: ["decaps", "decap cells"], sub: "Term", text: ["Decoupling capacitor cell: a cell that is only a capacitor between the supply rails, smoothing supply noise when many gates switch at once."] },
     filler: { name: "filler", alias: ["filler cells"], sub: "Term", text: ["Filler cell: a cell without logic that fills a gap in a row so that wells and power rails stay continuous."] },
-    latchup: { name: "latch-up", sub: "Term", text: ["A parasitic thyristor formed by the CMOS structure that, once triggered, shorts the supply. Prevented by tying the wells to the rails with tap cells."] },
+    latchup: { name: "latch-up", sub: "Term", text: ["An unintended thyristor, formed by the CMOS structure, turning on and shorting the supply. Prevented by tying the wells to the rails with tap cells."] },
     pdn: { name: "power grid", alias: ["PDN", "power-grid"], sub: "Term", text: ["Power distribution network: the metal rails, straps and vias that carry VPWR and VGND to every cell."] },
     vpwr: { name: "VPWR", sub: "Term", text: ["sky130's name for the cell supply net, 1.8 V nominal."] },
     vgnd: { name: "VGND", sub: "Term", text: ["sky130's name for the cell ground net."] },
     irdrop: { name: "IR drop", sub: "Term", text: ["Voltage lost across the resistance of the power grid (current I times resistance R), so cells see less than the nominal supply."] },
-    antenna: { name: "antenna", alias: ["antenna ratio", "antenna ratios", "antenna rules"], sub: "Term", text: ["Antenna effect: during manufacture, a metal wire connected only to a transistor gate collects charge from the plasma etch, and a long enough wire can damage the gate oxide. Rules limit the ratio of wire area to gate area on each layer; diodes give the charge a safe path."] },
+    antenna: { name: "antenna", alias: ["antenna ratio", "antenna ratios", "antenna rules"], sub: "Term", text: ["Antenna effect: during manufacture, a metal wire connected only to a transistor gate collects charge from the plasma etch, and a long enough wire can damage the gate oxide. The sky130 rules limit, on each layer, the area of a wire's sidewalls relative to the gate area it reaches; diodes give the charge a safe path."] },
     diode: { name: "diode", alias: ["diodes", "diode cell"], sub: "Term", text: ["Here an antenna diode cell, which gives charge collected on a wire during etching a path to the substrate instead of through the gate."] },
     clocktree: { name: "clock tree", sub: "Term", text: ["The buffers and wires that carry the clock from its pin to every flip-flop."] },
     cts: { name: "CTS", alias: ["clock tree synthesis"], sub: "Term", text: ["Clock tree synthesis: building the clock tree so the clock reaches every flip-flop with small skew."] },
@@ -450,14 +450,14 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     lint: { name: "Lint", lab: "Verilator", short: "Static checks of the RTL: widths, undriven or unused signals, latches, multiple drivers.",
       in: "RTL", out: "warning and error counts",
       how: "Verilator elaborates the design and runs its static checks: width mismatches, undriven and unused signals, latches, multiple drivers, and timing constructs that cannot be synthesised.",
-      fail: "Inferred latches, multiple drivers or timing constructs. Other warnings are only counted." },
+      fail: "Any Verilator error, such as a syntax error or a timing construct; the flow turns inferred latches and multiple drivers into errors. Other warnings are only counted." },
     parse: { name: "Parse and elaborate", lab: "Yosys", short: "Yosys reads the RTL and lowers it to word-level RTLIL: multiplexers and flip-flops.",
       in: "RTL", out: "RTLIL, word-level",
-      how: "The front end builds a syntax tree and lowers it to RTLIL. Each always block becomes a decision tree, then multiplexers feeding flip-flop cells with enable and reset variants. The hierarchy is flattened into one module.",
-      watch: "SystemVerilog outside Yosys's supported subset is rejected. Incomplete assignments become latches, which only lint fails on." },
-    coarse: { name: "Coarse optimisation", lab: "Yosys", short: "Word-level clean-up: constant folding, unused logic, arithmetic grouping, memories to flip-flops.",
+      how: "The front end builds a syntax tree and lowers it to RTLIL. Each always block becomes a decision tree, then multiplexers feeding plain flip-flop cells; coarse optimisation later folds enables and synchronous resets into them. The hierarchy is flattened into one module.",
+      watch: "SystemVerilog outside Yosys's supported subset is rejected. Incomplete assignments become latches. Yosys stops with an error on a latch in an always_comb block, which is how this design writes all its combinational always blocks." },
+    coarse: { name: "Coarse optimisation", lab: "Yosys", short: "Word-level clean-up: constant folding, unused logic, arithmetic grouping, memories to logic.",
       in: "RTLIL, word-level", out: "RTLIL, word-level",
-      how: "Constant folding and removal of unused logic; extraction and re-encoding of state machines; grouping of adders, subtractors and comparators into ALU cells; sharing of operators that are never active together, proved with SAT; small memories become flip-flops. In this design no state machines were found and sharing found nothing." },
+      how: "Constant folding and removal of unused logic; extraction and re-encoding of state machines; grouping of adders, subtractors and comparators into ALU cells; sharing of operators that are never active together, proved with SAT; small memories become logic and flip-flops. In this design no state machines were found, sharing found nothing, and the one memory, a read-only table, became multiplexers of constants." },
     techmap: { name: "Fine-grained mapping", lab: "Yosys", short: "Word-level cells become single-bit gates.",
       in: "RTLIL, word-level", out: "RTLIL, 1-bit gates",
       how: "Each word-level cell is replaced by a gate-level implementation from Yosys's mapping library; an ALU becomes carry logic and XORs. A first ABC pass with a generic gate library simplifies the result." },
@@ -467,47 +467,47 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       watch: "A flip-flop type with no library equivalent costs extra gates." },
     abcopt: { name: "Logic optimisation", lab: "ABC", short: "ABC restructures the logic as an AIG to reduce its size and depth.",
       in: "combinational logic from Yosys, as BLIF", out: "optimised AIG (in memory)",
-      how: "ABC builds an AIG with structural hashing and reduces its size and depth: factoring (fx), don't-care simplification (mfs), then repeated balancing, rewriting and refactoring, keeping structural choices for the mapper. This row and the next alternate inside one ABC script, which Yosys starts once.",
+      how: "ABC first simplifies the logic read from BLIF by factoring (fx) and don't-care simplification (mfs). It then builds an AIG with structural hashing and reduces its size and depth with repeated balancing, rewriting and refactoring, keeping structural choices for the mapper. This row and the next alternate inside one ABC script, which Yosys starts once.",
       watch: "The result depends on the starting structure: reordering register declarations alone moves utilisation by about a point." },
     abcmap: { name: "Technology mapping", lab: "ABC", short: "ABC covers the optimised AIG with sky130 cells: fewest levels first, then least area.",
-      in: "optimised AIG; Liberty (typical corner); an input driving cell and an output load", out: "the logic as sky130 cells, as BLIF, read back into RTLIL",
-      how: "For every AIG node ABC enumerates cuts of a few inputs, matches each cut's function against the Liberty cells, and picks a cover. The script maps three times, re-optimising in between: twice with amap, which picks the cover of least area, and last with &nf, whose result is kept. &nf first finds the cover with the fewest levels of cells, each cell counting as one unit of delay, then reduces its area in five more rounds without adding a level. ABC gets only an input driving cell and an output load, not the clock period.",
+      in: "optimised AIG; Liberty (typical corner)", out: "the logic as sky130 cells, as BLIF, read back into RTLIL",
+      how: "For every AIG node ABC enumerates cuts of a few inputs, matches each cut's function against the Liberty cells, and picks a cover. The script maps three times, re-optimising in between: twice with amap, which picks the cover of least area, and last with &nf, whose result is kept. &nf first finds the cover with the fewest levels of cells, each cell counting as one unit of delay, then reduces its area in five more rounds without adding a level. ABC also reads an input driving cell and an output load, but mapping uses neither, nor the clock period.",
       watch: "Mapping counts levels of cells, not their real delays; timing is repaired after the clock tree is built." },
     clean: { name: "Write gate netlist", lab: "Yosys", short: "Tie cells, single-bit nets and buffers; the gate netlist is written.",
       in: "RTLIL with sky130 cells", out: "gate netlist (Verilog)",
       how: "Constants are driven from tie-high and tie-low cells, buses are split into 1-bit nets, and buffers go where a net drives an output port directly; then the netlist is written.",
-      fail: "Unmapped cells or leftover assign statements." },
+      fail: "Unmapped cells, leftover assign statements, combinational loops or undriven wires." },
     floorplan: { name: "Floorplan", lab: "OpenROAD: ifp", short: "Sets the die, the core area, the rows of placement sites and the routing tracks.",
       in: "gate netlist; tech LEF; cell LEF; tracks file", out: "OpenDB: die, core area, rows, tracks",
       how: "The die is set to 161 x 111.52 " + UM + ", the core area filled with 39 rows of 338 placement sites (0.46 x 2.72 " + UM + "), and routing tracks laid out on each layer from the tracks file.",
       watch: "Too much logic for the tile shows up at global placement." },
     pdn: { name: "Taps and power grid", lab: "OpenROAD: tapcell, PDNGen", short: "Places tap cells and endcaps and draws the power grid.",
       in: "OpenDB", out: "OpenDB + tap cells, endcaps, power grid",
-      how: "tapcell places well-tap cells at the spacing sky130 requires against latch-up, and endcap cells at the row ends. PDNGen draws metal-1 rails along the rows and vertical metal-4 straps, joined by vias and ending on the tile's power pins.",
+      how: "tapcell places well-tap cells at the spacing sky130 requires against latch-up, and endcap cells at the row ends. PDNGen draws metal-1 rails along the rows and vertical metal-4 straps, joined by vias; the metal-4 straps are also the tile's power pins.",
       fail: "Unconnected power-grid shapes, found by a checker right after global placement." },
     pins: { name: "Pin placement", lab: "OpenROAD: OpenDB", short: "Copies the pins from Tiny Tapeout's tile DEF.",
       in: "OpenDB; tile DEF", out: "OpenDB + pins",
       how: "OpenROAD's pin placer (ppl) and the placement steps around it are skipped. A LibreLane Python script, run in OpenROAD's Python interpreter, copies the pin names, shapes and positions from Tiny Tapeout's tile DEF into OpenDB, so every tile presents the same interface." },
     gpl: { name: "Global placement", lab: "OpenROAD: RePlAce", short: "Spreads the cells over the die to minimise wirelength at a target density; overlaps still allowed.",
       in: "OpenDB", out: "OpenDB + cell positions",
-      how: "Analytic placement: cells are treated as electric charges, and a smooth approximation of total wirelength plus an electrostatic density penalty (solved with FFTs) is minimised with Nesterov's method until no region exceeds the target density. The configured 60% is below what this design needs (its cells fill 79% of the core area), so RePlAce raised it to 80%. Cells may still overlap.",
+      how: "Analytic placement: cells are treated as electric charges, and a smooth approximation of total wirelength plus an electrostatic density penalty (solved with FFTs) is minimised with Nesterov's method until little of the cell area lies above the target density; some regions may still exceed it. The configured 60% is below what this design needs (its cells fill 79% of the core area), so RePlAce raised it to 80%. Cells may still overlap.",
       fail: "Only if the cells do not fit in the core area.",
       watch: "Tiny Tapeout's utilisation figure is taken here." },
     rsz1: { name: "Placement repair", lab: "OpenROAD: Resizer", short: "Buffers long and high-fanout nets and upsizes gates that break slew or load limits.",
-      in: "OpenDB; Liberty", out: "OpenDB + buffers",
+      in: "OpenDB; Liberty; SDC", out: "OpenDB + buffers",
       how: "Wire lengths are estimated from Steiner trees over the placed pins. Long and high-fanout nets get buffer trees, and gates are upsized where they exceed the limits on slew, capacitance or fanout. No timing optimisation yet.",
       watch: "Each buffer adds area that the utilisation figure from global placement does not include." },
     dpl: { name: "Detailed placement", lab: "OpenROAD: OpenDP", short: "Moves every cell onto a legal, non-overlapping site.",
       in: "OpenDB", out: "OpenDB, cells on legal sites",
-      how: "Each cell moves to the nearest free legal site in a row; local moves and swaps then recover wirelength.",
+      how: "Each cell moves to the nearest free legal site in a row; then some cells are flipped left to right where that shortens their wires.",
       watch: "Large displacements in over-full regions cost timing and routability." },
     cts: { name: "Clock tree synthesis", lab: "OpenROAD: TritonCTS", short: "Builds a buffered clock tree so the clock reaches every flip-flop at nearly the same time.",
       in: "OpenDB; Liberty", out: "OpenDB + clock tree",
-      how: "The flip-flops' clock pins are clustered by location and a buffered tree is built from the clock pin down to the clusters, equalising wire and buffer delay so the clock edge reaches every flip-flop at nearly the same time. This design uses small clock buffers (clkbuf_4 at the root, clkbuf_2 and clkbuf_4 below).",
+      how: "The flip-flops' clock pins are clustered by location and a buffered tree is built from the clock pin down to the clusters, equalising wire and buffer delay so the clock edge reaches every flip-flop at nearly the same time. This design uses small clock buffers: 36 clkbuf_4, at the root and below.",
       watch: "Nothing in the flow fails on skew or on slew at clock pins; the project checks clock-pin slew itself after a local harden." },
     rsz2: { name: "Timing repair", lab: "OpenROAD: Resizer", short: "Fixes setup by upsizing and buffering, and hold by inserting delay cells.",
       in: "OpenDB; Liberty; SDC", out: "OpenDB + resized gates, delay cells",
-      how: "OpenSTA, in the same process, times the design with the real clock tree at every corner. Setup violations are fixed by upsizing gates and buffering critical nets; hold violations by inserting delay cells until each path has 0.05 ns of hold margin.",
+      how: "OpenSTA, in the same process, times the design with the real clock tree at every corner. Setup violations are fixed by upsizing gates and buffering critical nets; hold violations by inserting delay cells until each path has 0.05 ns of hold margin. In this run no path failed setup; 66 delay cells fixed hold at 63 endpoints.",
       watch: "Delay cells add area and congestion; with a 0.1 ns margin this design failed to route." },
     grt: { name: "Global routing", lab: "OpenROAD: FastRoute", short: "Plans each net's route through a coarse grid of routing cells.",
       in: "OpenDB; tech LEF", out: "OpenDB + route guides",
@@ -515,7 +515,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       watch: "Tiny Tapeout's configuration allows congestion here; unresolved overflow surfaces in detailed routing." },
     ant: { name: "Antenna repair", lab: "OpenROAD: FastRoute", short: "Adds diodes where long wires could damage transistor gates during manufacture.",
       in: "OpenDB; tech LEF", out: "OpenDB + diodes",
-      how: "The antenna checker computes, from the route guides and the antenna rules in the tech LEF, the ratio of metal connected to each transistor gate to the gate's area on each layer; where it exceeds the rule, FastRoute places a diode cell at the gate.",
+      how: "The antenna checker computes, from the route guides and the antenna rules in the tech LEF, the ratio of the sidewall area of the metal connected to each transistor gate to the gate's area on each layer; where it exceeds the rule, FastRoute moves a stretch of wiring up a layer or places a diode cell at the gate. Here it placed one diode.",
       watch: "Violations left after detailed routing are reported, not failed on; the project's own check after a local harden fails on them." },
     drt: { name: "Detailed routing", lab: "OpenROAD: TritonRoute", short: "Draws every wire and via, iterating until no design-rule violations remain.",
       in: "OpenDB with route guides; tech LEF", out: "OpenDB + wires, vias",
@@ -525,9 +525,9 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       in: "OpenDB", out: "OpenDB + filler and decap cells; final gate netlist",
       how: "Every empty site gets a filler or a decap cell, so the wells and power rails stay continuous; decap cells are capacitors between the supply rails. The final gate netlist and the powered gate netlist are written from OpenDB here." },
     rcx: { name: "Parasitic extraction", lab: "OpenROAD: OpenRCX", short: "Computes the resistance and capacitance of every routed wire.",
-      in: "OpenDB (routed); RCX rules", out: "SPEF for minimum, nominal and maximum wires",
-      how: "Each wire segment's resistance comes from its length, width and the layer's sheet resistance; its capacitance to ground and to neighbouring wires comes from tables indexed by geometry, calibrated against foundry extraction." },
-    sta: { name: "Static timing analysis", lab: "OpenROAD: OpenSTA", short: "Checks setup and hold on every path at 9 corners, with the extracted wires.",
+      in: "OpenDB (routed); tech LEF; RCX rules", out: "SPEF for minimum, nominal and maximum wires",
+      how: "Each wire segment's resistance comes from its length, width and the layer's sheet resistance in the tech LEF; its capacitance to ground and to neighbouring wires comes from tables indexed by geometry, calibrated against foundry extraction." },
+    sta: { name: "Static timing analysis", lab: "OpenSTA (standalone)", short: "Checks setup and hold on every path at 9 corners, with the extracted wires.",
       in: "gate netlist (from OpenDB); SPEF; Liberty; SDC", out: "timing and power reports; SDF",
       how: "Arrival and required times are propagated through the timing graph, with cell delays from the Liberty tables (delay as a function of input slew and output load) and wire delays from the RC network. Slack is reported at 9 corners: slow (100 C, 1.60 V), typical (25 C, 1.80 V) and fast (-40 C, 1.95 V) silicon, each with minimum, nominal and maximum wires.",
       fail: "Setup violations at the typical corners, or hold violations at any corner.",
@@ -535,9 +535,9 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     ir: { name: "IR drop analysis", lab: "OpenROAD: PSM", short: "Computes the voltage drop across the power grid.",
       in: "OpenDB with power grid", out: "IR drop report",
       how: "PSM turns the power grid's wires and vias into a resistor network, attaches each cell's average current, and solves for the voltage at every node of VPWR and VGND at the typical corner.",
-      watch: "Reported only. The tile drew 0.46 mW in this run, so the drop is negligible." },
+      watch: "Reported only. The tile draws about 0.39 mW at the typical corner, so the drop is negligible." },
     gds: { name: "Stream out GDSII", lab: "Magic, KLayout", short: "Writes the layout as GDSII, with each cell's transistor layout merged in.",
-      in: "DEF; cell GDSII; tech LEF; Magic tech file", out: "GDSII; the tile's LEF",
+      in: "DEF; cell GDSII; tech LEF; cell LEF; Magic tech file", out: "GDSII; the tile's LEF",
       how: "Magic reads the DEF, places each cell's layout from the cell GDSII, draws the routed wires and vias, and writes GDSII and an abstract LEF of the tile. KLayout writes a second GDSII from the same DEF and renders a PNG." },
     drc: { name: "DRC", lab: "Magic", short: "Checks every shape of the GDSII against sky130's manufacturing rules.",
       in: "GDSII; Magic tech file", out: "violation count",
@@ -567,15 +567,16 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
   };
 
   var V = {
-    vlint: { name: "Lint (CI)", lab: "Verilator", short: "Verilator lint with all warnings on, run in CI on every push.", text: ["On every push: Verilator with all warnings enabled, and any warning fails the job. Stricter than the flow's lint, which fails only on latches, multiple drivers and timing constructs."] },
+    vlint: { name: "Lint (CI)", lab: "Verilator", short: "Verilator lint with all warnings on, run in CI on every push.", text: ["On every push: Verilator with all warnings enabled, and any warning fails the job. Stricter than the flow's lint, which fails on errors, latches and multiple drivers but only counts other warnings."] },
     vunit: { name: "Unit tests", lab: "cocotb", short: "cocotb tests of each module through its ports.", text: ["cocotb tests drive one module through its ports and check the results. They run on Verilator locally and on Icarus Verilog in CI; a failure names the module."] },
     vchip: { name: "Whole-chip test", lab: "cocotb", short: "cocotb test of the whole chip through its pins.", text: ["cocotb test of the top module through Tiny Tapeout's pins, on Icarus Verilog, in CI. It finds integration and pin-mapping errors. The same test runs on the gate netlist."] },
     vsys: { name: "Gameplay scenarios", lab: "Verilator", short: "Gameplay runs on a Verilator model, judged from the video and audio output.", text: ["A C++ harness around the Verilator model plays the game and judges it only from the decoded VGA frames and the audio pin.",
       "All scenarios run locally only, because they need Verilator 4."] },
-    vproof: { name: "Model proof", lab: "Yosys", short: "Formal proof that the brick wall module equals its reference model on every clock.", text: ["Proves that the brick wall module gives exactly the outputs of a readable reference model of the wall on every clock after reset, assuming only what the rest of the chip guarantees on its ports. The two are joined into a mitre, with an invariant stating which brick each of the wall's flip-flops holds for every beam position. A second proof shows that the whole chip meets those assumptions for any inputs on its pins.",
+    vproof: { name: "Model proof", lab: "Yosys", short: "Formal proof that the brick wall module equals its reference model on every clock.", text: ["Proves that the brick wall module gives the outputs of a readable reference model of the wall on every clock after reset (its row output only while the beam is within the wall's rows), assuming only what the rest of the chip guarantees on its ports. The two are joined into a mitre, with an invariant stating which brick each of the wall's flip-flops holds for every beam position. A second proof shows that the whole chip meets those assumptions for any inputs on its pins.",
       "Method: SAT-based temporal induction in Yosys, a base case from reset plus an inductive step of up to 4 cycles. Runs in CI on every push."] },
-    vlec: { name: "Equivalence check", lab: "Yosys", short: "Formal proof that the routed gate netlist computes the same as the RTL.", text: ["The final gate netlist, with cells modelled from their Liberty functions and buffers and delay cells as wires, is merged with the RTL into one equivalence-checking circuit, with a comparison at each register and output paired by name. Each comparison is proved with SAT and induction, and the proven ones then serve as cut points for the rest.",
-      "It finds logic changed by synthesis, resizing, the clock tree or hold repair; LVS compares the layout only with this netlist. Not part of the flow: the project runs it after local hardens, not in the CI harden that produces the submitted GDSII."] },
+    vlec: { name: "Equivalence check", lab: "Yosys", short: "Formal comparison of the RTL with the final gate netlist after physical design.", text: ["Compares the RTL with the final gate netlist after physical design, so it covers synthesis and every later step that changes the netlist, such as resizing, the clock tree and hold repair. The netlist's cells are modelled from their Liberty functions, with buffers and delay cells as wires, and the two are merged into one equivalence-checking circuit, with a comparison at each register and output paired by name.",
+      "Each comparison is first tried directly with SAT, from any starting state over up to 4 cycles; a proven one joins its two sides into one signal for the proofs that follow. The rest are proved by a weaker form of induction: once the two circuits have agreed at every comparison for 4 cycles, they never diverge. There is no base case from reset, so this alone does not show that they start out in step. Yosys's help recommends simulation from reset alongside it. The gate-level test gives some of that: it runs the whole-chip test from reset on the netlist of the CI harden, which is built from the same source but is a separate harden.",
+      "LVS compares the layout only with this netlist. Not part of the flow: the project runs it after local hardens, not in the CI harden that produces the submitted GDSII."] },
     vgl: { name: "Gate-level test", lab: "cocotb", short: "The whole-chip test, rerun on the powered gate netlist.", text: ["Tiny Tapeout's action runs the whole-chip test on the powered gate netlist with sky130's Verilog cell models, on Icarus Verilog, without timing.",
       "It finds what RTL simulation hides: unknown (X) values propagating from uninitialised flip-flops, reset problems, missing supply connections."] }
   };
@@ -583,7 +584,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     gcov: { name: "Coverage", tool: "Verilator coverage; covergroups", short: "Would measure which code and game situations the tests reach.", text: ["Line, toggle and branch coverage from Verilator, and functional coverage of game situations (every brick row cleared, every sound played) with cocotb-coverage or SystemVerilog covergroups.",
       "Nothing in the project measures coverage now."] },
     gsva: { name: "Design assertions", tool: "SVA; SymbiYosys", short: "Assertions of the design's own invariants, proved formally.", text: ["SVA assertions of the design's own invariants, for example that the picture is black outside the visible area and the ball stays inside the playfield, proved with SymbiYosys and also checked during simulation.",
-      "The model proof covers the brick wall module; the rest of the design has no formal check."] },
+      "The model proof covers the brick wall module and what it assumes of the rest of the chip; nothing else of the design's behaviour is proved."] },
     gcdc: { name: "CDC/RDC check", tool: "SpyGlass; Questa CDC", short: "Checks of signals and resets crossing into the clock domain asynchronously.", text: ["Structural check of every signal that enters the clock domain asynchronously (CDC), the buttons and gamepad pins, and of the release of reset (RDC).",
       "Today this is argued in comments: the gamepad pins pass 2-flop synchronisers, the direct buttons one register. A tool would enumerate the crossings and keep them checked as the RTL changes."] },
     glint: { name: "Second linter", tool: "slang; Verible", short: "A stricter SystemVerilog front end or style linter.", text: ["Yosys, Icarus Verilog and Verilator each parse the RTL with their own front end and support different subsets of SystemVerilog. slang or Verible's linter would flag constructs the tools may read differently."] }
@@ -601,14 +602,14 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     { label: ["TINY", "TAPEOUT"], rows: ["precheck", "shuttle"] }
   ];
   var INPUTS = { dfflib: ["liberty"], abcmap: ["liberty"], floorplan: ["tlef", "clef", "tracks"], pins: ["tdef"],
-                 rsz1: ["liberty"], cts: ["liberty"], rsz2: ["liberty", "sdc"], grt: ["tlef"], ant: ["tlef"], drt: ["tlef"],
-                 rcx: ["rcxrules"], sta: ["liberty", "sdc"], gds: ["cgds", "tlef", "mtech"], drc: ["mtech"],
+                 rsz1: ["liberty", "sdc"], cts: ["liberty"], rsz2: ["liberty", "sdc"], grt: ["tlef"], ant: ["tlef"], drt: ["tlef"],
+                 rcx: ["tlef", "rcxrules"], sta: ["liberty", "sdc"], gds: ["cgds", "tlef", "clef", "mtech"], drc: ["mtech"],
                  ext: ["tlef", "clef", "cspice", "mtech"], lvs: ["cspice", "ngs"], precheck: ["tdef", "kdrc"] };
   var VROWS = { src0: "vlint", src1: "vunit", src2: "vchip", src3: "vsys", src4: "vproof", clean: "vlec", precheck: "vgl" };
   var MODELS = { src1: ["cpp", "vvp"], src2: ["vvp"], src3: ["cpp"], src4: ["cnf"], clean: ["cnf"], precheck: ["vvp", "cellmodels"] };
   var ODB_NOTES = { pdn: "+ tap cells, power grid", pins: "+ pins", gpl: "+ cell positions", rsz1: "+ buffers", dpl: "+ legal sites",
                     cts: "+ clock tree", rsz2: "+ delay cells", grt: "+ route guides", ant: "+ diodes",
-                    drt: "+ wires, vias", fill: "+ filler, decap", rcx: "read by OpenRCX", sta: "read by OpenSTA",
+                    drt: "+ wires, vias", fill: "+ filler, decap", rcx: "read by OpenRCX",
                     ir: "read by PSM", gds: "DEF read by Magic" };
 
   var W = 1360, P = 22, BH = 18, GAP = 14, Y0 = 44;
@@ -746,7 +747,7 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
     bar("tool:spef", "SPEF", null, XR2, WR2, mid("rcx"), mid("sta"));
     bar("tool:gdsii", "GDSII", null, XR2, WR2, mid("gds"), bot("shuttle"));
 
-    // verification: one row per check; the equivalence check spans what it covers
+    // verification: one row per check
     function vBox(key, r) {
       var v = V[key];
       var g = itemG(lMain, "v:" + key, v.name + ", " + v.lab, top[r]);
@@ -755,7 +756,6 @@ svg [data-item]:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
       svgRich(lMain, XV + WV - 8, top[r] + 15, v.lab, "tl", "end", top[r]);
     }
     Object.keys(VROWS).forEach(function (r) { vBox(VROWS[r], r); });
-    el("path", { d: "M" + (XV - 2) + " " + (bot("clean") - 2) + "H" + (XV - 8) + "V" + (bot("fill") - 4) + "H" + (XV - 2), "class": "rule" }, lBack);
 
     // what each check runs
     Object.keys(MODELS).forEach(function (r) {
